@@ -14,12 +14,12 @@ export type Produto = {
   subcategoria: string; // slug da subcategoria
   descricao: string;
   preco: number;
-  precoPromocional?: number;
-  imagem?: string;
+  precoPromocional?: number | undefined;
+  imagem?: string | undefined;
   disponivel: boolean;
   oferta: boolean;
-  rasgaPreco?: boolean;
-  informacoes?: string[];
+  rasgaPreco?: boolean | undefined;
+  informacoes?: string[] | undefined;
 };
 
 const s = (n: string) =>
