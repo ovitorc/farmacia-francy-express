@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ProductCard } from "@/components/ProductCard";
 import { getCategoria, precoFinal, produtos } from "@/lib/catalog";
 
-type Busca = { sub: string; ordem: string };
+type Busca = { sub?: string; ordem?: string };
 
 export const Route = createFileRoute("/categoria/$slug")({
   validateSearch: (raw: Record<string, unknown>): Busca => ({
@@ -42,7 +42,9 @@ const ordens = [
 
 function CategoriaPage() {
   const { categoria } = Route.useLoaderData();
-  const { sub, ordem } = Route.useSearch();
+  const busca = Route.useSearch();
+  const sub = busca.sub ?? "";
+  const ordem = busca.ordem ?? "relevancia";
 
   let lista = produtos.filter((p) => p.categoria === categoria.slug);
   if (sub) lista = lista.filter((p) => p.subcategoria === sub);
