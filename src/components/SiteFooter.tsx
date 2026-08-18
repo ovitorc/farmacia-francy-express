@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { Instagram, MessageCircle, Mail, MapPin, Clock } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
+import popularAsset from "@/assets/farmacia-popular.png.asset.json";
+import anvisaAsset from "@/assets/anvisa.png.asset.json";
 import { categorias, INSTAGRAM_URL, WHATSAPP_URL } from "@/lib/catalog";
 
 const pagamentos = ["Débito", "Crédito", "PIX", "Crédito via link", "PIX via link"];
@@ -81,24 +83,26 @@ export function SiteFooter() {
             </a>
           </p>
           <div className="pt-2">
-            <Link
-              to="/farmacia-popular"
-              className="inline-block rounded-md border border-primary-foreground/25 px-3 py-2 text-xs font-semibold"
-            >
-              Aqui tem Farmácia Popular
+            <Link to="/farmacia-popular" className="inline-block">
+              <img
+                src={popularAsset.url}
+                alt="Aqui tem Farmácia Popular"
+                className="h-24 w-auto rounded-md"
+              />
             </Link>
           </div>
           <div className="pt-4">
-            <div className="inline-flex items-center gap-2 rounded-md bg-background px-3 py-2">
-              <span className="text-xs font-bold tracking-widest text-primary">ANVISA</span>
-              <span className="text-[10px] leading-tight text-muted-foreground">
-                Agência Nacional de
-                <br />
-                Vigilância Sanitária
-              </span>
+            <div className="inline-flex rounded-md bg-background p-2">
+              <img
+                src={anvisaAsset.url}
+                alt="Agência Nacional de Vigilância Sanitária (ANVISA)"
+                className="h-8 w-auto"
+              />
             </div>
           </div>
         </div>
+      </div>
+
       </div>
 
       <div className="border-t border-primary-foreground/15">
