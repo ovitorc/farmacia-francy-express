@@ -103,7 +103,6 @@ export function SiteFooter() {
         </div>
       </div>
 
-      </div>
 
       <div className="border-t border-primary-foreground/15">
         <div className="mx-auto max-w-7xl space-y-2 px-6 py-8 text-[11px] leading-relaxed text-primary-foreground/60">
