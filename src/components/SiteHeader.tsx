@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
-import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart";
 import { buscarProdutos, categorias, formatarPreco, precoFinal } from "@/lib/catalog";
 import { ProductImage } from "@/components/ProductCard";
@@ -254,15 +253,6 @@ export function SiteHeader() {
       </header>
 
       <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
-      <Button
-        asChild
-        variant="outline"
-        className="sr-only"
-        aria-hidden
-        tabIndex={-1}
-      >
-        <span />
-      </Button>
     </>
   );
 }
