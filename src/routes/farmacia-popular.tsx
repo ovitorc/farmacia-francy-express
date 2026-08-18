@@ -39,10 +39,6 @@ const passos = [
   "Nossa equipe faz o cadastro e a retirada na hora, direto no balcão.",
 ];
 
-export default function _unusedGuard() {
-  return null;
-}
-
 function PopularPage() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
