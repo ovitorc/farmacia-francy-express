@@ -1,0 +1,93 @@
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+const produtoSchema = z.object({
+  id: z.string().uuid().optional(),
+  codigo: z.string().min(1),
+  nome: z.string().min(1),
+  descricao: z.string().default(""),
+  categoria_slug: z.string().min(1),
+  subcategoria_slug: z.string().default(""),
+  preco: z.number().min(0),
+  preco_promocional: z.number().min(0).nullable().default(null),
+  imagem: z.string().nullable().default(null),
+  disponivel: z.boolean().default(true),
+  oferta: z.boolean().default(false),
+  rasga_preco: z.boolean().default(false),
+  informacoes: z.array(z.string()).default([]),
+});
+
+async function assertAdmin(context: { supabase: any; userId: string }) {
+  const { data, error } = await context.supabase.rpc("has_role", {
+    _user_id: context.userId,
+    _role: "admin",
+  });
+  if (error || !data) throw new Error("Acesso restrito a administradores.");
+}
+
+export const souAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    return { admin: Boolean(data) };
+  });
+
+export const salvarProduto = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => produtoSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { id, ...campos } = data;
+    if (id) {
+      const { error } = await context.supabase.from("produtos").update(campos).eq("id", id);
+      if (error) throw new Error(error.message);
+      return { id };
+    }
+    const { data: criado, error } = await context.supabase
+      .from("produtos")
+      .insert(campos)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: criado.id as string };
+  });
+
+export const excluirProduto = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase.from("produtos").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const enviarImagem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        nomeArquivo: z.string().min(1),
+        tipo: z.string().min(1),
+        conteudoBase64: z.string().min(1),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const bytes = Uint8Array.from(atob(data.conteudoBase64), (c) => c.charCodeAt(0));
+    const extensao = (data.nomeArquivo.split(".").pop() ?? "jpg").toLowerCase();
+    const caminho = `${crypto.randomUUID()}.${extensao}`;
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.storage
+      .from("produtos")
+      .upload(caminho, bytes, { contentType: data.tipo, upsert: false });
+    if (error) throw new Error(error.message);
+
+    return { url: `/api/public/img/${caminho}` };
+  });
