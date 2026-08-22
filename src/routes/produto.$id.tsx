@@ -6,17 +6,17 @@ import { Button } from "@/components/ui/button";
 import { ProductCard, ProductImage } from "@/components/ProductCard";
 import { useCart } from "@/lib/cart";
 import {
+  acharProduto,
   formatarPreco,
-  getCategoria,
-  getProduto,
   precoFinal,
-  produtos,
   WHATSAPP_URL,
 } from "@/lib/catalog";
+import { catalogoQueryOptions, useCatalogo } from "@/lib/catalog-context";
 
 export const Route = createFileRoute("/produto/$id")({
-  loader: ({ params }) => {
-    const produto = getProduto(params.id);
+  loader: async ({ params, context }) => {
+    const catalogo = await context.queryClient.ensureQueryData(catalogoQueryOptions);
+    const produto = acharProduto(catalogo.produtos, params.id);
     if (!produto) throw notFound();
     return { produto };
   },
@@ -43,6 +43,7 @@ function ProdutoPage() {
   const { produto } = Route.useLoaderData();
   const { adicionar } = useCart();
   const [qtd, setQtd] = useState(1);
+  const { produtos, getCategoria } = useCatalogo();
   const categoria = getCategoria(produto.categoria);
   const sub = categoria?.subcategorias.find((s) => s.slug === produto.subcategoria);
   const emOferta = Boolean(produto.precoPromocional);
@@ -121,7 +122,7 @@ function ProdutoPage() {
               size="lg"
               className="flex-1 gap-2"
               onClick={() => {
-                adicionar(produto.id, qtd);
+                adicionar(produto, qtd);
                 toast.success("Adicionado ao carrinho", { description: produto.nome });
               }}
             >

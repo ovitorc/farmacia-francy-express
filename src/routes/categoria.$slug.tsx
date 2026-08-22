@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ProductCard } from "@/components/ProductCard";
-import { getCategoria, precoFinal, produtos } from "@/lib/catalog";
+import { acharCategoria, precoFinal } from "@/lib/catalog";
+import { catalogoQueryOptions, useCatalogo } from "@/lib/catalog-context";
 
 type Busca = { sub?: string; ordem?: string };
 
@@ -9,8 +10,9 @@ export const Route = createFileRoute("/categoria/$slug")({
     sub: typeof raw["sub"] === "string" ? raw["sub"] : "",
     ordem: typeof raw["ordem"] === "string" ? raw["ordem"] : "relevancia",
   }),
-  loader: ({ params }) => {
-    const categoria = getCategoria(params.slug);
+  loader: async ({ params, context }) => {
+    const catalogo = await context.queryClient.ensureQueryData(catalogoQueryOptions);
+    const categoria = acharCategoria(catalogo.categorias, params.slug);
     if (!categoria) throw notFound();
     return { categoria };
   },
@@ -42,6 +44,7 @@ const ordens = [
 
 function CategoriaPage() {
   const { categoria } = Route.useLoaderData();
+  const { produtos } = useCatalogo();
   const busca = Route.useSearch();
   const sub = busca.sub ?? "";
   const ordem = busca.ordem ?? "relevancia";
