@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ProductCard } from "@/components/ProductCard";
-import { buscarProdutos } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 
 type Busca = { q?: string };
 
@@ -29,7 +29,8 @@ export const Route = createFileRoute("/busca")({
 function BuscaPage() {
   const { q } = Route.useSearch();
   const termo = q ?? "";
-  const resultados = buscarProdutos(termo);
+  const { buscar } = useCatalogo();
+  const resultados = buscar(termo);
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">

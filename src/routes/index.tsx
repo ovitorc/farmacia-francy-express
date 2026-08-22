@@ -3,7 +3,8 @@ import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import { RasgaPreco } from "@/components/RasgaPreco";
 import popularAsset from "@/assets/farmacia-popular.png.asset.json";
-import { categorias, produtos, WHATSAPP_URL } from "@/lib/catalog";
+import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -31,6 +32,7 @@ const beneficios = [
 ];
 
 function Index() {
+  const { categorias, produtos } = useCatalogo();
   const ofertas = produtos.filter((p) => p.oferta).slice(0, 10);
   const maisVendidos = produtos.slice(0, 10);
 
@@ -117,7 +119,7 @@ function Index() {
   );
 }
 
-function Vitrine({ titulo, itens }: { titulo: string; itens: typeof produtos }) {
+function Vitrine({ titulo, itens }: { titulo: string; itens: Produto[] }) {
   return (
     <section className="mx-auto max-w-7xl px-6 py-8">
       <h2 className="mb-4 text-xl font-bold text-primary sm:text-2xl">{titulo}</h2>

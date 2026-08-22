@@ -3,7 +3,8 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 import { useCart } from "@/lib/cart";
-import { buscarProdutos, categorias, formatarPreco, precoFinal } from "@/lib/catalog";
+import { formatarPreco, precoFinal } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
 function Logo({ className = "h-11" }: { className?: string }) {
@@ -18,6 +19,7 @@ function Logo({ className = "h-11" }: { className?: string }) {
 
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
   const [expandida, setExpandida] = useState<string | null>(null);
+  const { categorias } = useCatalogo();
 
   return (
     <>
@@ -113,6 +115,7 @@ export function SiteHeader() {
   const [termo, setTermo] = useState("");
   const [focado, setFocado] = useState(false);
   const { totalItens } = useCart();
+  const { categorias, buscar } = useCatalogo();
   const [pop, setPop] = useState(false);
   const primeiro = useRef(true);
   const navigate = useNavigate();
@@ -133,7 +136,7 @@ export function SiteHeader() {
     return () => clearTimeout(t);
   }, [totalItens]);
 
-  const sugestoes = termo.trim().length > 1 ? buscarProdutos(termo).slice(0, 6) : [];
+  const sugestoes = termo.trim().length > 1 ? buscar(termo).slice(0, 6) : [];
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
