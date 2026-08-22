@@ -1,13 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { produtos, precoFinal, formatarPreco, WHATSAPP_URL, type Produto } from "./catalog";
+import { precoFinal, formatarPreco, WHATSAPP_URL, type Produto } from "./catalog";
 
-export type ItemCarrinho = { id: string; quantidade: number };
+export type ItemCarrinho = { produto: Produto; quantidade: number };
 
 type CartContextValue = {
   itens: ItemCarrinho[];
   totalItens: number;
   total: number;
-  adicionar: (id: string, quantidade?: number) => void;
+  adicionar: (produto: Produto, quantidade?: number) => void;
   remover: (id: string) => void;
   definirQuantidade: (id: string, quantidade: number) => void;
   limpar: () => void;
@@ -15,7 +15,7 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "francy-carrinho";
+const STORAGE_KEY = "francy-carrinho-v2";
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [itens, setItens] = useState<ItemCarrinho[]>([]);
@@ -24,7 +24,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setItens(JSON.parse(raw) as ItemCarrinho[]);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ItemCarrinho[];
+        setItens(parsed.filter((i) => i && i.produto && typeof i.produto.id === "string"));
+      }
     } catch {
       /* ignora */
     }
@@ -37,44 +40,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [itens, hidratado]);
 
   const value = useMemo<CartContextValue>(() => {
-    const encontrar = (id: string) => produtos.find((p) => p.id === id);
-    const total = itens.reduce((acc, i) => {
-      const p = encontrar(i.id);
-      return p ? acc + precoFinal(p) * i.quantidade : acc;
-    }, 0);
+    const total = itens.reduce((acc, i) => acc + precoFinal(i.produto) * i.quantidade, 0);
 
     return {
       itens,
       total,
       totalItens: itens.reduce((a, i) => a + i.quantidade, 0),
-      adicionar: (id, quantidade = 1) =>
+      adicionar: (produto, quantidade = 1) =>
         setItens((prev) => {
-          const existe = prev.find((i) => i.id === id);
+          const existe = prev.find((i) => i.produto.id === produto.id);
           if (existe)
-            return prev.map((i) => (i.id === id ? { ...i, quantidade: i.quantidade + quantidade } : i));
-          return [...prev, { id, quantidade }];
+            return prev.map((i) =>
+              i.produto.id === produto.id
+                ? { produto, quantidade: i.quantidade + quantidade }
+                : i,
+            );
+          return [...prev, { produto, quantidade }];
         }),
-      remover: (id) => setItens((prev) => prev.filter((i) => i.id !== id)),
+      remover: (id) => setItens((prev) => prev.filter((i) => i.produto.id !== id)),
       definirQuantidade: (id, quantidade) =>
         setItens((prev) =>
           quantidade <= 0
-            ? prev.filter((i) => i.id !== id)
-            : prev.map((i) => (i.id === id ? { ...i, quantidade } : i)),
+            ? prev.filter((i) => i.produto.id !== id)
+            : prev.map((i) => (i.produto.id === id ? { ...i, quantidade } : i)),
         ),
       limpar: () => setItens([]),
       linkWhatsApp: () => {
-        const linhas = itens
-          .map((i) => encontrar(i.id))
-          .filter((p): p is Produto => Boolean(p))
-          .map((p) => {
-            const i = itens.find((x) => x.id === p.id)!;
-            return [
-              `Produto: ${p.nome}`,
-              `Código: ${p.codigo}`,
-              `Quantidade: ${i.quantidade}`,
-              `Preço: ${formatarPreco(precoFinal(p))}`,
-            ].join("\n");
-          });
+        const linhas = itens.map(({ produto: p, quantidade }) =>
+          [
+            `Produto: ${p.nome}`,
+            `Código: ${p.codigo}`,
+            `Quantidade: ${quantidade}`,
+            `Preço: ${formatarPreco(precoFinal(p))}`,
+          ].join("\n"),
+        );
         const msg = [
           "Olá, Farmácias Francy! Gostaria de realizar um pedido:",
           "",
