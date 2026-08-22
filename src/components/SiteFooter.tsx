@@ -9,6 +9,7 @@ import { useCatalogo } from "@/lib/catalog-context";
 const pagamentos = ["Débito", "Crédito", "PIX", "Crédito via link", "PIX via link"];
 
 export function SiteFooter() {
+  const { categorias } = useCatalogo();
   return (
     <footer className="mt-16 border-t border-border bg-primary text-primary-foreground">
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-12 md:grid-cols-4">

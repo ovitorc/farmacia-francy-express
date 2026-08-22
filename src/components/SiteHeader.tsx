@@ -115,6 +115,7 @@ export function SiteHeader() {
   const [termo, setTermo] = useState("");
   const [focado, setFocado] = useState(false);
   const { totalItens } = useCart();
+  const { categorias, buscar } = useCatalogo();
   const [pop, setPop] = useState(false);
   const primeiro = useRef(true);
   const navigate = useNavigate();
