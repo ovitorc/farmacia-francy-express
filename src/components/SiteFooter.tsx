@@ -3,7 +3,8 @@ import { Instagram, MessageCircle, Mail, MapPin, Clock } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 import popularAsset from "@/assets/farmacia-popular.png.asset.json";
 import anvisaAsset from "@/assets/anvisa.png.asset.json";
-import { categorias, INSTAGRAM_URL, WHATSAPP_URL } from "@/lib/catalog";
+import { INSTAGRAM_URL, WHATSAPP_URL } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 
 const pagamentos = ["Débito", "Crédito", "PIX", "Crédito via link", "PIX via link"];
 

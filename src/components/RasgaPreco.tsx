@@ -22,7 +22,7 @@ export function RasgaPreco() {
         </div>
       </div>
       <div className="group overflow-hidden">
-        <div className="flex w-max gap-4 px-6 animate-marquee group-hover:[animation-play-state:paused]">
+        <div className="flex w-max gap-4 px-6 marquee-track group-hover:[animation-play-state:paused]">
           {trilha.map((p, i) => (
             <div key={`${p.id}-${i}`} className="w-44 shrink-0 sm:w-52">
               <ProductCard produto={p} />
