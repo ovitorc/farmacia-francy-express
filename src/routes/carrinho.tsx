@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Minus, Plus, Trash2, MessageCircle, ShoppingCart } from "lucide-react";
 import { ProductImage } from "@/components/ProductCard";
 import { useCart } from "@/lib/cart";
-import { formatarPreco, getProduto, precoFinal } from "@/lib/catalog";
+import { formatarPreco, precoFinal } from "@/lib/catalog";
 
 export const Route = createFileRoute("/carrinho")({
   head: () => ({
@@ -51,11 +51,10 @@ function CarrinhoPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
         <ul className="space-y-3">
           {itens.map((item) => {
-            const p = getProduto(item.id);
-            if (!p) return null;
+            const p = item.produto;
             return (
               <li
-                key={item.id}
+                key={p.id}
                 className="flex gap-4 rounded-xl border border-border bg-card p-3 sm:p-4"
               >
                 <Link

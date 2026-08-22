@@ -15,6 +15,7 @@ import { CartProvider } from "@/lib/cart";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Toaster } from "@/components/ui/sonner";
+import { CatalogProvider, catalogoQueryOptions } from "@/lib/catalog-context";
 
 function NotFoundComponent() {
   return (
@@ -104,6 +105,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(catalogoQueryOptions),
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -126,9 +128,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const catalogo = Route.useLoaderData();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <CatalogProvider value={catalogo}>
       <CartProvider>
         <div className="flex min-h-screen flex-col bg-background">
           <SiteHeader />
@@ -140,6 +144,7 @@ function RootComponent() {
         </div>
         <Toaster position="top-center" />
       </CartProvider>
+      </CatalogProvider>
     </QueryClientProvider>
   );
 }
