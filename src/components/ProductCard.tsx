@@ -71,7 +71,7 @@ export function ProductCard({ produto }: { produto: Produto }) {
             size="sm"
             className="w-full gap-2"
             onClick={() => {
-              adicionar(produto.id);
+              adicionar(produto);
               toast.success("Adicionado ao carrinho", { description: produto.nome });
             }}
           >
