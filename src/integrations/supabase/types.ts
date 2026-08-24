@@ -42,9 +42,13 @@ export type Database = {
         Row: {
           categoria_slug: string
           codigo: string
+          codigo_barras: string | null
           created_at: string
           descricao: string
           disponivel: boolean
+          estoque: number
+          fabricante: string
+          farmacia_popular: boolean
           id: string
           imagem: string | null
           informacoes: string[]
@@ -52,17 +56,25 @@ export type Database = {
           oferta: boolean
           ordem: number
           preco: number
+          preco_farmacia_popular: number | null
           preco_promocional: number | null
+          principio_ativo: string
           rasga_preco: boolean
+          registro_ms: string
           subcategoria_slug: string
+          unidade: string
           updated_at: string
         }
         Insert: {
           categoria_slug: string
           codigo: string
+          codigo_barras?: string | null
           created_at?: string
           descricao?: string
           disponivel?: boolean
+          estoque?: number
+          fabricante?: string
+          farmacia_popular?: boolean
           id?: string
           imagem?: string | null
           informacoes?: string[]
@@ -70,17 +82,25 @@ export type Database = {
           oferta?: boolean
           ordem?: number
           preco?: number
+          preco_farmacia_popular?: number | null
           preco_promocional?: number | null
+          principio_ativo?: string
           rasga_preco?: boolean
+          registro_ms?: string
           subcategoria_slug?: string
+          unidade?: string
           updated_at?: string
         }
         Update: {
           categoria_slug?: string
           codigo?: string
+          codigo_barras?: string | null
           created_at?: string
           descricao?: string
           disponivel?: boolean
+          estoque?: number
+          fabricante?: string
+          farmacia_popular?: boolean
           id?: string
           imagem?: string | null
           informacoes?: string[]
@@ -88,9 +108,13 @@ export type Database = {
           oferta?: boolean
           ordem?: number
           preco?: number
+          preco_farmacia_popular?: number | null
           preco_promocional?: number | null
+          principio_ativo?: string
           rasga_preco?: boolean
+          registro_ms?: string
           subcategoria_slug?: string
+          unidade?: string
           updated_at?: string
         }
         Relationships: [
@@ -171,6 +195,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       app_role: "admin"
