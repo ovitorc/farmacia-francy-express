@@ -133,6 +133,12 @@ export function SiteFooter() {
             Todo pedido feito pelo site depende da confirmação de que os produtos estão disponíveis em
             estoque.
           </p>
+          <p>
+            <Link to="/admin" className="text-primary-foreground/50 hover:underline">
+              Área administrativa
+            </Link>
+          </p>
+
         </div>
       </div>
     </footer>
