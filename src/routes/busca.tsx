@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ProductCard } from "@/components/ProductCard";
-import { useCatalogo } from "@/lib/catalog-context";
+import { buscaQueryOptions } from "@/lib/catalog-context";
 
 type Busca = { q?: string };
 
@@ -29,8 +30,7 @@ export const Route = createFileRoute("/busca")({
 function BuscaPage() {
   const { q } = Route.useSearch();
   const termo = q ?? "";
-  const { buscar } = useCatalogo();
-  const resultados = buscar(termo);
+  const { data: resultados = [], isPending } = useQuery(buscaQueryOptions(termo, 60));
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -43,7 +43,9 @@ function BuscaPage() {
       <h1 className="mt-2 text-2xl font-bold text-primary sm:text-3xl">
         Resultados para “{termo}”
       </h1>
-      <p className="mt-1 text-sm text-muted-foreground">{resultados.length} produto(s) encontrado(s)</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {isPending ? "Buscando..." : `${resultados.length} produto(s) encontrado(s)`}
+      </p>
 
       {resultados.length > 0 ? (
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -52,10 +54,12 @@ function BuscaPage() {
           ))}
         </div>
       ) : (
-        <p className="py-16 text-center text-sm text-muted-foreground">
-          Não encontramos esse item no catálogo online. Fale com a gente pelo WhatsApp que
-          verificamos a disponibilidade na loja.
-        </p>
+        !isPending && (
+          <p className="py-16 text-center text-sm text-muted-foreground">
+            Não encontramos esse item no catálogo online. Fale com a gente pelo WhatsApp que
+            verificamos a disponibilidade na loja.
+          </p>
+        )
       )}
     </div>
   );
