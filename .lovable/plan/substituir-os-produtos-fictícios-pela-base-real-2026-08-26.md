@@ -2,7 +2,7 @@
 
 ## Situação atual (verificada no banco)
 
-- A base real foi importada: **19.342 produtos** com códigos FF000001…, com código de barras, fabricante, estoque, princípio ativo, registro MS e preço.
+- A base real foi importada: **19.342 produtos** com códigos da coluna "código", ou seja, código interno do produto…, com código de barras, fabricante, estoque, princípio ativo, registro MS e preço.
 - Mas os **45 produtos de demonstração continuam no banco** (códigos FF-1002, FF-1003, ff-0011…). Como são os únicos com foto e com "Rasga Preço" marcado, são eles que aparecem na home — por isso o site ainda parece fictício.
 - Distribuição real: Medicamentos 7.388, Perfumaria 4.658, Bebês 1.689, Beleza 1.243, Conveniência 1.028, e as demais 9 categorias.
 - 7.149 itens com estoque positivo; 12.238 sem estoque (continuarão aparecendo, marcados como indisponíveis).
