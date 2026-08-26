@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal } from "@/lib/catalog";
-import { useCatalogo } from "@/lib/catalog-context";
+import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
 function Logo({ className = "h-11" }: { className?: string }) {
@@ -115,7 +116,7 @@ export function SiteHeader() {
   const [termo, setTermo] = useState("");
   const [focado, setFocado] = useState(false);
   const { totalItens } = useCart();
-  const { categorias, buscar } = useCatalogo();
+  const { categorias } = useCatalogo();
   const [pop, setPop] = useState(false);
   const primeiro = useRef(true);
   const navigate = useNavigate();
@@ -136,7 +137,7 @@ export function SiteHeader() {
     return () => clearTimeout(t);
   }, [totalItens]);
 
-  const sugestoes = termo.trim().length > 1 ? buscar(termo).slice(0, 6) : [];
+  const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termo.trim(), 6));
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();

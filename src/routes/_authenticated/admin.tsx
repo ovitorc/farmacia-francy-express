@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { catalogoQueryOptions } from "@/lib/catalog-context";
+import { buscaQueryOptions, catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
 import { formatarPreco, type Produto } from "@/lib/catalog";
 import { salvarProduto, excluirProduto, enviarImagem, souAdmin } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
@@ -96,17 +96,29 @@ function AdminPage() {
   const [enviandoFoto, setEnviandoFoto] = useState(false);
 
   const categorias = catalogo?.categorias ?? [];
-  const produtos = catalogo?.produtos ?? [];
+  const destaques = catalogo?.produtos ?? [];
+
+  const termoBusca = termo.trim();
+  const { data: resultadoBusca } = useQuery({
+    ...buscaQueryOptions(termoBusca, 60),
+    enabled: termoBusca.length > 1,
+  });
+  const { data: pagina } = useQuery({
+    ...listaQueryOptions({ categoria: filtroCategoria }),
+    enabled: termoBusca.length <= 1 && filtroCategoria !== "todas",
+  });
 
   const lista = useMemo(() => {
-    const q = termo.trim().toLowerCase();
-    return produtos.filter((p) => {
-      const okCat = filtroCategoria === "todas" || p.categoria === filtroCategoria;
-      const okTermo =
-        !q || p.nome.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q);
-      return okCat && okTermo;
-    });
-  }, [produtos, termo, filtroCategoria]);
+    if (termoBusca.length > 1) {
+      const base = resultadoBusca ?? [];
+      return filtroCategoria === "todas"
+        ? base
+        : base.filter((p) => p.categoria === filtroCategoria);
+    }
+    if (filtroCategoria !== "todas") return pagina?.itens ?? [];
+    return destaques;
+  }, [termoBusca, resultadoBusca, pagina, destaques, filtroCategoria]);
+
 
   const subcategoriasDoRascunho =
     categorias.find((c) => c.slug === rascunho?.categoria_slug)?.subcategorias ?? [];
@@ -231,7 +243,7 @@ function AdminPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Painel de produtos</h1>
-          <p className="text-sm text-muted-foreground">{produtos.length} produtos no catálogo</p>
+          <p className="text-sm text-muted-foreground">{lista.length} produto(s) listado(s)</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={sair}>
