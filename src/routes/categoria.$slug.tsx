@@ -1,14 +1,16 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ProductCard } from "@/components/ProductCard";
-import { acharCategoria, precoFinal } from "@/lib/catalog";
-import { catalogoQueryOptions, useCatalogo } from "@/lib/catalog-context";
+import { acharCategoria } from "@/lib/catalog";
+import { catalogoQueryOptions, listaQueryOptions, useCatalogo } from "@/lib/catalog-context";
 
-type Busca = { sub?: string; ordem?: string };
+type Busca = { sub?: string; ordem?: string; pagina?: number };
 
 export const Route = createFileRoute("/categoria/$slug")({
   validateSearch: (raw: Record<string, unknown>): Busca => ({
     sub: typeof raw["sub"] === "string" ? raw["sub"] : "",
     ordem: typeof raw["ordem"] === "string" ? raw["ordem"] : "relevancia",
+    pagina: Number(raw["pagina"]) > 1 ? Number(raw["pagina"]) : 1,
   }),
   loader: async ({ params, context }) => {
     const catalogo = await context.queryClient.ensureQueryData(catalogoQueryOptions);
@@ -19,7 +21,10 @@ export const Route = createFileRoute("/categoria/$slug")({
   head: ({ loaderData }) => {
     if (!loaderData)
       return {
-        meta: [{ title: "Categoria não encontrada | Farmácias Francy" }, { name: "robots", content: "noindex" }],
+        meta: [
+          { title: "Categoria não encontrada | Farmácias Francy" },
+          { name: "robots", content: "noindex" },
+        ],
       };
     const nome = loaderData.categoria.nome;
     const desc = `Confira produtos de ${nome} na Farmácias Francy e peça pelo WhatsApp.`;
@@ -32,6 +37,14 @@ export const Route = createFileRoute("/categoria/$slug")({
       ],
     };
   },
+  errorComponent: ({ error }) => (
+    <p role="alert" className="p-10 text-center text-sm text-muted-foreground">
+      {error.message}
+    </p>
+  ),
+  notFoundComponent: () => (
+    <p className="p-10 text-center text-sm text-muted-foreground">Categoria não encontrada.</p>
+  ),
   component: CategoriaPage,
 });
 
@@ -42,18 +55,22 @@ const ordens = [
   { valor: "ofertas", rotulo: "Ofertas" },
 ];
 
+const POR_PAGINA = 40;
+
 function CategoriaPage() {
   const { categoria } = Route.useLoaderData();
-  const { produtos } = useCatalogo();
+  useCatalogo();
   const busca = Route.useSearch();
   const sub = busca.sub ?? "";
   const ordem = busca.ordem ?? "relevancia";
+  const pagina = busca.pagina ?? 1;
 
-  let lista = produtos.filter((p) => p.categoria === categoria.slug);
-  if (sub) lista = lista.filter((p) => p.subcategoria === sub);
-  if (ordem === "menor-preco") lista = [...lista].sort((a, b) => precoFinal(a) - precoFinal(b));
-  if (ordem === "maior-preco") lista = [...lista].sort((a, b) => precoFinal(b) - precoFinal(a));
-  if (ordem === "ofertas") lista = lista.filter((p) => p.oferta);
+  const { data, isPending } = useQuery(
+    listaQueryOptions({ categoria: categoria.slug, sub, ordem, pagina }),
+  );
+  const lista = data?.itens ?? [];
+  const total = data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -72,9 +89,11 @@ function CategoriaPage() {
         <Link
           to="/categoria/$slug"
           params={{ slug: categoria.slug }}
-          search={{ sub: "", ordem }}
+          search={{ sub: "", ordem, pagina: 1 }}
           className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-            sub === "" ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"
+            sub === ""
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border hover:border-primary"
           }`}
         >
           Todos
@@ -84,7 +103,7 @@ function CategoriaPage() {
             key={s.slug}
             to="/categoria/$slug"
             params={{ slug: categoria.slug }}
-            search={{ sub: s.slug, ordem }}
+            search={{ sub: s.slug, ordem, pagina: 1 }}
             className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
               sub === s.slug
                 ? "border-primary bg-primary text-primary-foreground"
@@ -97,16 +116,20 @@ function CategoriaPage() {
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
-        <p className="text-xs text-muted-foreground">{lista.length} produto(s)</p>
+        <p className="text-xs text-muted-foreground">
+          {isPending ? "Carregando..." : `${total} produto(s)`}
+        </p>
         <div className="flex flex-wrap gap-2">
           {ordens.map((o) => (
             <Link
               key={o.valor}
               to="/categoria/$slug"
               params={{ slug: categoria.slug }}
-              search={{ sub, ordem: o.valor }}
+              search={{ sub, ordem: o.valor, pagina: 1 }}
               className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                ordem === o.valor ? "bg-primary-soft font-semibold text-primary" : "text-muted-foreground"
+                ordem === o.valor
+                  ? "bg-primary-soft font-semibold text-primary"
+                  : "text-muted-foreground"
               }`}
             >
               {o.rotulo}
@@ -116,16 +139,48 @@ function CategoriaPage() {
       </div>
 
       {lista.length > 0 ? (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {lista.map((p) => (
-            <ProductCard key={p.id} produto={p} />
-          ))}
-        </div>
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {lista.map((p) => (
+              <ProductCard key={p.id} produto={p} />
+            ))}
+          </div>
+
+          {totalPaginas > 1 && (
+            <div className="mt-10 flex items-center justify-center gap-3">
+              {pagina > 1 && (
+                <Link
+                  to="/categoria/$slug"
+                  params={{ slug: categoria.slug }}
+                  search={{ sub, ordem, pagina: pagina - 1 }}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs hover:border-primary"
+                >
+                  Anterior
+                </Link>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Página {pagina} de {totalPaginas}
+              </span>
+              {pagina < totalPaginas && (
+                <Link
+                  to="/categoria/$slug"
+                  params={{ slug: categoria.slug }}
+                  search={{ sub, ordem, pagina: pagina + 1 }}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs hover:border-primary"
+                >
+                  Próxima
+                </Link>
+              )}
+            </div>
+          )}
+        </>
       ) : (
-        <p className="py-16 text-center text-sm text-muted-foreground">
-          Ainda não temos produtos cadastrados nesse filtro. Fale com a gente pelo WhatsApp que
-          verificamos a disponibilidade.
-        </p>
+        !isPending && (
+          <p className="py-16 text-center text-sm text-muted-foreground">
+            Ainda não temos produtos cadastrados nesse filtro. Fale com a gente pelo WhatsApp que
+            verificamos a disponibilidade.
+          </p>
+        )
       )}
     </div>
   );
