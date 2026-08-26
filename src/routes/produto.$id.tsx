@@ -5,28 +5,25 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ProductCard, ProductImage } from "@/components/ProductCard";
 import { useCart } from "@/lib/cart";
-import {
-  acharProduto,
-  formatarPreco,
-  precoFinal,
-  WHATSAPP_URL,
-} from "@/lib/catalog";
-import { catalogoQueryOptions, useCatalogo } from "@/lib/catalog-context";
+import { formatarPreco, precoFinal, WHATSAPP_URL } from "@/lib/catalog";
+import { produtoQueryOptions, useCatalogo } from "@/lib/catalog-context";
 
 export const Route = createFileRoute("/produto/$id")({
   loader: async ({ params, context }) => {
-    const catalogo = await context.queryClient.ensureQueryData(catalogoQueryOptions);
-    const produto = acharProduto(catalogo.produtos, params.id);
-    if (!produto) throw notFound();
-    return { produto };
+    const dados = await context.queryClient.ensureQueryData(produtoQueryOptions(params.id));
+    if (!dados) throw notFound();
+    return dados;
   },
   head: ({ loaderData }) => {
     if (!loaderData)
       return {
-        meta: [{ title: "Produto indisponível | Farmácias Francy" }, { name: "robots", content: "noindex" }],
+        meta: [
+          { title: "Produto indisponível | Farmácias Francy" },
+          { name: "robots", content: "noindex" },
+        ],
       };
     const { produto } = loaderData;
-    const desc = produto.descricao.slice(0, 150);
+    const desc = produto.descricao.slice(0, 150) || `${produto.nome} na Farmácias Francy.`;
     return {
       meta: [
         { title: `${produto.nome} | Farmácias Francy` },
@@ -36,21 +33,26 @@ export const Route = createFileRoute("/produto/$id")({
       ],
     };
   },
+  errorComponent: ({ error }) => (
+    <p role="alert" className="p-10 text-center text-sm text-muted-foreground">
+      {error.message}
+    </p>
+  ),
+  notFoundComponent: () => (
+    <p className="p-10 text-center text-sm text-muted-foreground">Produto não encontrado.</p>
+  ),
   component: ProdutoPage,
 });
 
 function ProdutoPage() {
-  const { produto } = Route.useLoaderData();
+  const { produto, relacionados } = Route.useLoaderData();
   const { adicionar } = useCart();
   const [qtd, setQtd] = useState(1);
-  const { produtos, getCategoria } = useCatalogo();
+  const { getCategoria } = useCatalogo();
   const categoria = getCategoria(produto.categoria);
   const sub = categoria?.subcategorias.find((s) => s.slug === produto.subcategoria);
   const emOferta = Boolean(produto.precoPromocional);
 
-  const relacionados = produtos
-    .filter((p) => p.categoria === produto.categoria && p.id !== produto.id)
-    .slice(0, 5);
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
