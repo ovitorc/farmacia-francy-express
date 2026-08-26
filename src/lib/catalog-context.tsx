@@ -1,6 +1,11 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { getCatalogo, buscarProdutos, listarProdutos } from "@/lib/catalog.functions";
+import {
+  getCatalogo,
+  buscarProdutos,
+  listarProdutos,
+  obterProduto,
+} from "@/lib/catalog.functions";
 import { acharCategoria, type Catalogo } from "@/lib/catalog";
 
 export const catalogoQueryOptions = queryOptions({
@@ -17,6 +22,13 @@ export const buscaQueryOptions = (q: string, limite = 60) =>
     enabled: q.trim().length > 1,
   });
 
+export const produtoQueryOptions = (id: string) =>
+  queryOptions({
+    queryKey: ["produto", id],
+    queryFn: () => obterProduto({ data: { id } }),
+    staleTime: 30_000,
+  });
+
 export const listaQueryOptions = (params: {
   categoria: string;
   sub?: string;
@@ -28,6 +40,7 @@ export const listaQueryOptions = (params: {
     queryFn: () => listarProdutos({ data: params }),
     staleTime: 30_000,
   });
+
 
 const CatalogContext = createContext<Catalogo>({ categorias: [], produtos: [] });
 
