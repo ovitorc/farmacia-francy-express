@@ -243,7 +243,7 @@ function AdminPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Painel de produtos</h1>
-          <p className="text-sm text-muted-foreground">{produtos.length} produtos no catálogo</p>
+          <p className="text-sm text-muted-foreground">{lista.length} produto(s) listado(s)</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={sair}>
