@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { catalogoQueryOptions } from "@/lib/catalog-context";
+import { buscaQueryOptions, catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
 import { formatarPreco, type Produto } from "@/lib/catalog";
 import { salvarProduto, excluirProduto, enviarImagem, souAdmin } from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
