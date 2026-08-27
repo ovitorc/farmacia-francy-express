@@ -95,12 +95,15 @@ function AdminPage() {
   const salvar = useServerFn(salvarProduto);
   const excluir = useServerFn(excluirProduto);
   const upload = useServerFn(enviarImagem);
+  const destacar = useServerFn(marcarDestaque);
 
   const [termo, setTermo] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [marcandoId, setMarcandoId] = useState<string | null>(null);
+
 
   const categorias = catalogo?.categorias ?? [];
   const destaques = catalogo?.produtos ?? [];
