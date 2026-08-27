@@ -156,8 +156,26 @@ function AdminPage() {
 
   async function atualizarTudo() {
     await queryClient.invalidateQueries({ queryKey: ["catalogo"] });
+    await queryClient.invalidateQueries({ queryKey: ["busca"] });
+    await queryClient.invalidateQueries({ queryKey: ["produtos"] });
     await router.invalidate();
   }
+
+  async function alternar(p: Produto, campo: "oferta" | "rasga_preco", valor: boolean) {
+    setMarcandoId(p.id);
+    try {
+      await destacar({ data: { id: p.id, campo, valor } });
+      await atualizarTudo();
+      toast.success(
+        `${campo === "oferta" ? "Oferta" : "Rasga Preço"} ${valor ? "ativado" : "removido"}.`,
+      );
+    } catch {
+      toast.error("Não foi possível atualizar o destaque.");
+    } finally {
+      setMarcandoId(null);
+    }
+  }
+
 
   async function escolherFoto(file: File) {
     setEnviandoFoto(true);
