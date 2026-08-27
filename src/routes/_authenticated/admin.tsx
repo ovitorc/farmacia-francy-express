@@ -290,7 +290,23 @@ function AdminPage() {
                 {p.disponivel ? "" : " · indisponível"}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs">
+                <Switch
+                  checked={p.oferta}
+                  disabled={marcandoId === p.id}
+                  onCheckedChange={(v) => void alternar(p, "oferta", v)}
+                />
+                Oferta
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <Switch
+                  checked={Boolean(p.rasgaPreco)}
+                  disabled={marcandoId === p.id}
+                  onCheckedChange={(v) => void alternar(p, "rasga_preco", v)}
+                />
+                Rasga Preço
+              </label>
               <Button size="sm" variant="outline" onClick={() => abrirEdicao(p)}>
                 Editar
               </Button>
@@ -298,6 +314,7 @@ function AdminPage() {
                 Excluir
               </Button>
             </div>
+
           </div>
         ))}
         {lista.length === 0 ? (
