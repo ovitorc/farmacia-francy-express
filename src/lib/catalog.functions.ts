@@ -101,8 +101,16 @@ export const getCatalogo = createServerFn({ method: "GET" }).handler(async (): P
     produtos.push(mapear(linha));
   }
 
-  return { categorias, produtos };
+  return {
+    categorias,
+    produtos,
+    vitrines: {
+      rasgaPreco: fonteRasga.map(mapear),
+      ofertas: fonteOferta.map(mapear),
+    },
+  };
 });
+
 
 
 export type PaginaProdutos = { itens: Produto[]; total: number };
