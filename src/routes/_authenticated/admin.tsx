@@ -7,7 +7,14 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { buscaQueryOptions, catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
 import { formatarPreco, type Produto } from "@/lib/catalog";
-import { salvarProduto, excluirProduto, enviarImagem, souAdmin } from "@/lib/admin.functions";
+import {
+  salvarProduto,
+  excluirProduto,
+  enviarImagem,
+  souAdmin,
+  marcarDestaque,
+} from "@/lib/admin.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
