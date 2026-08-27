@@ -71,7 +71,10 @@ export const marcarDestaque = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { error } = await context.supabase
       .from("produtos")
-      .update({ [data.campo]: data.valor })
+      .update(
+        data.campo === "oferta" ? { oferta: data.valor } : { rasga_preco: data.valor },
+      )
+
       .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
