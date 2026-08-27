@@ -32,9 +32,11 @@ const beneficios = [
 ];
 
 function Index() {
-  const { categorias, ofertas: emOferta, destaques } = useCatalogo();
+  const { categorias, ofertas: emOferta, rasgaPreco, destaques } = useCatalogo();
   const ofertas = emOferta.slice(0, 10);
-  const maisVendidos = destaques.filter((p) => !p.oferta).slice(0, 10);
+  const usados = new Set([...ofertas, ...rasgaPreco].map((p) => p.id));
+  const maisVendidos = destaques.filter((p) => !usados.has(p.id)).slice(0, 10);
+
 
 
   return (

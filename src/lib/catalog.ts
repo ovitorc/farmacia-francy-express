@@ -18,7 +18,13 @@ export type Produto = {
   informacoes?: string[] | undefined;
 };
 
-export type Catalogo = { categorias: Categoria[]; produtos: Produto[] };
+export type Catalogo = {
+  categorias: Categoria[];
+  produtos: Produto[];
+  /** Vitrines da home: itens marcados no painel ou preenchidos automaticamente */
+  vitrines?: { rasgaPreco: Produto[]; ofertas: Produto[] } | undefined;
+};
+
 
 export const slugify = (n: string) =>
   n

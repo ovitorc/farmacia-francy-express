@@ -56,7 +56,32 @@ export const salvarProduto = createServerFn({ method: "POST" })
     return { id: criado.id as string };
   });
 
+export const marcarDestaque = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        campo: z.enum(["oferta", "rasga_preco"]),
+        valor: z.boolean(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase
+      .from("produtos")
+      .update(
+        data.campo === "oferta" ? { oferta: data.valor } : { rasga_preco: data.valor },
+      )
+
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const excluirProduto = createServerFn({ method: "POST" })
+
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {

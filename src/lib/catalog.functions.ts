@@ -44,7 +44,7 @@ const COLUNAS = "*";
 /** Categorias + uma amostra de destaques (o catálogo completo é paginado no servidor). */
 export const getCatalogo = createServerFn({ method: "GET" }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
-  const [cats, subs, rasga, ofertas, populares] = await Promise.all([
+  const [cats, subs, rasga, ofertas, populares, promocionais] = await Promise.all([
     supabase.from("categorias").select("slug, nome, icone, ordem").order("ordem"),
     supabase.from("subcategorias").select("categoria_slug, slug, nome, ordem").order("ordem"),
     supabase.from("produtos").select(COLUNAS).eq("rasga_preco", true).eq("disponivel", true).limit(12),
@@ -59,8 +59,17 @@ export const getCatalogo = createServerFn({ method: "GET" }).handler(async (): P
       .from("produtos")
       .select(COLUNAS)
       .eq("disponivel", true)
+      .gt("estoque", 0)
       .order("estoque", { ascending: false })
-      .limit(10),
+      .limit(20),
+    supabase
+      .from("produtos")
+      .select(COLUNAS)
+      .eq("disponivel", true)
+      .gt("estoque", 0)
+      .not("preco_promocional", "is", null)
+      .order("estoque", { ascending: false })
+      .limit(24),
   ]);
 
   const categorias: Categoria[] = (cats.data ?? []).map((c) => ({
@@ -72,16 +81,37 @@ export const getCatalogo = createServerFn({ method: "GET" }).handler(async (): P
       .map((s) => ({ nome: s.nome, slug: s.slug })),
   }));
 
+  const marcadosRasga = rasga.data ?? [];
+  const marcadosOferta = ofertas.data ?? [];
+  const comDesconto = [...(promocionais.data ?? [])].sort((a, b) => {
+    const da = Number(a.preco) > 0 ? 1 - Number(a.preco_promocional) / Number(a.preco) : 0;
+    const db = Number(b.preco) > 0 ? 1 - Number(b.preco_promocional) / Number(b.preco) : 0;
+    return db - da;
+  });
+
+  // Vitrines: o que o painel marcar tem prioridade; o resto é preenchido automaticamente.
+  const fonteRasga = marcadosRasga.length > 0 ? marcadosRasga : comDesconto.slice(0, 12);
+  const fonteOferta = marcadosOferta.length > 0 ? marcadosOferta : comDesconto.slice(12, 22);
+
   const vistos = new Set<string>();
   const produtos: Produto[] = [];
-  for (const linha of [...(rasga.data ?? []), ...(ofertas.data ?? []), ...(populares.data ?? [])]) {
+  for (const linha of [...fonteRasga, ...fonteOferta, ...(populares.data ?? [])]) {
     if (vistos.has(linha.id)) continue;
     vistos.add(linha.id);
     produtos.push(mapear(linha));
   }
 
-  return { categorias, produtos };
+  return {
+    categorias,
+    produtos,
+    vitrines: {
+      rasgaPreco: fonteRasga.map(mapear),
+      ofertas: fonteOferta.map(mapear),
+    },
+  };
 });
+
+
 
 export type PaginaProdutos = { itens: Produto[]; total: number };
 

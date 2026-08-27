@@ -54,8 +54,9 @@ export function useCatalogo() {
     () => ({
       ...catalogo,
       getCategoria: (slug: string) => acharCategoria(catalogo.categorias, slug),
-      rasgaPreco: catalogo.produtos.filter((p) => p.rasgaPreco),
-      ofertas: catalogo.produtos.filter((p) => p.oferta),
+      rasgaPreco: catalogo.vitrines?.rasgaPreco ?? catalogo.produtos.filter((p) => p.rasgaPreco),
+      ofertas: catalogo.vitrines?.ofertas ?? catalogo.produtos.filter((p) => p.oferta),
+
       destaques: catalogo.produtos,
     }),
     [catalogo],

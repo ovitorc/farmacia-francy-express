@@ -7,7 +7,14 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { buscaQueryOptions, catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
 import { formatarPreco, type Produto } from "@/lib/catalog";
-import { salvarProduto, excluirProduto, enviarImagem, souAdmin } from "@/lib/admin.functions";
+import {
+  salvarProduto,
+  excluirProduto,
+  enviarImagem,
+  souAdmin,
+  marcarDestaque,
+} from "@/lib/admin.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,12 +95,15 @@ function AdminPage() {
   const salvar = useServerFn(salvarProduto);
   const excluir = useServerFn(excluirProduto);
   const upload = useServerFn(enviarImagem);
+  const destacar = useServerFn(marcarDestaque);
 
   const [termo, setTermo] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [marcandoId, setMarcandoId] = useState<string | null>(null);
+
 
   const categorias = catalogo?.categorias ?? [];
   const destaques = catalogo?.produtos ?? [];
@@ -146,8 +156,26 @@ function AdminPage() {
 
   async function atualizarTudo() {
     await queryClient.invalidateQueries({ queryKey: ["catalogo"] });
+    await queryClient.invalidateQueries({ queryKey: ["busca"] });
+    await queryClient.invalidateQueries({ queryKey: ["produtos"] });
     await router.invalidate();
   }
+
+  async function alternar(p: Produto, campo: "oferta" | "rasga_preco", valor: boolean) {
+    setMarcandoId(p.id);
+    try {
+      await destacar({ data: { id: p.id, campo, valor } });
+      await atualizarTudo();
+      toast.success(
+        `${campo === "oferta" ? "Oferta" : "Rasga Preço"} ${valor ? "ativado" : "removido"}.`,
+      );
+    } catch {
+      toast.error("Não foi possível atualizar o destaque.");
+    } finally {
+      setMarcandoId(null);
+    }
+  }
+
 
   async function escolherFoto(file: File) {
     setEnviandoFoto(true);
@@ -290,7 +318,23 @@ function AdminPage() {
                 {p.disponivel ? "" : " · indisponível"}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs">
+                <Switch
+                  checked={p.oferta}
+                  disabled={marcandoId === p.id}
+                  onCheckedChange={(v) => void alternar(p, "oferta", v)}
+                />
+                Oferta
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <Switch
+                  checked={Boolean(p.rasgaPreco)}
+                  disabled={marcandoId === p.id}
+                  onCheckedChange={(v) => void alternar(p, "rasga_preco", v)}
+                />
+                Rasga Preço
+              </label>
               <Button size="sm" variant="outline" onClick={() => abrirEdicao(p)}>
                 Editar
               </Button>
@@ -298,6 +342,7 @@ function AdminPage() {
                 Excluir
               </Button>
             </div>
+
           </div>
         ))}
         {lista.length === 0 ? (
