@@ -162,6 +162,21 @@ export type Database = {
           },
         ]
       }
+      sync_codigos: {
+        Row: {
+          codigo_barras: string
+          codigo_novo: string
+        }
+        Insert: {
+          codigo_barras: string
+          codigo_novo: string
+        }
+        Update: {
+          codigo_barras?: string
+          codigo_novo?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
