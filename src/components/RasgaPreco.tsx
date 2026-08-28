@@ -83,7 +83,7 @@ export function RasgaPreco() {
       <div className="group relative overflow-hidden">
         {/* 2. Wrapper de posicionamento: usa `translate` + justify-content */}
         <div
-          className="flex w-full transition-[translate] duration-300 ease-out"
+          className="flex w-full px-6 transition-[translate] duration-300 ease-out"
           style={{ translate: DESLOCAMENTO[posicao], justifyContent: JUSTIFICA[posicao] }}
         >
           {/* 3. Faixa animada: usa exclusivamente `transform` */}
