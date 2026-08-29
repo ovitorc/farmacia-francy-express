@@ -168,7 +168,7 @@ export function SiteHeader() {
           </button>
 
           {/* Barra de pesquisa menor no desktop */}
-          <div className="relative flex-1 md:mx-auto md:max-w-[520px]">
+          <div className="relative flex-1 md:mx-auto md:max-w-[320px]">
             <form onSubmit={enviar}>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
