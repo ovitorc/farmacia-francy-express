@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef } from "react";
+```tsx
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Flame } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
-import { useCatalogo } from "@/lib/catalog-context";
+import { useCatalogo } from "@/lib/catalog";
 
 const VELOCIDADE = 40;
 const RETOMAR_APOS = 1500;
+
+// Quantas cópias da lista serão criadas.
+// Pode aumentar para 10, 20, 50 etc.
+const REPETICOES = 20;
 
 export function RasgaPreco() {
   const { rasgaPreco: itens } = useCatalogo();
@@ -19,21 +24,39 @@ export function RasgaPreco() {
   const inicioX = useRef(0);
   const inicioOffset = useRef(0);
 
-  // Indica se o usuário realmente arrastou.
-  const moveu = useRef(false);
-
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /*
+   * Cria várias cópias dos produtos.
+   *
+   * Exemplo:
+   * 5 produtos × 20 repetições = 100 cards
+   *
+   * Isso faz o carrossel continuar funcionando mesmo
+   * quando existem poucos produtos no Rasga Preço.
+   */
+  const trilha = useMemo(() => {
+    if (itens.length === 0) return [];
+
+    return Array.from({ length: REPETICOES }, () => itens).flat();
+  }, [itens]);
 
   const aplicar = useCallback(() => {
     const l = largura.current;
 
     if (l > 0) {
+      /*
+       * O tamanho de uma repetição completa.
+       * Quando chega ao final, volta para o começo
+       * sem o usuário perceber.
+       */
       offset.current = ((offset.current % l) + l) % l;
       offset.current -= l;
     }
 
     if (trilhaRef.current) {
-      trilhaRef.current.style.transform = `translate3d(${offset.current}px, 0, 0)`;
+      trilhaRef.current.style.transform =
+        `translate3d(${offset.current}px, 0, 0)`;
     }
   }, []);
 
@@ -56,14 +79,20 @@ export function RasgaPreco() {
     }, RETOMAR_APOS);
   }, []);
 
-  // Mede a largura da trilha.
+  /*
+   * Mede apenas UMA cópia da lista.
+   *
+   * Como a trilha possui várias repetições,
+   * usamos o tamanho total dividido pela quantidade
+   * de repetições.
+   */
   useEffect(() => {
     const el = trilhaRef.current;
 
-    if (!el) return;
+    if (!el || itens.length === 0) return;
 
     const medir = () => {
-      largura.current = el.scrollWidth / 2;
+      largura.current = el.scrollWidth / REPETICOES;
       aplicar();
     };
 
@@ -77,11 +106,15 @@ export function RasgaPreco() {
     };
   }, [aplicar, itens.length]);
 
-  // Animação automática.
+  /*
+   * Animação automática.
+   */
   useEffect(() => {
     if (itens.length === 0) return;
 
-    const reduz = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduz =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let raf = 0;
     let anterior = performance.now();
@@ -94,9 +127,14 @@ export function RasgaPreco() {
 
     const passo = (agora: number) => {
       const dt = (agora - anterior) / 1000;
+
       anterior = agora;
 
-      if (!pausado.current && !arrastando.current && !reduz) {
+      if (
+        !pausado.current &&
+        !arrastando.current &&
+        !reduz
+      ) {
         offset.current -= VELOCIDADE * dt;
         aplicar();
       }
@@ -108,7 +146,11 @@ export function RasgaPreco() {
 
     return () => {
       cancelAnimationFrame(raf);
-      document.removeEventListener("visibilitychange", aoVoltar);
+
+      document.removeEventListener(
+        "visibilitychange",
+        aoVoltar
+      );
 
       if (timer.current) {
         clearTimeout(timer.current);
@@ -120,10 +162,16 @@ export function RasgaPreco() {
     return null;
   }
 
-  const trilha = [...itens, ...itens];
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Se o clique começou em um botão, não inicia o arraste.
+  /*
+   * Começa o arraste.
+   *
+   * IMPORTANTE:
+   * Se o usuário clicar em um botão,
+   * não inicia o arraste.
+   */
+  const onPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
     const target = e.target as HTMLElement;
 
     if (target.closest("button")) {
@@ -131,7 +179,6 @@ export function RasgaPreco() {
     }
 
     arrastando.current = true;
-    moveu.current = false;
 
     inicioX.current = e.clientX;
     inicioOffset.current = offset.current;
@@ -141,26 +188,39 @@ export function RasgaPreco() {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  /*
+   * Movimento do arraste.
+   */
+  const onPointerMove = (
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
     if (!arrastando.current) return;
 
     const delta = e.clientX - inicioX.current;
 
-    if (Math.abs(delta) > 5) {
-      moveu.current = true;
-    }
-
     offset.current = inicioOffset.current + delta;
+
     aplicar();
   };
 
-  const finalizar = (e: React.PointerEvent<HTMLDivElement>) => {
+  /*
+   * Finaliza o arraste.
+   */
+  const finalizar = (
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
     if (!arrastando.current) return;
 
     arrastando.current = false;
 
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    if (
+      e.currentTarget.hasPointerCapture(
+        e.pointerId
+      )
+    ) {
+      e.currentTarget.releasePointerCapture(
+        e.pointerId
+      );
     }
 
     agendarRetomada();
@@ -174,9 +234,13 @@ export function RasgaPreco() {
         </span>
 
         <div>
-          <h2 className="text-xl font-bold text-brand-red sm:text-2xl">Rasga Preço</h2>
+          <h2 className="text-xl font-bold text-brand-red sm:text-2xl">
+            Rasga Preço
+          </h2>
 
-          <p className="text-xs text-muted-foreground">Ofertas válidas de quinta a domingo, toda semana.</p>
+          <p className="text-xs text-muted-foreground">
+            Ofertas válidas de quinta a domingo, toda semana.
+          </p>
         </div>
       </div>
 
@@ -188,9 +252,15 @@ export function RasgaPreco() {
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
       >
-        <div ref={trilhaRef} className="flex w-max">
+        <div
+          ref={trilhaRef}
+          className="flex w-max cursor-grab active:cursor-grabbing"
+        >
           {trilha.map((p, i) => (
-            <div key={`${p.id}-${i}`} className="w-44 shrink-0 pr-4 sm:w-52">
+            <div
+              key={`${p.id}-${i}`}
+              className="w-44 shrink-0 pr-4 sm:w-52"
+            >
               <ProductCard produto={p} />
             </div>
           ))}
@@ -199,3 +269,4 @@ export function RasgaPreco() {
     </section>
   );
 }
+```
