@@ -37,8 +37,6 @@ function Index() {
   const usados = new Set([...ofertas, ...rasgaPreco].map((p) => p.id));
   const maisVendidos = destaques.filter((p) => !usados.has(p.id)).slice(0, 10);
 
-
-
   return (
     <div>
       <section className="bg-primary text-primary-foreground">
@@ -51,8 +49,8 @@ function Index() {
               Sua farmácia de bairro, agora também online
             </h1>
             <p className="mt-4 max-w-lg text-sm text-primary-foreground/85 sm:text-base">
-              Medicamentos, higiene, perfumaria e cuidados diários com preço justo. Monte seu
-              pedido no site e finalize com a nossa equipe pelo WhatsApp.
+              Medicamentos, higiene, perfumaria e cuidados diários com preço justo. Monte seu pedido no site e finalize
+              com a nossa equipe pelo WhatsApp.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a
