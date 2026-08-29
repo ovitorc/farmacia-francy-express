@@ -9,13 +9,7 @@ import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
 function Logo({ className = "h-11" }: { className?: string }) {
-  return (
-    <img
-      src={logoAsset.url}
-      alt="Farmácias Francy"
-      className={`${className} w-auto rounded-md object-contain`}
-    />
-  );
+  return <img src={logoAsset.url} alt="Farmácias Francy" className={`${className} w-auto rounded-md object-contain`} />;
 }
 
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
@@ -31,6 +25,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
           aberto ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
+
       <aside
         className={`fixed left-0 top-0 z-50 flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform duration-300 ease-out ${
           aberto ? "translate-x-0" : "-translate-x-full"
@@ -38,6 +33,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
       >
         <div className="flex items-center justify-between bg-primary px-4 py-4">
           <Logo className="h-9" />
+
           <button
             onClick={fechar}
             aria-label="Fechar menu"
@@ -58,6 +54,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 
           {categorias.map((c) => {
             const aberta = expandida === c.slug;
+
             return (
               <div key={c.slug} className="border-b border-sidebar-border/60 last:border-0">
                 <div className="flex items-center">
@@ -70,16 +67,16 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                     <span className="mr-2">{c.icone}</span>
                     {c.nome}
                   </Link>
+
                   <button
                     aria-label={`Expandir ${c.nome}`}
                     onClick={() => setExpandida(aberta ? null : c.slug)}
                     className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-sidebar-accent"
                   >
-                    <ChevronDown
-                      className={`size-4 transition-transform duration-300 ${aberta ? "rotate-180" : ""}`}
-                    />
+                    <ChevronDown className={`size-4 transition-transform duration-300 ${aberta ? "rotate-180" : ""}`} />
                   </button>
                 </div>
+
                 <div
                   className="grid transition-all duration-300 ease-out"
                   style={{ gridTemplateRows: aberta ? "1fr" : "0fr" }}
@@ -91,7 +88,10 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                           <Link
                             to="/categoria/$slug"
                             params={{ slug: c.slug }}
-                            search={{ sub: sub.slug, ordem: "relevancia" }}
+                            search={{
+                              sub: sub.slug,
+                              ordem: "relevancia",
+                            }}
                             onClick={fechar}
                             className="block rounded-md px-6 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-primary"
                           >
@@ -120,7 +120,9 @@ export function SiteHeader() {
   const [pop, setPop] = useState(false);
   const primeiro = useRef(true);
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  });
 
   useEffect(() => {
     setMenuAberto(false);
@@ -132,8 +134,11 @@ export function SiteHeader() {
       primeiro.current = false;
       return;
     }
+
     setPop(true);
+
     const t = setTimeout(() => setPop(false), 400);
+
     return () => clearTimeout(t);
   }, [totalItens]);
 
@@ -141,8 +146,13 @@ export function SiteHeader() {
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!termo.trim()) return;
-    navigate({ to: "/busca", search: { q: termo.trim() } });
+
+    navigate({
+      to: "/busca",
+      search: { q: termo.trim() },
+    });
   };
 
   return (
@@ -157,9 +167,11 @@ export function SiteHeader() {
             <Menu className="size-5" strokeWidth={1.75} />
           </button>
 
-          <div className="relative flex-1">
+          {/* Barra de pesquisa menor no desktop */}
+          <div className="relative flex-1 md:mx-auto md:max-w-[520px]">
             <form onSubmit={enviar}>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+
               <input
                 value={termo}
                 onChange={(e) => setTermo(e.target.value)}
@@ -185,18 +197,23 @@ export function SiteHeader() {
                         <div className="size-10 shrink-0">
                           <ProductImage produto={p} />
                         </div>
+
                         <span className="line-clamp-1 flex-1 text-sm">{p.nome}</span>
-                        <span className="text-sm font-semibold text-primary">
-                          {formatarPreco(precoFinal(p))}
-                        </span>
+
+                        <span className="text-sm font-semibold text-primary">{formatarPreco(precoFinal(p))}</span>
                       </Link>
                     </li>
                   ))}
                 </ul>
+
                 <button
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    navigate({ to: "/busca", search: { q: termo.trim() } });
+
+                    navigate({
+                      to: "/busca",
+                      search: { q: termo.trim() },
+                    });
                   }}
                   className="block w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-accent"
                 >
@@ -212,6 +229,7 @@ export function SiteHeader() {
             className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
           >
             <ShoppingCart className="size-5" strokeWidth={1.75} />
+
             {totalItens > 0 && (
               <span
                 className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
@@ -236,6 +254,7 @@ export function SiteHeader() {
             >
               Todas as categorias
             </button>
+
             {categorias.slice(0, 6).map((c) => (
               <Link
                 key={c.slug}
@@ -246,6 +265,7 @@ export function SiteHeader() {
                 {c.nome}
               </Link>
             ))}
+
             <Link
               to="/farmacia-popular"
               className="ml-auto whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground"
