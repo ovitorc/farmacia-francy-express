@@ -79,7 +79,9 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 
                 <div
                   className="grid transition-all duration-300 ease-out"
-                  style={{ gridTemplateRows: aberta ? "1fr" : "0fr" }}
+                  style={{
+                    gridTemplateRows: aberta ? "1fr" : "0fr",
+                  }}
                 >
                   <div className="overflow-hidden">
                     <ul className="pb-2">
@@ -120,6 +122,7 @@ export function SiteHeader() {
   const [pop, setPop] = useState(false);
   const primeiro = useRef(true);
   const navigate = useNavigate();
+
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -167,8 +170,8 @@ export function SiteHeader() {
             <Menu className="size-5" strokeWidth={1.75} />
           </button>
 
-          {/* Barra de pesquisa menor no desktop */}
-          <div className="relative flex-1 md:mx-auto md:max-w-[320px]">
+          {/* Barra de pesquisa */}
+          <div className="relative w-full md:w-[260px] md:flex-none">
             <form onSubmit={enviar}>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
