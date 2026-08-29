@@ -157,23 +157,6 @@
   --shadow-card: var(--shadow-card);
 }
 
-@keyframes marquee-left {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@utility marquee-track {
-  animation: marquee-left 60s linear infinite;
-  width: max-content;
-  &:hover {
-    animation-play-state: paused;
-  }
-}
-
 @keyframes cart-pop {
   0% {
     transform: scale(1);
@@ -190,8 +173,3 @@
   animation: cart-pop 0.35s ease-out;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .marquee-track {
-    animation: none;
-  }
-}
