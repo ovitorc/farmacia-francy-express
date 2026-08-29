@@ -171,7 +171,7 @@ export function SiteHeader() {
           </button>
 
           {/* Barra de pesquisa */}
-          <div className="relative w-full md:w-[430px] md:flex-none">
+          <div className="relative w-full md:w-[520px] md:flex-none">
             <form onSubmit={enviar}>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
