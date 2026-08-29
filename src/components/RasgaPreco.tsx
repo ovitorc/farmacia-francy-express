@@ -19,6 +19,7 @@ export function RasgaPreco() {
   const inicioX = useRef(0);
   const inicioOffset = useRef(0);
 
+  // Indica se o usuário realmente arrastou.
   const moveu = useRef(false);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,9 +56,7 @@ export function RasgaPreco() {
     }, RETOMAR_APOS);
   }, []);
 
-  /*
-   * Mede a largura de uma cópia do carrossel.
-   */
+  // Mede a largura da trilha.
   useEffect(() => {
     const el = trilhaRef.current;
 
@@ -78,9 +77,7 @@ export function RasgaPreco() {
     };
   }, [aplicar, itens.length]);
 
-  /*
-   * Movimento automático.
-   */
+  // Animação automática.
   useEffect(() => {
     if (itens.length === 0) return;
 
@@ -123,31 +120,13 @@ export function RasgaPreco() {
     return null;
   }
 
-  /*
-   * Duplica os produtos para criar o loop infinito.
-   */
   const trilha = [...itens, ...itens];
 
-  /*
-   * COMEÇA O ARRASTE
-   *
-   * Importante:
-   * Se o usuário clicar em botão ou link,
-   * NÃO começamos o arraste.
-   */
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Se o clique começou em um botão, não inicia o arraste.
     const target = e.target as HTMLElement;
 
-    const elementoInterativo = target.closest("button, a, input, textarea, select, [role='button']");
-
-    if (elementoInterativo) {
-      return;
-    }
-
-    /*
-     * Só o botão esquerdo do mouse inicia o drag no desktop.
-     */
-    if (e.pointerType === "mouse" && e.button !== 0) {
+    if (target.closest("button")) {
       return;
     }
 
@@ -162,36 +141,21 @@ export function RasgaPreco() {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  /*
-   * MOVIMENTO DO MOUSE/TOQUE
-   */
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!arrastando.current) {
-      return;
-    }
+    if (!arrastando.current) return;
 
     const delta = e.clientX - inicioX.current;
 
-    /*
-     * Só consideramos que houve arraste
-     * depois de alguns pixels.
-     */
     if (Math.abs(delta) > 5) {
       moveu.current = true;
     }
 
     offset.current = inicioOffset.current + delta;
-
     aplicar();
   };
 
-  /*
-   * FINALIZA O ARRASTE
-   */
   const finalizar = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!arrastando.current) {
-      return;
-    }
+    if (!arrastando.current) return;
 
     arrastando.current = false;
 
@@ -218,21 +182,13 @@ export function RasgaPreco() {
 
       <div
         className="relative overflow-hidden px-6"
-        style={{
-          touchAction: "pan-y",
-        }}
+        style={{ touchAction: "pan-y" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
       >
-        <div
-          ref={trilhaRef}
-          className="flex w-max"
-          style={{
-            userSelect: "none",
-          }}
-        >
+        <div ref={trilhaRef} className="flex w-max">
           {trilha.map((p, i) => (
             <div key={`${p.id}-${i}`} className="w-44 shrink-0 pr-4 sm:w-52">
               <ProductCard produto={p} />
