@@ -173,3 +173,11 @@
   animation: cart-pop 0.35s ease-out;
 }
 
+
+@layer base {
+  img {
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
