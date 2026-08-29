@@ -130,6 +130,21 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const catalogo = Route.useLoaderData();
 
+  // Impede arrastar/baixar imagens e o menu de contexto sobre elas.
+  useEffect(() => {
+    const ehImagem = (alvo: EventTarget | null) =>
+      alvo instanceof Element && alvo.closest("img,picture") !== null;
+    const bloquear = (e: Event) => {
+      if (ehImagem(e.target)) e.preventDefault();
+    };
+    document.addEventListener("dragstart", bloquear);
+    document.addEventListener("contextmenu", bloquear);
+    return () => {
+      document.removeEventListener("dragstart", bloquear);
+      document.removeEventListener("contextmenu", bloquear);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <CatalogProvider value={catalogo}>

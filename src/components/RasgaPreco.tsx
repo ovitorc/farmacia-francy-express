@@ -66,6 +66,10 @@ export function RasgaPreco() {
 
     let raf = 0;
     let anterior = performance.now();
+    const aoVoltar = () => {
+      anterior = performance.now();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
     const passo = (agora: number) => {
       const dt = (agora - anterior) / 1000;
       anterior = agora;
@@ -78,6 +82,7 @@ export function RasgaPreco() {
     raf = requestAnimationFrame(passo);
     return () => {
       cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", aoVoltar);
       if (timer.current) clearTimeout(timer.current);
     };
   }, [aplicar, itens.length]);
@@ -133,11 +138,6 @@ export function RasgaPreco() {
         onPointerMove={onPointerMove}
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
-        onPointerLeave={finalizar}
-        onMouseEnter={pausar}
-        onMouseLeave={() => {
-          if (!arrastando.current) agendarRetomada();
-        }}
         onClickCapture={(e) => {
           if (moveu.current) {
             e.preventDefault();
