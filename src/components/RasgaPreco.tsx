@@ -1,4 +1,3 @@
-```tsx
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Flame } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
@@ -55,8 +54,7 @@ export function RasgaPreco() {
     }
 
     if (trilhaRef.current) {
-      trilhaRef.current.style.transform =
-        `translate3d(${offset.current}px, 0, 0)`;
+      trilhaRef.current.style.transform = `translate3d(${offset.current}px, 0, 0)`;
     }
   }, []);
 
@@ -112,9 +110,7 @@ export function RasgaPreco() {
   useEffect(() => {
     if (itens.length === 0) return;
 
-    const reduz =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduz = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let raf = 0;
     let anterior = performance.now();
@@ -130,11 +126,7 @@ export function RasgaPreco() {
 
       anterior = agora;
 
-      if (
-        !pausado.current &&
-        !arrastando.current &&
-        !reduz
-      ) {
+      if (!pausado.current && !arrastando.current && !reduz) {
         offset.current -= VELOCIDADE * dt;
         aplicar();
       }
@@ -147,10 +139,7 @@ export function RasgaPreco() {
     return () => {
       cancelAnimationFrame(raf);
 
-      document.removeEventListener(
-        "visibilitychange",
-        aoVoltar
-      );
+      document.removeEventListener("visibilitychange", aoVoltar);
 
       if (timer.current) {
         clearTimeout(timer.current);
@@ -169,9 +158,7 @@ export function RasgaPreco() {
    * Se o usuário clicar em um botão,
    * não inicia o arraste.
    */
-  const onPointerDown = (
-    e: React.PointerEvent<HTMLDivElement>
-  ) => {
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
     if (target.closest("button")) {
@@ -191,9 +178,7 @@ export function RasgaPreco() {
   /*
    * Movimento do arraste.
    */
-  const onPointerMove = (
-    e: React.PointerEvent<HTMLDivElement>
-  ) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!arrastando.current) return;
 
     const delta = e.clientX - inicioX.current;
@@ -206,21 +191,13 @@ export function RasgaPreco() {
   /*
    * Finaliza o arraste.
    */
-  const finalizar = (
-    e: React.PointerEvent<HTMLDivElement>
-  ) => {
+  const finalizar = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!arrastando.current) return;
 
     arrastando.current = false;
 
-    if (
-      e.currentTarget.hasPointerCapture(
-        e.pointerId
-      )
-    ) {
-      e.currentTarget.releasePointerCapture(
-        e.pointerId
-      );
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
 
     agendarRetomada();
@@ -234,13 +211,9 @@ export function RasgaPreco() {
         </span>
 
         <div>
-          <h2 className="text-xl font-bold text-brand-red sm:text-2xl">
-            Rasga Preço
-          </h2>
+          <h2 className="text-xl font-bold text-brand-red sm:text-2xl">Rasga Preço</h2>
 
-          <p className="text-xs text-muted-foreground">
-            Ofertas válidas de quinta a domingo, toda semana.
-          </p>
+          <p className="text-xs text-muted-foreground">Ofertas válidas de quinta a domingo, toda semana.</p>
         </div>
       </div>
 
@@ -252,15 +225,9 @@ export function RasgaPreco() {
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
       >
-        <div
-          ref={trilhaRef}
-          className="flex w-max cursor-grab active:cursor-grabbing"
-        >
+        <div ref={trilhaRef} className="flex w-max cursor-grab active:cursor-grabbing">
           {trilha.map((p, i) => (
-            <div
-              key={`${p.id}-${i}`}
-              className="w-44 shrink-0 pr-4 sm:w-52"
-            >
+            <div key={`${p.id}-${i}`} className="w-44 shrink-0 pr-4 sm:w-52">
               <ProductCard produto={p} />
             </div>
           ))}
@@ -269,4 +236,3 @@ export function RasgaPreco() {
     </section>
   );
 }
-```
