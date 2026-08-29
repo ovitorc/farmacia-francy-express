@@ -1,91 +1,92 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Flame } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
-import { useCatalogo } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 
-const VELOCIDADE = 45; // pixels por segundo
-const RETOMAR_APOS = 1200; // tempo para voltar a andar após arrastar
+const VELOCIDADE = 40; // pixels por segundo
+const RETOMAR_APOS = 1500; // tempo para voltar a andar depois de interação
 
 export function RasgaPreco() {
   const { rasgaPreco: itens } = useCatalogo();
 
   const trilhaRef = useRef<HTMLDivElement | null>(null);
 
-  const offsetRef = useRef(0);
-  const larguraCopiaRef = useRef(0);
+  const offset = useRef(0);
+  const larguraCopia = useRef(0);
 
-  const arrastandoRef = useRef(false);
-  const pausadoRef = useRef(false);
+  const pausado = useRef(false);
+  const arrastando = useRef(false);
 
-  const inicioXRef = useRef(0);
-  const inicioOffsetRef = useRef(0);
+  const inicioX = useRef(0);
+  const inicioOffset = useRef(0);
 
-  const moveuRef = useRef(false);
+  const moveu = useRef(false);
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /*
-   * Aplica o deslocamento visual da trilha.
+   * Aplica a posição da trilha.
+   *
+   * A trilha possui duas cópias dos produtos.
+   * Quando chega ao final da primeira cópia,
+   * voltamos para o início sem o usuário perceber.
    */
-  const aplicarOffset = useCallback(() => {
-    const largura = larguraCopiaRef.current;
+  const aplicarPosicao = useCallback(() => {
+    const largura = larguraCopia.current;
 
     if (largura > 0) {
       /*
-       * Mantém o offset sempre dentro do tamanho
-       * de uma cópia dos produtos.
-       *
+       * Mantém o offset sempre dentro da primeira cópia.
        * Isso cria o efeito de loop infinito.
        */
-      while (offsetRef.current <= -largura) {
-        offsetRef.current += largura;
+      while (offset.current <= -largura) {
+        offset.current += largura;
       }
 
-      while (offsetRef.current > 0) {
-        offsetRef.current -= largura;
+      while (offset.current > 0) {
+        offset.current -= largura;
       }
     }
 
     if (trilhaRef.current) {
-      trilhaRef.current.style.transform = `translate3d(${offsetRef.current}px, 0, 0)`;
+      trilhaRef.current.style.transform = `translate3d(${offset.current}px, 0, 0)`;
     }
   }, []);
 
   /*
-   * Pausa temporariamente a animação.
+   * Agenda a retomada automática depois que o usuário
+   * terminar de arrastar.
    */
-  const pausar = useCallback(() => {
-    pausadoRef.current = true;
-
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  /*
-   * Volta a animação depois que o usuário termina
-   * de arrastar.
-   */
-  const retomarDepois = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
+  const agendarRetomada = useCallback(() => {
+    if (timer.current) {
+      clearTimeout(timer.current);
     }
 
-    timerRef.current = setTimeout(() => {
-      pausadoRef.current = false;
+    timer.current = setTimeout(() => {
+      pausado.current = false;
     }, RETOMAR_APOS);
   }, []);
 
   /*
-   * Mede a largura da primeira cópia dos produtos.
+   * Pausa o movimento automático.
+   */
+  const pausar = useCallback(() => {
+    pausado.current = true;
+
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+
+  /*
+   * Mede exatamente a largura de UMA cópia dos produtos.
    *
-   * A trilha contém:
+   * Como duplicamos a lista:
    *
-   * produtos
-   * produtos
+   * [produto1 ... produtoN][produto1 ... produtoN]
    *
-   * Portanto scrollWidth / 2 representa uma cópia.
+   * scrollWidth / 2 = largura de uma cópia.
    */
   useEffect(() => {
     const elemento = trilhaRef.current;
@@ -93,8 +94,8 @@ export function RasgaPreco() {
     if (!elemento) return;
 
     const medir = () => {
-      larguraCopiaRef.current = elemento.scrollWidth / 2;
-      aplicarOffset();
+      larguraCopia.current = elemento.scrollWidth / 2;
+      aplicarPosicao();
     };
 
     medir();
@@ -108,19 +109,16 @@ export function RasgaPreco() {
       observer.disconnect();
       window.removeEventListener("resize", medir);
     };
-  }, [aplicarOffset, itens.length]);
+  }, [aplicarPosicao, itens.length]);
 
   /*
    * ANIMAÇÃO AUTOMÁTICA
    *
-   * Essa parte é independente de touch.
+   * Essa parte é a responsável por fazer os produtos
+   * andarem automaticamente da direita para a esquerda.
    *
-   * Portanto funciona:
-   *
-   * - desktop
-   * - notebook
-   * - celular
-   * - tablet
+   * requestAnimationFrame funciona tanto em desktop
+   * quanto em celular.
    */
   useEffect(() => {
     if (itens.length === 0) return;
@@ -140,15 +138,13 @@ export function RasgaPreco() {
       anterior = agora;
 
       /*
-       * Não anima enquanto o usuário está arrastando.
+       * Só movimenta quando não estiver pausado
+       * e o usuário não estiver arrastando.
        */
-      if (!pausadoRef.current && !arrastandoRef.current) {
-        /*
-         * Movimento para a ESQUERDA.
-         */
-        offsetRef.current -= VELOCIDADE * delta;
+      if (!pausado.current && !arrastando.current) {
+        offset.current -= VELOCIDADE * delta;
 
-        aplicarOffset();
+        aplicarPosicao();
       }
 
       animationFrame = requestAnimationFrame(animar);
@@ -161,21 +157,43 @@ export function RasgaPreco() {
 
       document.removeEventListener("visibilitychange", resetarTempo);
 
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+      if (timer.current) {
+        clearTimeout(timer.current);
       }
     };
-  }, [aplicarOffset, itens.length]);
+  }, [aplicarPosicao, itens.length]);
+
+  if (itens.length === 0) {
+    return null;
+  }
+
+  /*
+   * IMPORTANTE:
+   *
+   * Não limitamos os produtos a 10.
+   *
+   * Se o administrador cadastrar:
+   *
+   * 5 produtos  -> mostra 5
+   * 10 produtos -> mostra 10
+   * 11 produtos -> mostra 11
+   * 20 produtos -> mostra 20
+   * 50 produtos -> mostra 50
+   *
+   * A duplicação abaixo existe SOMENTE para criar
+   * o loop infinito visual.
+   */
+  const trilha = [...itens, ...itens];
 
   /*
    * Início do arraste.
    */
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    arrastandoRef.current = true;
-    moveuRef.current = false;
+    arrastando.current = true;
+    moveu.current = false;
 
-    inicioXRef.current = e.clientX;
-    inicioOffsetRef.current = offsetRef.current;
+    inicioX.current = e.clientX;
+    inicioOffset.current = offset.current;
 
     pausar();
 
@@ -183,73 +201,43 @@ export function RasgaPreco() {
   };
 
   /*
-   * Movimento do mouse/dedo.
+   * Movimento manual.
    */
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!arrastandoRef.current) return;
+    if (!arrastando.current) return;
 
-    const delta = e.clientX - inicioXRef.current;
+    const delta = e.clientX - inicioX.current;
 
-    if (Math.abs(delta) > 5) {
-      moveuRef.current = true;
+    if (Math.abs(delta) > 4) {
+      moveu.current = true;
     }
 
-    offsetRef.current = inicioOffsetRef.current + delta;
+    offset.current = inicioOffset.current + delta;
 
-    aplicarOffset();
+    aplicarPosicao();
   };
 
   /*
    * Finaliza o arraste.
    */
-  const finalizarArraste = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!arrastandoRef.current) return;
+  const finalizar = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!arrastando.current) return;
 
-    arrastandoRef.current = false;
+    arrastando.current = false;
 
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
 
-    retomarDepois();
+    /*
+     * Depois de 1,5 segundo o movimento automático
+     * volta sozinho.
+     */
+    agendarRetomada();
   };
-
-  /*
-   * Evita abrir o produto quando o usuário
-   * estava arrastando a vitrine.
-   */
-  const bloquearCliqueDepoisDoArraste = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (moveuRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      moveuRef.current = false;
-    }
-  };
-
-  if (itens.length === 0) {
-    return null;
-  }
-
-  /*
-   * Fazemos duas cópias.
-   *
-   * Isso NÃO significa limitar a 10 produtos.
-   *
-   * Se o administrador colocar:
-   *
-   * 5 produtos  -> 5 + 5
-   * 20 produtos -> 20 + 20
-   * 50 produtos -> 50 + 50
-   * 100 produtos -> 100 + 100
-   *
-   * A quantidade depende diretamente do painel.
-   */
-  const trilha = [...itens, ...itens];
 
   return (
     <section className="py-8">
-      {/* Título */}
       <div className="mx-auto mb-5 flex max-w-7xl items-center gap-3 px-6">
         <span className="flex size-10 items-center justify-center rounded-full bg-brand-red text-brand-red-foreground">
           <Flame className="size-5" />
@@ -262,26 +250,27 @@ export function RasgaPreco() {
         </div>
       </div>
 
-      {/* Área da vitrine */}
       <div
-        className="relative select-none overflow-hidden px-6"
+        className="relative overflow-hidden px-6 select-none"
         style={{
           touchAction: "pan-y",
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={finalizarArraste}
-        onPointerCancel={finalizarArraste}
-        onPointerLeave={(e) => {
+        onPointerUp={finalizar}
+        onPointerCancel={finalizar}
+        onClickCapture={(e) => {
           /*
-           * No desktop, se o mouse sair enquanto estiver
-           * capturado, o pointer capture continua funcionando.
+           * Se o usuário arrastou o carrossel,
+           * não queremos abrir o produto acidentalmente.
            */
-          if (arrastandoRef.current && e.currentTarget.hasPointerCapture(e.pointerId)) {
-            return;
+          if (moveu.current) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            moveu.current = false;
           }
         }}
-        onClickCapture={bloquearCliqueDepoisDoArraste}
       >
         <div
           ref={trilhaRef}
