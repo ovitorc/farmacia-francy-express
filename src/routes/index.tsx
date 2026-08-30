@@ -1,285 +1,251 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
-import logoAsset from "@/assets/logo.png.asset.json";
-import { useCart } from "@/lib/cart";
-import { formatarPreco, precoFinal } from "@/lib/catalog";
-import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
-import { ProductImage } from "@/components/ProductCard";
+import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
+import { ProductCard } from "@/components/ProductCard";
+import { RasgaPreco } from "@/components/RasgaPreco";
+import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog-context";
 
-function Logo({ className = "h-11" }: { className?: string }) {
-  return <img src={logoAsset.url} alt="Farmácias Francy" className={`${className} w-auto rounded-md object-contain`} />;
-}
+export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      {
+        title: "Farmácias Francy | Credibilidade popular em João Pessoa",
+      },
+      {
+        name: "description",
+        content:
+          "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácias Francy. Monte seu pedido online e finalize pelo WhatsApp.",
+      },
+      {
+        property: "og:title",
+        content: "Farmácias Francy | Credibilidade popular",
+      },
+      {
+        property: "og:description",
+        content: "Farmácia Francy, credibilidade popular. Pedido online e atendimento pelo WhatsApp.",
+      },
+    ],
+  }),
+  component: Index,
+});
 
-function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
-  const [expandida, setExpandida] = useState<string | null>(null);
-  const { categorias } = useCatalogo();
+const beneficios = [
+  {
+    icone: Truck,
+    titulo: "Entrega no bairro",
+    texto: "Combine a entrega pelo WhatsApp",
+  },
+  {
+    icone: ShieldCheck,
+    titulo: "Produtos registrados",
+    texto: "Farmacêutica responsável presente",
+  },
+  {
+    icone: Clock,
+    titulo: "Seg a sex, 8h às 17h30",
+    texto: "Atendimento humano e rápido",
+  },
+];
+
+/*
+ * ============================================================
+ * BANNERS DA HOME
+ * ============================================================
+ *
+ * IMPORTANTE:
+ * Não existem imagens obrigatórias aqui.
+ *
+ * Enquanto nenhuma imagem for cadastrada, o carrossel mostra
+ * apenas uma área vazia organizada, evitando erro 404.
+ *
+ * Quando você tiver as imagens, poderá colocá-las aqui.
+ *
+ * Exemplo:
+ *
+ * {
+ *   id: 1,
+ *   imagem: "/banners/fralda-da-semana.webp",
+ *   alt: "Fralda da Semana"
+ * }
+ *
+ * Não colocar imagens que ainda não existem.
+ */
+
+const banners: {
+  id: number;
+  imagem: string;
+  alt: string;
+}[] = [];
+
+/*
+ * ============================================================
+ * CARROSSEL
+ * ============================================================
+ */
+
+function BannerCarousel() {
+  const [bannerAtual, setBannerAtual] = useState(0);
+
+  useEffect(() => {
+    if (banners.length <= 1) return;
+
+    const intervalo = setInterval(() => {
+      setBannerAtual((atual) => (atual + 1) % banners.length);
+    }, 4000);
+
+    return () => clearInterval(intervalo);
+  }, []);
+
+  /*
+   * Caso ainda não existam banners cadastrados,
+   * não tentar carregar imagens inexistentes.
+   */
+  if (banners.length === 0) {
+    return (
+      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
+        <div className="text-center">
+          <p className="text-sm font-medium text-muted-foreground">Área de banners promocionais</p>
+
+          <p className="mt-1 text-xs text-muted-foreground/70">Os banners serão adicionados pela administração.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div
-        aria-hidden={!aberto}
-        onClick={fechar}
-        className={`fixed inset-0 z-50 bg-foreground/40 transition-opacity duration-300 ${
-          aberto ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      />
+    <div className="relative w-full overflow-hidden rounded-2xl">
+      <div className="relative aspect-[16/6] w-full bg-muted">
+        {banners.map((banner, index) => (
+          <img
+            key={banner.id}
+            src={banner.imagem}
+            alt={banner.alt}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
+              index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          />
+        ))}
+      </div>
 
-      <aside
-        className={`fixed left-0 top-0 z-50 flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform duration-300 ease-out ${
-          aberto ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between bg-primary px-4 py-4">
-          <Logo className="h-9" />
-
-          <button
-            onClick={fechar}
-            aria-label="Fechar menu"
-            className="rounded-md p-1.5 text-primary-foreground/90 transition-colors hover:bg-primary-foreground/10"
-          >
-            <X className="size-5" />
-          </button>
+      {banners.length > 1 && (
+        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
+          {banners.map((banner, index) => (
+            <button
+              key={banner.id}
+              type="button"
+              aria-label={`Ir para o banner ${index + 1}`}
+              onClick={() => setBannerAtual(index)}
+              className={`rounded-full transition-all duration-300 ${
+                index === bannerAtual ? "h-2.5 w-6 bg-white" : "size-2.5 bg-white/60 hover:bg-white/90"
+              }`}
+            />
+          ))}
         </div>
-
-        <nav className="flex-1 overflow-y-auto overscroll-contain px-2 py-3">
-          <Link
-            to="/farmacia-popular"
-            onClick={fechar}
-            className="mb-3 flex items-center gap-3 rounded-lg border border-brand-red/30 bg-brand-red/5 px-3 py-3 text-sm font-semibold text-brand-red"
-          >
-            🏥 FARMÁCIA POPULAR
-          </Link>
-
-          {categorias.map((c) => {
-            const aberta = expandida === c.slug;
-
-            return (
-              <div key={c.slug} className="border-b border-sidebar-border/60 last:border-0">
-                <div className="flex items-center">
-                  <Link
-                    to="/categoria/$slug"
-                    params={{ slug: c.slug }}
-                    onClick={fechar}
-                    className="flex-1 px-3 py-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:text-primary"
-                  >
-                    <span className="mr-2">{c.icone}</span>
-                    {c.nome}
-                  </Link>
-
-                  <button
-                    aria-label={`Expandir ${c.nome}`}
-                    onClick={() => setExpandida(aberta ? null : c.slug)}
-                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-sidebar-accent"
-                  >
-                    <ChevronDown className={`size-4 transition-transform duration-300 ${aberta ? "rotate-180" : ""}`} />
-                  </button>
-                </div>
-
-                <div
-                  className="grid transition-all duration-300 ease-out"
-                  style={{
-                    gridTemplateRows: aberta ? "1fr" : "0fr",
-                  }}
-                >
-                  <div className="overflow-hidden">
-                    <ul className="pb-2">
-                      {c.subcategorias.map((sub) => (
-                        <li key={sub.slug}>
-                          <Link
-                            to="/categoria/$slug"
-                            params={{ slug: c.slug }}
-                            search={{
-                              sub: sub.slug,
-                              ordem: "relevancia",
-                            }}
-                            onClick={fechar}
-                            className="block rounded-md px-6 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-primary"
-                          >
-                            {sub.nome}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
-    </>
+      )}
+    </div>
   );
 }
 
-export function SiteHeader() {
-  const [menuAberto, setMenuAberto] = useState(false);
-  const [termo, setTermo] = useState("");
-  const [focado, setFocado] = useState(false);
-  const { totalItens } = useCart();
-  const { categorias } = useCatalogo();
-  const [pop, setPop] = useState(false);
-  const primeiro = useRef(true);
-  const navigate = useNavigate();
+/*
+ * ============================================================
+ * HOME
+ * ============================================================
+ */
 
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
+function Index() {
+  const { categorias, ofertas: emOferta, rasgaPreco, destaques } = useCatalogo();
 
-  useEffect(() => {
-    setMenuAberto(false);
-    setFocado(false);
-  }, [pathname]);
+  const ofertas = emOferta.slice(0, 10);
 
-  useEffect(() => {
-    if (primeiro.current) {
-      primeiro.current = false;
-      return;
-    }
+  const usados = new Set([...ofertas, ...rasgaPreco].map((p) => p.id));
 
-    setPop(true);
-
-    const t = setTimeout(() => setPop(false), 400);
-
-    return () => clearTimeout(t);
-  }, [totalItens]);
-
-  const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termo.trim(), 6));
-
-  const enviar = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!termo.trim()) return;
-
-    navigate({
-      to: "/busca",
-      search: { q: termo.trim() },
-    });
-  };
+  const maisVendidos = destaques.filter((p) => !usados.has(p.id)).slice(0, 10);
 
   return (
-    <>
-      <header className="sticky top-0 z-40 bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2.5 sm:gap-4 sm:px-6">
-          <button
-            onClick={() => setMenuAberto(true)}
-            aria-label="Abrir menu"
-            className="shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
-          >
-            <Menu className="size-5" strokeWidth={1.75} />
-          </button>
+    <div>
+      {/* ======================================================
+          NOVA PARTE SUPERIOR
+          ====================================================== */}
 
-          {/* Barra de pesquisa */}
-          <div className="relative w-full md:w-[520px] md:flex-none">
-            <form onSubmit={enviar}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
-              <input
-                value={termo}
-                onChange={(e) => setTermo(e.target.value)}
-                onFocus={() => setFocado(true)}
-                onBlur={() => setTimeout(() => setFocado(false), 150)}
-                placeholder="O que você está procurando?"
-                aria-label="Pesquisar produtos"
-                className="h-10 w-full rounded-full border-0 bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-brand-red/60 placeholder:text-muted-foreground focus:ring-2"
-              />
-            </form>
-
-            {focado && sugestoes.length > 0 && (
-              <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-card animate-fade-in">
-                <ul className="max-h-80 overflow-y-auto">
-                  {sugestoes.map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        to="/produto/$id"
-                        params={{ id: p.id }}
-                        onClick={() => setTermo("")}
-                        className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent"
-                      >
-                        <div className="size-10 shrink-0">
-                          <ProductImage produto={p} />
-                        </div>
-
-                        <span className="line-clamp-1 flex-1 text-sm">{p.nome}</span>
-
-                        <span className="text-sm font-semibold text-primary">{formatarPreco(precoFinal(p))}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-
-                <button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-
-                    navigate({
-                      to: "/busca",
-                      search: { q: termo.trim() },
-                    });
-                  }}
-                  className="block w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-accent"
-                >
-                  Ver todos os resultados
-                </button>
-              </div>
-            )}
+      <section className="border-b border-border bg-background">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 md:py-10">
+          <div className="mb-6 text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-primary sm:text-3xl md:text-4xl">
+              Farmácia Francy, credibilidade popular
+            </h1>
           </div>
 
-          <Link
-            to="/carrinho"
-            aria-label="Abrir carrinho"
-            className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
-          >
-            <ShoppingCart className="size-5" strokeWidth={1.75} />
+          <BannerCarousel />
+        </div>
+      </section>
 
-            {totalItens > 0 && (
-              <span
-                className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
-                  pop ? "cart-pop" : ""
-                }`}
-              >
-                {totalItens}
+      {/* ======================================================
+          CONTEÚDO ORIGINAL
+          ====================================================== */}
+
+      <section className="border-b border-border bg-card">
+        <div className="mx-auto grid max-w-7xl gap-4 px-6 py-6 sm:grid-cols-3">
+          {beneficios.map((b) => (
+            <div key={b.titulo} className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                <b.icone className="size-5" />
               </span>
-            )}
-          </Link>
 
-          <Link to="/" className="shrink-0" aria-label="Página inicial Farmácias Francy">
-            <Logo className="h-9 sm:h-11" />
-          </Link>
+              <div>
+                <p className="text-sm font-semibold text-primary">{b.titulo}</p>
+
+                <p className="text-xs text-muted-foreground">{b.texto}</p>
+              </div>
+            </div>
+          ))}
         </div>
+      </section>
 
-        <div className="hidden border-t border-primary-foreground/10 md:block">
-          <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-6 py-2 text-xs font-medium">
-            <button
-              onClick={() => setMenuAberto(true)}
-              className="whitespace-nowrap opacity-90 transition-opacity hover:opacity-100"
-            >
-              Todas as categorias
-            </button>
+      <RasgaPreco />
 
-            {categorias.slice(0, 6).map((c) => (
-              <Link
-                key={c.slug}
-                to="/categoria/$slug"
-                params={{ slug: c.slug }}
-                className="whitespace-nowrap opacity-90 transition-opacity hover:opacity-100"
-              >
-                {c.nome}
-              </Link>
-            ))}
+      <section className="mx-auto max-w-7xl px-6 py-8">
+        <h2 className="text-xl font-bold text-primary sm:text-2xl">Categorias</h2>
 
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {categorias.map((c) => (
             <Link
-              to="/farmacia-popular"
-              className="ml-auto whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground"
+              key={c.slug}
+              to="/categoria/$slug"
+              params={{ slug: c.slug }}
+              className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-4 text-center transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-card"
             >
-              Farmácia Popular
-            </Link>
-          </div>
-        </div>
-      </header>
+              <span className="text-2xl">{c.icone}</span>
 
-      <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
-    </>
+              <span className="text-xs font-medium leading-snug">{c.nome}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <Vitrine titulo="Ofertas da semana" itens={ofertas} />
+
+      <Vitrine titulo="Mais procurados" itens={maisVendidos} />
+    </div>
+  );
+}
+
+/*
+ * ============================================================
+ * VITRINE
+ * ============================================================
+ */
+
+function Vitrine({ titulo, itens }: { titulo: string; itens: Produto[] }) {
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-8">
+      <h2 className="mb-4 text-xl font-bold text-primary sm:text-2xl">{titulo}</h2>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {itens.map((p) => (
+          <ProductCard key={p.id} produto={p} />
+        ))}
+      </div>
+    </section>
   );
 }
