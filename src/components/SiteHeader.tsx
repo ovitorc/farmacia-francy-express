@@ -27,6 +27,7 @@ function PopularLogo({ className = "h-11" }: { className?: string }) {
 
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
   const [expandida, setExpandida] = useState<string | null>(null);
+
   const { categorias } = useCatalogo();
 
   return (
@@ -73,7 +74,9 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                 <div className="flex items-center">
                   <Link
                     to="/categoria/$slug"
-                    params={{ slug: c.slug }}
+                    params={{
+                      slug: c.slug,
+                    }}
                     onClick={fechar}
                     className="flex-1 px-3 py-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:text-primary"
                   >
@@ -137,6 +140,7 @@ export function SiteHeader() {
   const [focado, setFocado] = useState(false);
 
   const { totalItens } = useCart();
+
   const { categorias } = useCatalogo();
 
   const [pop, setPop] = useState(false);
@@ -194,7 +198,8 @@ export function SiteHeader() {
             <Menu className="size-5" strokeWidth={1.75} />
           </button>
 
-          {/* Barra de pesquisa */}
+          {/* PESQUISA */}
+
           <div className="relative w-full md:w-[520px] md:flex-none">
             <form onSubmit={enviar}>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -254,6 +259,8 @@ export function SiteHeader() {
             )}
           </div>
 
+          {/* CARRINHO */}
+
           <Link
             to="/carrinho"
             aria-label="Abrir carrinho"
@@ -277,7 +284,8 @@ export function SiteHeader() {
               ================================================= */}
 
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-            {/* Farmácia Francy */}
+            {/* LOGO FRANCY */}
+
             <Link
               to="/"
               aria-label="Página inicial Farmácias Francy"
@@ -286,7 +294,8 @@ export function SiteHeader() {
               <Logo className="h-10 sm:h-12" />
             </Link>
 
-            {/* Farmácia Popular */}
+            {/* LOGO FARMÁCIA POPULAR */}
+
             <Link
               to="/farmacia-popular"
               aria-label="Farmácia Popular"
@@ -296,6 +305,8 @@ export function SiteHeader() {
             </Link>
           </div>
         </div>
+
+        {/* CATEGORIAS */}
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
           <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-6 py-2 text-xs font-medium">
