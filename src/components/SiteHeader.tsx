@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
+import popularAsset from "@/assets/farmacia-popular.png.asset.json";
+
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal } from "@/lib/catalog";
 import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
