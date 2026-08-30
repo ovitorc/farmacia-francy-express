@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Truck, ShieldCheck, Clock } from "lucide-react";
+import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
 
 import { ProductCard } from "@/components/ProductCard";
 import { RasgaPreco } from "@/components/RasgaPreco";
-import { type Produto } from "@/lib/catalog";
+import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
 import { useCatalogo } from "@/lib/catalog-context";
 import { listarBannersPublicos } from "@/lib/admin.functions";
 
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácia Francy. Monte seu pedido online e finalize pelo WhatsApp.",
+          "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácias Francy. Monte seu pedido online e finalize pelo WhatsApp.",
       },
       {
         property: "og:title",
@@ -56,6 +56,18 @@ const beneficios = [
 ];
 
 /* ============================================================
+   TIPO DO BANNER
+   ============================================================ */
+
+type Banner = {
+  id: string;
+  titulo: string;
+  imagem: string;
+  ativo: boolean;
+  ordem: number;
+};
+
+/* ============================================================
    CARROSSEL DE BANNERS
    ============================================================ */
 
@@ -65,14 +77,22 @@ function BannerCarousel() {
   const {
     data: banners = [],
     isLoading,
-    error,
+    isError,
   } = useQuery({
     queryKey: ["banners"],
     queryFn: () => listarBannersPublicos(),
   });
 
   /* ==========================================================
-     TROCA AUTOMÁTICA DOS BANNERS
+     QUANDO OS BANNERS MUDAM
+     ========================================================== */
+
+  useEffect(() => {
+    setBannerAtual(0);
+  }, [banners.length]);
+
+  /* ==========================================================
+     CARROSSEL AUTOMÁTICO
      ========================================================== */
 
   useEffect(() => {
@@ -81,9 +101,7 @@ function BannerCarousel() {
     }
 
     const intervalo = setInterval(() => {
-      setBannerAtual((atual) => {
-        return (atual + 1) % banners.length;
-      });
+      setBannerAtual((atual) => (atual + 1) % banners.length);
     }, 4000);
 
     return () => {
@@ -92,28 +110,15 @@ function BannerCarousel() {
   }, [banners.length]);
 
   /* ==========================================================
-     GARANTE QUE O ÍNDICE ATUAL CONTINUE VÁLIDO
-     ========================================================== */
-
-  useEffect(() => {
-    if (banners.length === 0) {
-      setBannerAtual(0);
-      return;
-    }
-
-    if (bannerAtual >= banners.length) {
-      setBannerAtual(0);
-    }
-  }, [bannerAtual, banners.length]);
-
-  /* ==========================================================
      CARREGANDO
      ========================================================== */
 
   if (isLoading) {
     return (
-      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
-        <p className="text-sm text-muted-foreground">Carregando banners...</p>
+      <div className="relative aspect-[16/6] w-full overflow-hidden rounded-2xl border border-border bg-muted/40">
+        <div className="flex h-full items-center justify-center">
+          <p className="text-sm text-muted-foreground">Carregando banners...</p>
+        </div>
       </div>
     );
   }
@@ -122,9 +127,7 @@ function BannerCarousel() {
      ERRO
      ========================================================== */
 
-  if (error) {
-    console.error("Erro ao carregar banners:", error);
-
+  if (isError) {
     return (
       <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
         <div className="text-center">
@@ -146,7 +149,7 @@ function BannerCarousel() {
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Área de banners promocionais</p>
 
-          <p className="mt-1 text-xs text-muted-foreground/70">Nenhum banner ativo no momento.</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">Os banners serão adicionados pela administração.</p>
         </div>
       </div>
     );
@@ -158,8 +161,8 @@ function BannerCarousel() {
 
   return (
     <div className="relative w-full overflow-hidden rounded-2xl">
-      <div className="relative aspect-[16/6] w-full bg-muted">
-        {banners.map((banner, index) => (
+      <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
+        {banners.map((banner: Banner, index: number) => (
           <img
             key={banner.id}
             src={banner.imagem}
@@ -172,12 +175,12 @@ function BannerCarousel() {
       </div>
 
       {/* ======================================================
-          INDICADORES
+          BOLINHAS DE NAVEGAÇÃO
           ====================================================== */}
 
       {banners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
-          {banners.map((banner, index) => (
+          {banners.map((banner: Banner, index: number) => (
             <button
               key={banner.id}
               type="button"
@@ -189,6 +192,36 @@ function BannerCarousel() {
             />
           ))}
         </div>
+      )}
+
+      {/* ======================================================
+          SETA ESQUERDA
+          ====================================================== */}
+
+      {banners.length > 1 && (
+        <button
+          type="button"
+          aria-label="Banner anterior"
+          onClick={() => setBannerAtual((bannerAtual - 1 + banners.length) % banners.length)}
+          className="absolute left-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
+        >
+          ‹
+        </button>
+      )}
+
+      {/* ======================================================
+          SETA DIREITA
+          ====================================================== */}
+
+      {banners.length > 1 && (
+        <button
+          type="button"
+          aria-label="Próximo banner"
+          onClick={() => setBannerAtual((bannerAtual + 1) % banners.length)}
+          className="absolute right-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
+        >
+          ›
+        </button>
       )}
     </div>
   );
@@ -210,7 +243,7 @@ function Index() {
   return (
     <div>
       {/* ======================================================
-          PARTE SUPERIOR
+          TOPO
           ====================================================== */}
 
       <section className="border-b border-border bg-background">
