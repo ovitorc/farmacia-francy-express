@@ -241,3 +241,43 @@ FROM (VALUES
 ('FF-1044','Pilha Alcalina AA 4 unidades','utilidades-e-acessorios','pilhas',19.9,15.9,true,true,43),
 ('FF-1045','Copo Dosador Graduado','utilidades-e-acessorios','pequenos-itens-de-utilidade',5.9,null,false,false,44)
 ) AS v(codigo, nome, categoria, subcategoria, preco, promo, oferta, rasga, ordem);
+
+-- ============================================================
+-- BANNERS DA HOME
+-- ============================================================
+
+CREATE TABLE public.banners (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  titulo text NOT NULL,
+  imagem text NOT NULL,
+  ativo boolean NOT NULL DEFAULT true,
+  ordem integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX banners_ativo_ordem_idx
+ON public.banners (ativo, ordem);
+
+CREATE TRIGGER banners_set_updated_at
+BEFORE UPDATE ON public.banners
+FOR EACH ROW
+EXECUTE FUNCTION public.set_updated_at();
+
+GRANT SELECT ON public.banners TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.banners TO authenticated;
+GRANT ALL ON public.banners TO service_role;
+
+ALTER TABLE public.banners ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Banners ativos sao publicos"
+ON public.banners
+FOR SELECT
+USING (ativo = true);
+
+CREATE POLICY "Admin gerencia banners"
+ON public.banners
+FOR ALL
+TO authenticated
+USING (public.has_role(auth.uid(), 'admin'))
+WITH CHECK (public.has_role(auth.uid(), 'admin'));
