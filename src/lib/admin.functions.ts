@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 /* ============================================================
@@ -353,8 +355,27 @@ export const listarBannersAdmin = createServerFn({
 
 export const listarBannersPublicos = createServerFn({
   method: "GET",
-}).handler(async ({ context }) => {
-  const { data, error } = await context.supabase
+}).handler(async () => {
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"]!;
+
+  const supabasePublico = createClient<Database>(process.env["SUPABASE_URL"]!, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (input, init) => {
+        const h = new Headers(init?.headers);
+
+        if (key.startsWith("sb_") && h.get("Authorization") === `Bearer ${key}`) {
+          h.delete("Authorization");
+        }
+
+        h.set("apikey", key);
+
+        return fetch(input, { ...init, headers: h });
+      },
+    },
+  });
+
+  const { data, error } = await supabasePublico
     .from("banners")
     .select("id, titulo, imagem, ativo, ordem")
     .eq("ativo", true)
