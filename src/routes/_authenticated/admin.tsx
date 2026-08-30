@@ -15,7 +15,9 @@ import {
   marcarDestaque,
 } from "@/lib/admin.functions";
 
+import { BannersManager } from "@/components/admin/BannersManager";
 import { Button } from "@/components/ui/button";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -303,7 +305,10 @@ function AdminPage() {
         </Select>
       </div>
 
+      <BannersManager />
+
       <div className="mt-6 divide-y rounded-lg border">
+
         {lista.map((p) => (
           <div key={p.id} className="flex flex-wrap items-center gap-3 p-3">
             <div className="h-14 w-14 shrink-0 overflow-hidden rounded border bg-muted">
