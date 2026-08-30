@@ -251,3 +251,27 @@ export const obterProduto = createServerFn({ method: "GET" })
       };
     },
   );
+
+export type Banner = {
+  id: string;
+  imagem: string;
+  titulo: string;
+  link: string | null;
+  ordem: number;
+  ativo: boolean;
+};
+
+export const listarBanners = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Banner[]> => {
+    const supabase = publicClient() as any;
+
+    const { data } = await supabase
+      .from("banners")
+      .select("id,imagem,titulo,link,ordem,ativo")
+      .eq("ativo", true)
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    return (data ?? []) as Banner[];
+  },
+);

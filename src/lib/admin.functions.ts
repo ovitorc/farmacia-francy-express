@@ -116,3 +116,59 @@ export const enviarImagem = createServerFn({ method: "POST" })
 
     return { url: `/api/public/img/${caminho}` };
   });
+
+const bannerSchema = z.object({
+  id: z.string().uuid().optional(),
+  imagem: z.string().min(1),
+  titulo: z.string().default(""),
+  link: z.string().nullable().default(null),
+  ordem: z.number().int().default(0),
+  ativo: z.boolean().default(true),
+});
+
+export const listarBannersAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { data, error } = await (context.supabase as any)
+      .from("banners")
+      .select("id,imagem,titulo,link,ordem,ativo")
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as {
+      id: string;
+      imagem: string;
+      titulo: string;
+      link: string | null;
+      ordem: number;
+      ativo: boolean;
+    }[];
+  });
+
+export const salvarBanner = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => bannerSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { id, ...campos } = data;
+    const tabela = (context.supabase as any).from("banners");
+    if (id) {
+      const { error } = await tabela.update(campos).eq("id", id);
+      if (error) throw new Error(error.message);
+      return { id };
+    }
+    const { data: criado, error } = await tabela.insert(campos).select("id").single();
+    if (error) throw new Error(error.message);
+    return { id: criado.id as string };
+  });
+
+export const excluirBanner = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await (context.supabase as any).from("banners").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
