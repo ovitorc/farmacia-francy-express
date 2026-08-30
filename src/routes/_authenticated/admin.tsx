@@ -14,11 +14,11 @@ import {
   enviarImagem,
   souAdmin,
   marcarDestaque,
-  listarBanners,
+  listarBannersAdmin,
   salvarBanner,
   excluirBanner,
-  marcarBannerAtivo,
-  enviarBanner,
+  alternarBanner,
+  alterarOrdemBanner,
 } from "@/lib/admin.functions";
 
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
       },
       {
         name: "description",
-        content: "Gerencie produtos e banners da Farmácias Francy.",
+        content: "Painel administrativo das Farmácias Francy.",
       },
       {
         name: "robots",
@@ -47,9 +47,12 @@ export const Route = createFileRoute("/_authenticated/admin")({
       },
     ],
   }),
-
   component: AdminPage,
 });
+
+/* ============================================================
+   TIPOS
+   ============================================================ */
 
 type Rascunho = {
   id?: string;
@@ -66,25 +69,18 @@ type Rascunho = {
   rasga_preco: boolean;
 };
 
-type RascunhoBanner = {
-  id?: string;
-  titulo: string;
-  descricao: string;
-  imagem: string;
-  link: string;
-  ativo: boolean;
-  ordem: string;
-};
-
 type Banner = {
   id: string;
   titulo: string;
-  descricao: string;
   imagem: string;
-  link: string;
   ativo: boolean;
   ordem: number;
+  created_at?: string;
 };
+
+/* ============================================================
+   PRODUTO VAZIO
+   ============================================================ */
 
 const vazio = (categoriaSlug: string): Rascunho => ({
   codigo: "",
@@ -100,19 +96,18 @@ const vazio = (categoriaSlug: string): Rascunho => ({
   rasga_preco: false,
 });
 
-const bannerVazio = (): RascunhoBanner => ({
-  titulo: "",
-  descricao: "",
-  imagem: "",
-  link: "",
-  ativo: true,
-  ordem: "0",
-});
+/* ============================================================
+   PÁGINA ADMIN
+   ============================================================ */
 
 function AdminPage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  /* ==========================================================
+     PRODUTOS
+     ========================================================== */
 
   const { data: catalogo } = useQuery(catalogoQueryOptions);
 
@@ -121,40 +116,68 @@ function AdminPage() {
     queryFn: () => souAdmin(),
   });
 
-  const { data: banners = [] } = useQuery<Banner[]>({
-    queryKey: ["banners-admin"],
-    queryFn: () => listarBanners(),
-  });
-
   const salvar = useServerFn(salvarProduto);
   const excluir = useServerFn(excluirProduto);
   const upload = useServerFn(enviarImagem);
   const destacar = useServerFn(marcarDestaque);
-
-  const salvarBannerFn = useServerFn(salvarBanner);
-  const excluirBannerFn = useServerFn(excluirBanner);
-  const marcarBannerAtivoFn = useServerFn(marcarBannerAtivo);
-  const enviarBannerFn = useServerFn(enviarBanner);
 
   const [termo, setTermo] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
 
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
 
-  const [rascunhoBanner, setRascunhoBanner] = useState<RascunhoBanner | null>(null);
-
   const [salvando, setSalvando] = useState(false);
-  const [salvandoBanner, setSalvandoBanner] = useState(false);
-
   const [enviandoFoto, setEnviandoFoto] = useState(false);
-  const [enviandoBanner, setEnviandoBanner] = useState(false);
-
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
 
-  const [marcandoBannerId, setMarcandoBannerId] = useState<string | null>(null);
+  /* ==========================================================
+     BANNERS
+     ========================================================== */
+
+  const [bannerAberto, setBannerAberto] = useState(false);
+
+  const [bannerEditando, setBannerEditando] = useState<Banner | null>(null);
+
+  const [bannerTitulo, setBannerTitulo] = useState("");
+
+  const [bannerImagem, setBannerImagem] = useState<string | null>(null);
+
+  const [bannerAtivo, setBannerAtivo] = useState(true);
+
+  const [bannerOrdem, setBannerOrdem] = useState("0");
+
+  const [enviandoBanner, setEnviandoBanner] = useState(false);
+
+  const [salvandoBanner, setSalvandoBanner] = useState(false);
+
+  const [excluindoBanner, setExcluindoBanner] = useState<string | null>(null);
+
+  const [alterandoBanner, setAlterandoBanner] = useState<string | null>(null);
+
+  const salvarBannerFn = useServerFn(salvarBanner);
+
+  const excluirBannerFn = useServerFn(excluirBanner);
+
+  const alternarBannerFn = useServerFn(alternarBanner);
+
+  const alterarOrdemBannerFn = useServerFn(alterarOrdemBanner);
+
+  const { data: banners = [] } = useQuery({
+    queryKey: ["banners-admin"],
+    queryFn: () => listarBannersAdmin(),
+    enabled: Boolean(perfil?.admin),
+  });
+
+  /* ==========================================================
+     CATEGORIAS
+     ========================================================== */
 
   const categorias = catalogo?.categorias ?? [];
   const destaques = catalogo?.produtos ?? [];
+
+  /* ==========================================================
+     BUSCA DE PRODUTOS
+     ========================================================== */
 
   const termoBusca = termo.trim();
 
@@ -184,7 +207,43 @@ function AdminPage() {
     return destaques;
   }, [termoBusca, resultadoBusca, pagina, destaques, filtroCategoria]);
 
+  /* ==========================================================
+     SUBCATEGORIAS
+     ========================================================== */
+
   const subcategoriasDoRascunho = categorias.find((c) => c.slug === rascunho?.categoria_slug)?.subcategorias ?? [];
+
+  /* ==========================================================
+     ATUALIZAR DADOS
+     ========================================================== */
+
+  async function atualizarTudo() {
+    await queryClient.invalidateQueries({
+      queryKey: ["catalogo"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["busca"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["produtos"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["banners-admin"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["banners"],
+    });
+
+    await router.invalidate();
+  }
+
+  /* ==========================================================
+     PRODUTOS
+     ========================================================== */
 
   function abrirNovo() {
     setRascunho(vazio(categorias[0]?.slug ?? ""));
@@ -205,42 +264,6 @@ function AdminPage() {
       oferta: p.oferta,
       rasga_preco: Boolean(p.rasgaPreco),
     });
-  }
-
-  function abrirNovoBanner() {
-    setRascunhoBanner(bannerVazio());
-  }
-
-  function abrirEdicaoBanner(banner: Banner) {
-    setRascunhoBanner({
-      id: banner.id,
-      titulo: banner.titulo,
-      descricao: banner.descricao,
-      imagem: banner.imagem,
-      link: banner.link ?? "",
-      ativo: banner.ativo,
-      ordem: String(banner.ordem),
-    });
-  }
-
-  async function atualizarTudo() {
-    await queryClient.invalidateQueries({
-      queryKey: ["catalogo"],
-    });
-
-    await queryClient.invalidateQueries({
-      queryKey: ["busca"],
-    });
-
-    await queryClient.invalidateQueries({
-      queryKey: ["produtos"],
-    });
-
-    await queryClient.invalidateQueries({
-      queryKey: ["banners-admin"],
-    });
-
-    await router.invalidate();
   }
 
   async function alternar(p: Produto, campo: "oferta" | "rasga_preco", valor: boolean) {
@@ -304,45 +327,6 @@ function AdminPage() {
     }
   }
 
-  async function escolherBanner(file: File) {
-    setEnviandoBanner(true);
-
-    try {
-      const buffer = await file.arrayBuffer();
-
-      let binario = "";
-
-      const bytes = new Uint8Array(buffer);
-
-      for (let i = 0; i < bytes.length; i += 1) {
-        binario += String.fromCharCode(bytes[i]!);
-      }
-
-      const { url } = await enviarBannerFn({
-        data: {
-          nomeArquivo: file.name,
-          tipo: file.type || "image/jpeg",
-          conteudoBase64: btoa(binario),
-        },
-      });
-
-      setRascunhoBanner((b) =>
-        b
-          ? {
-              ...b,
-              imagem: url,
-            }
-          : b,
-      );
-
-      toast.success("Banner enviado com sucesso.");
-    } catch {
-      toast.error("Não foi possível enviar o banner.");
-    } finally {
-      setEnviandoBanner(false);
-    }
-  }
-
   async function confirmarSalvar() {
     if (!rascunho) return;
 
@@ -352,30 +336,18 @@ function AdminPage() {
       await salvar({
         data: {
           ...(rascunho.id ? { id: rascunho.id } : {}),
-
           codigo: rascunho.codigo.trim(),
-
           nome: rascunho.nome.trim(),
-
           descricao: rascunho.descricao,
-
           categoria_slug: rascunho.categoria_slug,
-
           subcategoria_slug: rascunho.subcategoria_slug,
-
           preco: Number(rascunho.preco.replace(",", ".")) || 0,
-
           preco_promocional:
             rascunho.preco_promocional.trim() === "" ? null : Number(rascunho.preco_promocional.replace(",", ".")),
-
           imagem: rascunho.imagem,
-
           disponivel: rascunho.disponivel,
-
           oferta: rascunho.oferta,
-
           rasga_preco: rascunho.rasga_preco,
-
           informacoes: [],
         },
       });
@@ -412,16 +384,67 @@ function AdminPage() {
     }
   }
 
-  async function confirmarSalvarBanner() {
-    if (!rascunhoBanner) return;
+  /* ==========================================================
+     BANNERS
+     ========================================================== */
 
-    if (!rascunhoBanner.imagem) {
-      toast.error("Selecione uma imagem para o banner.");
-      return;
+  function abrirNovoBanner() {
+    setBannerEditando(null);
+    setBannerTitulo("");
+    setBannerImagem(null);
+    setBannerAtivo(true);
+
+    const maiorOrdem = banners.length > 0 ? Math.max(...banners.map((b: Banner) => b.ordem)) + 1 : 0;
+
+    setBannerOrdem(String(maiorOrdem));
+
+    setBannerAberto(true);
+  }
+
+  function abrirEdicaoBanner(banner: Banner) {
+    setBannerEditando(banner);
+    setBannerTitulo(banner.titulo ?? "");
+    setBannerImagem(banner.imagem);
+    setBannerAtivo(banner.ativo);
+    setBannerOrdem(String(banner.ordem ?? 0));
+    setBannerAberto(true);
+  }
+
+  async function escolherBanner(file: File) {
+    setEnviandoBanner(true);
+
+    try {
+      const buffer = await file.arrayBuffer();
+
+      let binario = "";
+
+      const bytes = new Uint8Array(buffer);
+
+      for (let i = 0; i < bytes.length; i += 1) {
+        binario += String.fromCharCode(bytes[i]!);
+      }
+
+      const { url } = await upload({
+        data: {
+          nomeArquivo: file.name,
+          tipo: file.type || "image/jpeg",
+          conteudoBase64: btoa(binario),
+        },
+      });
+
+      setBannerImagem(url);
+
+      toast.success("Banner enviado.");
+    } catch {
+      toast.error("Não foi possível enviar o banner.");
+    } finally {
+      setEnviandoBanner(false);
     }
+  }
 
-    if (!rascunhoBanner.titulo.trim()) {
-      toast.error("Informe um título para o banner.");
+  async function confirmarSalvarBanner() {
+    if (!bannerImagem) {
+      toast.error("Escolha uma imagem para o banner.");
       return;
     }
 
@@ -430,36 +453,38 @@ function AdminPage() {
     try {
       await salvarBannerFn({
         data: {
-          ...(rascunhoBanner.id
+          ...(bannerEditando?.id
             ? {
-                id: rascunhoBanner.id,
+                id: bannerEditando.id,
               }
             : {}),
-
-          titulo: rascunhoBanner.titulo.trim(),
-
-          descricao: rascunhoBanner.descricao.trim(),
-
-          imagem: rascunhoBanner.imagem,
-
-          link: rascunhoBanner.link.trim(),
-
-          ativo: rascunhoBanner.ativo,
-
-          ordem: Number(rascunhoBanner.ordem) || 0,
+          titulo: bannerTitulo.trim(),
+          imagem: bannerImagem,
+          ativo: bannerAtivo,
+          ordem: Number(bannerOrdem) || 0,
         },
       });
 
-      setRascunhoBanner(null);
+      setBannerAberto(false);
+
+      setBannerEditando(null);
+      setBannerTitulo("");
+      setBannerImagem(null);
+      setBannerAtivo(true);
+      setBannerOrdem("0");
 
       await queryClient.invalidateQueries({
         queryKey: ["banners-admin"],
       });
 
-      toast.success("Banner salvo com sucesso.");
-    } catch (error) {
-      console.error(error);
+      await queryClient.invalidateQueries({
+        queryKey: ["banners"],
+      });
 
+      await router.invalidate();
+
+      toast.success(bannerEditando ? "Banner atualizado." : "Banner adicionado.");
+    } catch {
       toast.error("Erro ao salvar o banner.");
     } finally {
       setSalvandoBanner(false);
@@ -467,9 +492,11 @@ function AdminPage() {
   }
 
   async function confirmarExcluirBanner(banner: Banner) {
-    if (!confirm(`Excluir o banner "${banner.titulo}"?`)) {
+    if (!confirm(`Excluir o banner "${banner.titulo || "sem título"}"?`)) {
       return;
     }
+
+    setExcluindoBanner(banner.id);
 
     try {
       await excluirBannerFn({
@@ -482,17 +509,25 @@ function AdminPage() {
         queryKey: ["banners-admin"],
       });
 
+      await queryClient.invalidateQueries({
+        queryKey: ["banners"],
+      });
+
+      await router.invalidate();
+
       toast.success("Banner excluído.");
     } catch {
       toast.error("Erro ao excluir o banner.");
+    } finally {
+      setExcluindoBanner(null);
     }
   }
 
-  async function alternarBanner(banner: Banner, ativo: boolean) {
-    setMarcandoBannerId(banner.id);
+  async function mudarStatusBanner(banner: Banner, ativo: boolean) {
+    setAlterandoBanner(banner.id);
 
     try {
-      await marcarBannerAtivoFn({
+      await alternarBannerFn({
         data: {
           id: banner.id,
           ativo,
@@ -503,13 +538,50 @@ function AdminPage() {
         queryKey: ["banners-admin"],
       });
 
+      await queryClient.invalidateQueries({
+        queryKey: ["banners"],
+      });
+
+      await router.invalidate();
+
       toast.success(ativo ? "Banner ativado." : "Banner desativado.");
     } catch {
-      toast.error("Não foi possível atualizar o banner.");
+      toast.error("Não foi possível alterar o banner.");
     } finally {
-      setMarcandoBannerId(null);
+      setAlterandoBanner(null);
     }
   }
+
+  async function mudarOrdemBanner(banner: Banner, novaOrdem: number) {
+    setAlterandoBanner(banner.id);
+
+    try {
+      await alterarOrdemBannerFn({
+        data: {
+          id: banner.id,
+          ordem: novaOrdem,
+        },
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["banners-admin"],
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["banners"],
+      });
+
+      await router.invalidate();
+    } catch {
+      toast.error("Não foi possível alterar a ordem.");
+    } finally {
+      setAlterandoBanner(null);
+    }
+  }
+
+  /* ==========================================================
+     SAIR
+     ========================================================== */
 
   async function sair() {
     await queryClient.cancelQueries();
@@ -523,6 +595,10 @@ function AdminPage() {
       replace: true,
     });
   }
+
+  /* ==========================================================
+     ACESSO
+     ========================================================== */
 
   if (perfil && !perfil.admin) {
     return (
@@ -538,11 +614,15 @@ function AdminPage() {
     );
   }
 
+  /* ==========================================================
+     INTERFACE
+     ========================================================== */
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
-      {/* =====================================================
+      {/* ======================================================
           CABEÇALHO
-      ====================================================== */}
+          ====================================================== */}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -560,98 +640,129 @@ function AdminPage() {
         </div>
       </div>
 
-      {/* =====================================================
-          BANNERS
-      ====================================================== */}
+      {/* ======================================================
+          ÁREA DE BANNERS
+          ====================================================== */}
 
-      <section className="mt-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="mt-8 rounded-2xl border bg-card p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-primary">Banners da Home</h2>
+            <h2 className="text-xl font-bold text-primary">Banners da página inicial</h2>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Adicione e organize os banners que aparecerão na página inicial.
+              Adicione, edite, organize e ative os banners que aparecem na Home.
             </p>
           </div>
 
           <Button onClick={abrirNovoBanner}>+ Adicionar banner</Button>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {banners.map((banner) => (
-            <div key={banner.id} className="overflow-hidden rounded-xl border bg-card">
-              <div className="aspect-[16/6] w-full overflow-hidden bg-muted">
-                {banner.imagem ? (
-                  <img src={banner.imagem} alt={banner.titulo} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                    Sem imagem
-                  </div>
-                )}
-              </div>
+        {/* ====================================================
+            LISTA DE BANNERS
+            ==================================================== */}
 
-              <div className="space-y-3 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold">{banner.titulo}</h3>
+        <div className="mt-6 space-y-4">
+          {banners.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center">
+              <p className="font-medium text-foreground">Nenhum banner cadastrado</p>
 
-                    {banner.descricao ? <p className="mt-1 text-sm text-muted-foreground">{banner.descricao}</p> : null}
+              <p className="mt-1 text-sm text-muted-foreground">
+                Clique em "Adicionar banner" para colocar o primeiro banner da Home.
+              </p>
+            </div>
+          ) : (
+            banners.map((banner: Banner) => (
+              <div key={banner.id} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
+                {/* IMAGEM */}
 
-                    <p className="mt-1 text-xs text-muted-foreground">Ordem: {banner.ordem}</p>
-                  </div>
-
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      banner.ativo ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {banner.ativo ? "Ativo" : "Inativo"}
-                  </span>
+                <div className="h-32 w-full shrink-0 overflow-hidden rounded-lg border bg-muted lg:w-64">
+                  <img
+                    src={banner.imagem}
+                    alt={banner.titulo || "Banner da Farmácias Francy"}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="mr-auto flex items-center gap-2 text-sm">
-                    <Switch
-                      checked={banner.ativo}
-                      disabled={marcandoBannerId === banner.id}
-                      onCheckedChange={(valor) => void alternarBanner(banner, valor)}
-                    />
-                    Ativo
-                  </label>
+                {/* INFORMAÇÕES */}
 
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-foreground">{banner.titulo || "Banner sem título"}</h3>
+
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        banner.ativo ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {banner.ativo ? "Ativo" : "Desativado"}
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-xs text-muted-foreground">Ordem: {banner.ordem}</p>
+
+                  {/* CONTROLES */}
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch
+                        checked={banner.ativo}
+                        disabled={alterandoBanner === banner.id}
+                        onCheckedChange={(valor) => void mudarStatusBanner(banner, valor)}
+                      />
+                      Ativo
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`ordem-${banner.id}`} className="text-xs">
+                        Ordem
+                      </Label>
+
+                      <Input
+                        id={`ordem-${banner.id}`}
+                        type="number"
+                        min="0"
+                        defaultValue={banner.ordem}
+                        className="w-20"
+                        disabled={alterandoBanner === banner.id}
+                        onBlur={(e) => {
+                          const valor = Number(e.target.value);
+
+                          if (valor !== banner.ordem) {
+                            void mudarOrdemBanner(banner, valor);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOTÕES */}
+
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => abrirEdicaoBanner(banner)}>
                     Editar
                   </Button>
 
-                  <Button size="sm" variant="destructive" onClick={() => void confirmarExcluirBanner(banner)}>
-                    Excluir
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={excluindoBanner === banner.id}
+                    onClick={() => void confirmarExcluirBanner(banner)}
+                  >
+                    {excluindoBanner === banner.id ? "Excluindo..." : "Excluir"}
                   </Button>
                 </div>
               </div>
-            </div>
-          ))}
-
-          {banners.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center md:col-span-2">
-              <p className="font-medium">Nenhum banner cadastrado</p>
-
-              <p className="mt-1 text-sm text-muted-foreground">
-                Clique em "Adicionar banner" para colocar o primeiro banner na página inicial.
-              </p>
-
-              <Button className="mt-4" onClick={abrirNovoBanner}>
-                + Adicionar primeiro banner
-              </Button>
-            </div>
-          ) : null}
+            ))
+          )}
         </div>
       </section>
 
-      {/* =====================================================
+      {/* ======================================================
           PRODUTOS
-      ====================================================== */}
+          ====================================================== */}
 
-      <section className="mt-12">
+      <section className="mt-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-primary">Produtos</h2>
@@ -660,7 +771,7 @@ function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Input
             placeholder="Buscar por nome ou código"
             value={termo}
@@ -684,6 +795,8 @@ function AdminPage() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* LISTA DE PRODUTOS */}
 
         <div className="mt-6 divide-y rounded-lg border">
           {lista.map((p) => (
@@ -737,11 +850,116 @@ function AdminPage() {
         </div>
       </section>
 
-      {/* =====================================================
-          MODAL DE PRODUTO
-      ====================================================== */}
+      {/* ======================================================
+          MODAL — BANNER
+          ====================================================== */}
 
-      <Dialog open={rascunho !== null} onOpenChange={(o) => !o && setRascunho(null)}>
+      <Dialog
+        open={bannerAberto}
+        onOpenChange={(aberto) => {
+          if (!aberto) {
+            setBannerAberto(false);
+            setBannerEditando(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{bannerEditando ? "Editar banner" : "Adicionar banner"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            {/* IMAGEM */}
+
+            <div className="space-y-2">
+              <Label>Imagem do banner</Label>
+
+              <div className="overflow-hidden rounded-xl border bg-muted">
+                {bannerImagem ? (
+                  <img
+                    src={bannerImagem}
+                    alt="Pré-visualização do banner"
+                    className="aspect-[16/6] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[16/6] items-center justify-center">
+                    <p className="text-sm text-muted-foreground">Nenhuma imagem selecionada</p>
+                  </div>
+                )}
+              </div>
+
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={enviandoBanner}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+
+                  if (file) {
+                    void escolherBanner(file);
+                  }
+                }}
+              />
+
+              {enviandoBanner ? (
+                <p className="text-xs text-muted-foreground">Enviando banner...</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Recomendado: imagem horizontal em formato 16:6.</p>
+              )}
+            </div>
+
+            {/* TÍTULO */}
+
+            <div className="space-y-2">
+              <Label>Título</Label>
+
+              <Input
+                placeholder="Ex.: Ofertas da semana"
+                value={bannerTitulo}
+                onChange={(e) => setBannerTitulo(e.target.value)}
+              />
+            </div>
+
+            {/* ORDEM */}
+
+            <div className="space-y-2">
+              <Label>Ordem de exibição</Label>
+
+              <Input type="number" min="0" value={bannerOrdem} onChange={(e) => setBannerOrdem(e.target.value)} />
+
+              <p className="text-xs text-muted-foreground">Quanto menor o número, mais cedo o banner aparece.</p>
+            </div>
+
+            {/* ATIVO */}
+
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              <Switch checked={bannerAtivo} onCheckedChange={setBannerAtivo} />
+
+              <div>
+                <p className="text-sm font-medium">Banner ativo</p>
+
+                <p className="text-xs text-muted-foreground">Banners desativados não aparecem na página inicial.</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBannerAberto(false)}>
+              Cancelar
+            </Button>
+
+            <Button onClick={() => void confirmarSalvarBanner()} disabled={salvandoBanner || enviandoBanner}>
+              {salvandoBanner ? "Salvando..." : "Salvar banner"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+          MODAL — PRODUTO
+          ====================================================== */}
+
+      <Dialog open={rascunho !== null} onOpenChange={(aberto) => !aberto && setRascunho(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{rascunho?.id ? "Editar produto" : "Novo produto"}</DialogTitle>
@@ -954,153 +1172,8 @@ function AdminPage() {
               Cancelar
             </Button>
 
-            <Button onClick={confirmarSalvar} disabled={salvando || enviandoFoto}>
+            <Button onClick={() => void confirmarSalvar()} disabled={salvando || enviandoFoto}>
               {salvando ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* =====================================================
-          MODAL DE BANNER
-      ====================================================== */}
-
-      <Dialog open={rascunhoBanner !== null} onOpenChange={(o) => !o && setRascunhoBanner(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{rascunhoBanner?.id ? "Editar banner" : "Adicionar banner"}</DialogTitle>
-          </DialogHeader>
-
-          {rascunhoBanner ? (
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label>Título</Label>
-
-                <Input
-                  placeholder="Ex.: Ofertas da semana"
-                  value={rascunhoBanner.titulo}
-                  onChange={(e) =>
-                    setRascunhoBanner({
-                      ...rascunhoBanner,
-                      titulo: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-
-                <Textarea
-                  rows={3}
-                  placeholder="Descrição opcional do banner"
-                  value={rascunhoBanner.descricao}
-                  onChange={(e) =>
-                    setRascunhoBanner({
-                      ...rascunhoBanner,
-                      descricao: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Imagem do banner</Label>
-
-                <div className="overflow-hidden rounded-xl border bg-muted">
-                  <div className="aspect-[16/6] w-full">
-                    {rascunhoBanner.imagem ? (
-                      <img
-                        src={rascunhoBanner.imagem}
-                        alt="Pré-visualização do banner"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                        Nenhuma imagem selecionada
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <Input
-                  type="file"
-                  accept="image/*"
-                  disabled={enviandoBanner}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-
-                    if (file) {
-                      void escolherBanner(file);
-                    }
-                  }}
-                />
-
-                {enviandoBanner ? <p className="text-xs text-muted-foreground">Enviando banner...</p> : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Link opcional</Label>
-
-                <Input
-                  placeholder="Ex.: /categoria/medicamentos"
-                  value={rascunhoBanner.link}
-                  onChange={(e) =>
-                    setRascunhoBanner({
-                      ...rascunhoBanner,
-                      link: e.target.value,
-                    })
-                  }
-                />
-
-                <p className="text-xs text-muted-foreground">
-                  Se preenchido, poderemos tornar o banner clicável na Home.
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Ordem</Label>
-
-                  <Input
-                    type="number"
-                    min="0"
-                    value={rascunhoBanner.ordem}
-                    onChange={(e) =>
-                      setRascunhoBanner({
-                        ...rascunhoBanner,
-                        ordem: e.target.value,
-                      })
-                    }
-                  />
-
-                  <p className="text-xs text-muted-foreground">0 aparece primeiro, depois 1, 2, 3...</p>
-                </div>
-
-                <label className="flex items-center gap-3 sm:pt-8">
-                  <Switch
-                    checked={rascunhoBanner.ativo}
-                    onCheckedChange={(v) =>
-                      setRascunhoBanner({
-                        ...rascunhoBanner,
-                        ativo: v,
-                      })
-                    }
-                  />
-
-                  <span className="text-sm">Banner ativo</span>
-                </label>
-              </div>
-            </div>
-          ) : null}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRascunhoBanner(null)}>
-              Cancelar
-            </Button>
-
-            <Button onClick={confirmarSalvarBanner} disabled={salvandoBanner || enviandoBanner}>
-              {salvandoBanner ? "Salvando..." : "Salvar banner"}
             </Button>
           </DialogFooter>
         </DialogContent>
