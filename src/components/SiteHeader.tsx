@@ -244,9 +244,24 @@ export function SiteHeader() {
             )}
           </Link>
 
-          <Link to="/" className="shrink-0" aria-label="Página inicial Farmácias Francy">
-            <Logo className="h-9 sm:h-11" />
-          </Link>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link to="/" aria-label="Página inicial Farmácias Francy">
+              <Logo className="h-12 sm:h-16" />
+            </Link>
+
+            <Link
+              to="/farmacia-popular"
+              aria-label="Aqui tem Farmácia Popular"
+              className="rounded-md bg-background/95 p-1 transition-transform hover:scale-105"
+            >
+              <img
+                src={popularAsset.url}
+                alt="Aqui tem Farmácia Popular"
+                className="h-10 w-auto object-contain sm:h-14"
+              />
+            </Link>
+          </div>
+
         </div>
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
