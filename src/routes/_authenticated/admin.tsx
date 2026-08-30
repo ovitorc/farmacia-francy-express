@@ -56,14 +56,32 @@ export const Route = createFileRoute("/_authenticated/admin")({
 
 type Rascunho = {
   id?: string;
+
   codigo: string;
+  codigo_barras: string;
+
   nome: string;
   descricao: string;
+
   categoria_slug: string;
   subcategoria_slug: string;
+
+  fabricante: string;
+  unidade: string;
+
   preco: string;
   preco_promocional: string;
+
+  estoque: string;
+
+  principio_ativo: string;
+  registro_ms: string;
+
+  farmacia_popular: boolean;
+  preco_farmacia_popular: string;
+
   imagem: string | null;
+
   disponivel: boolean;
   oferta: boolean;
   rasga_preco: boolean;
@@ -84,13 +102,30 @@ type Banner = {
 
 const vazio = (categoriaSlug: string): Rascunho => ({
   codigo: "",
+  codigo_barras: "",
+
   nome: "",
   descricao: "",
+
   categoria_slug: categoriaSlug,
   subcategoria_slug: "",
+
+  fabricante: "",
+  unidade: "",
+
   preco: "",
   preco_promocional: "",
+
+  estoque: "0",
+
+  principio_ativo: "",
+  registro_ms: "",
+
+  farmacia_popular: false,
+  preco_farmacia_popular: "",
+
   imagem: null,
+
   disponivel: true,
   oferta: false,
   rasga_preco: false,
@@ -155,11 +190,8 @@ function AdminPage() {
   const [alterandoBanner, setAlterandoBanner] = useState<string | null>(null);
 
   const salvarBannerFn = useServerFn(salvarBanner);
-
   const excluirBannerFn = useServerFn(excluirBanner);
-
   const alternarBannerFn = useServerFn(alternarBanner);
-
   const alterarOrdemBannerFn = useServerFn(alterarOrdemBanner);
 
   const { data: banners = [] } = useQuery({
@@ -176,7 +208,7 @@ function AdminPage() {
   const destaques = catalogo?.produtos ?? [];
 
   /* ==========================================================
-     BUSCA DE PRODUTOS
+     BUSCA
      ========================================================== */
 
   const termoBusca = termo.trim();
@@ -250,16 +282,50 @@ function AdminPage() {
   }
 
   function abrirEdicao(p: Produto) {
+    const produtoCompleto = p as Produto & {
+      codigo_barras?: string | null;
+      fabricante?: string;
+      unidade?: string;
+      estoque?: number;
+      principio_ativo?: string;
+      registro_ms?: string;
+      farmacia_popular?: boolean;
+      preco_farmacia_popular?: number | null;
+    };
+
     setRascunho({
       id: p.id,
+
       codigo: p.codigo,
+      codigo_barras: produtoCompleto.codigo_barras ?? "",
+
       nome: p.nome,
       descricao: p.descricao,
+
       categoria_slug: p.categoria,
       subcategoria_slug: p.subcategoria,
+
+      fabricante: produtoCompleto.fabricante ?? "",
+
+      unidade: produtoCompleto.unidade ?? "",
+
       preco: String(p.preco),
+
       preco_promocional: p.precoPromocional == null ? "" : String(p.precoPromocional),
+
+      estoque: String(produtoCompleto.estoque ?? 0),
+
+      principio_ativo: produtoCompleto.principio_ativo ?? "",
+
+      registro_ms: produtoCompleto.registro_ms ?? "",
+
+      farmacia_popular: Boolean(produtoCompleto.farmacia_popular),
+
+      preco_farmacia_popular:
+        produtoCompleto.preco_farmacia_popular == null ? "" : String(produtoCompleto.preco_farmacia_popular),
+
       imagem: p.imagem ?? null,
+
       disponivel: p.disponivel,
       oferta: p.oferta,
       rasga_preco: Boolean(p.rasgaPreco),
@@ -287,6 +353,10 @@ function AdminPage() {
       setMarcandoId(null);
     }
   }
+
+  /* ==========================================================
+     UPLOAD DE PRODUTO
+     ========================================================== */
 
   async function escolherFoto(file: File) {
     setEnviandoFoto(true);
@@ -327,27 +397,81 @@ function AdminPage() {
     }
   }
 
+  /* ==========================================================
+     SALVAR PRODUTO
+     ========================================================== */
+
   async function confirmarSalvar() {
     if (!rascunho) return;
+
+    if (!rascunho.nome.trim()) {
+      toast.error("Informe o nome do produto.");
+      return;
+    }
+
+    if (!rascunho.codigo.trim()) {
+      toast.error("Informe o código interno do produto.");
+      return;
+    }
+
+    if (!rascunho.categoria_slug) {
+      toast.error("Selecione uma categoria.");
+      return;
+    }
 
     setSalvando(true);
 
     try {
       await salvar({
         data: {
-          ...(rascunho.id ? { id: rascunho.id } : {}),
+          ...(rascunho.id
+            ? {
+                id: rascunho.id,
+              }
+            : {}),
+
           codigo: rascunho.codigo.trim(),
+
+          codigo_barras: rascunho.codigo_barras.trim() === "" ? null : rascunho.codigo_barras.trim(),
+
           nome: rascunho.nome.trim(),
-          descricao: rascunho.descricao,
+
+          descricao: rascunho.descricao.trim(),
+
           categoria_slug: rascunho.categoria_slug,
+
           subcategoria_slug: rascunho.subcategoria_slug,
+
+          fabricante: rascunho.fabricante.trim(),
+
+          unidade: rascunho.unidade.trim(),
+
           preco: Number(rascunho.preco.replace(",", ".")) || 0,
+
           preco_promocional:
             rascunho.preco_promocional.trim() === "" ? null : Number(rascunho.preco_promocional.replace(",", ".")),
+
+          estoque: Number(rascunho.estoque) || 0,
+
+          principio_ativo: rascunho.principio_ativo.trim(),
+
+          registro_ms: rascunho.registro_ms.trim(),
+
+          farmacia_popular: rascunho.farmacia_popular,
+
+          preco_farmacia_popular:
+            rascunho.preco_farmacia_popular.trim() === ""
+              ? null
+              : Number(rascunho.preco_farmacia_popular.replace(",", ".")),
+
           imagem: rascunho.imagem,
+
           disponivel: rascunho.disponivel,
+
           oferta: rascunho.oferta,
+
           rasga_preco: rascunho.rasga_preco,
+
           informacoes: [],
         },
       });
@@ -357,12 +481,18 @@ function AdminPage() {
       await atualizarTudo();
 
       toast.success("Produto salvo.");
-    } catch {
+    } catch (error) {
+      console.error(error);
+
       toast.error("Erro ao salvar o produto.");
     } finally {
       setSalvando(false);
     }
   }
+
+  /* ==========================================================
+     EXCLUIR PRODUTO
+     ========================================================== */
 
   async function confirmarExcluir(p: Produto) {
     if (!confirm(`Excluir "${p.nome}"?`)) {
@@ -403,10 +533,15 @@ function AdminPage() {
 
   function abrirEdicaoBanner(banner: Banner) {
     setBannerEditando(banner);
+
     setBannerTitulo(banner.titulo ?? "");
+
     setBannerImagem(banner.imagem);
+
     setBannerAtivo(banner.ativo);
+
     setBannerOrdem(String(banner.ordem ?? 0));
+
     setBannerAberto(true);
   }
 
@@ -458,9 +593,13 @@ function AdminPage() {
                 id: bannerEditando.id,
               }
             : {}),
+
           titulo: bannerTitulo.trim(),
+
           imagem: bannerImagem,
+
           ativo: bannerAtivo,
+
           ordem: Number(bannerOrdem) || 0,
         },
       });
@@ -641,7 +780,7 @@ function AdminPage() {
       </div>
 
       {/* ======================================================
-          ÁREA DE BANNERS
+          BANNERS
           ====================================================== */}
 
       <section className="mt-8 rounded-2xl border bg-card p-5 shadow-sm">
@@ -657,10 +796,6 @@ function AdminPage() {
           <Button onClick={abrirNovoBanner}>+ Adicionar banner</Button>
         </div>
 
-        {/* ====================================================
-            LISTA DE BANNERS
-            ==================================================== */}
-
         <div className="mt-6 space-y-4">
           {banners.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center">
@@ -673,8 +808,6 @@ function AdminPage() {
           ) : (
             banners.map((banner: Banner) => (
               <div key={banner.id} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
-                {/* IMAGEM */}
-
                 <div className="h-32 w-full shrink-0 overflow-hidden rounded-lg border bg-muted lg:w-64">
                   <img
                     src={banner.imagem}
@@ -682,8 +815,6 @@ function AdminPage() {
                     className="h-full w-full object-cover"
                   />
                 </div>
-
-                {/* INFORMAÇÕES */}
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -699,8 +830,6 @@ function AdminPage() {
                   </div>
 
                   <p className="mt-1 text-xs text-muted-foreground">Ordem: {banner.ordem}</p>
-
-                  {/* CONTROLES */}
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-sm">
@@ -735,8 +864,6 @@ function AdminPage() {
                     </div>
                   </div>
                 </div>
-
-                {/* BOTÕES */}
 
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => abrirEdicaoBanner(banner)}>
@@ -795,8 +922,6 @@ function AdminPage() {
             </SelectContent>
           </Select>
         </div>
-
-        {/* LISTA DE PRODUTOS */}
 
         <div className="mt-6 divide-y rounded-lg border">
           {lista.map((p) => (
@@ -869,8 +994,6 @@ function AdminPage() {
           </DialogHeader>
 
           <div className="space-y-5">
-            {/* IMAGEM */}
-
             <div className="space-y-2">
               <Label>Imagem do banner</Label>
 
@@ -908,8 +1031,6 @@ function AdminPage() {
               )}
             </div>
 
-            {/* TÍTULO */}
-
             <div className="space-y-2">
               <Label>Título</Label>
 
@@ -920,8 +1041,6 @@ function AdminPage() {
               />
             </div>
 
-            {/* ORDEM */}
-
             <div className="space-y-2">
               <Label>Ordem de exibição</Label>
 
@@ -929,8 +1048,6 @@ function AdminPage() {
 
               <p className="text-xs text-muted-foreground">Quanto menor o número, mais cedo o banner aparece.</p>
             </div>
-
-            {/* ATIVO */}
 
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Switch checked={bannerAtivo} onCheckedChange={setBannerAtivo} />
@@ -960,209 +1077,402 @@ function AdminPage() {
           ====================================================== */}
 
       <Dialog open={rascunho !== null} onOpenChange={(aberto) => !aberto && setRascunho(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{rascunho?.id ? "Editar produto" : "Novo produto"}</DialogTitle>
           </DialogHeader>
 
           {rascunho ? (
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Nome</Label>
+            <div className="space-y-6">
+              {/* ==================================================
+                  IDENTIFICAÇÃO
+                  ================================================== */}
 
-                  <Input
-                    value={rascunho.nome}
-                    onChange={(e) =>
-                      setRascunho({
-                        ...rascunho,
-                        nome: e.target.value,
-                      })
-                    }
-                  />
-                </div>
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Identificação</h3>
 
-                <div className="space-y-2">
-                  <Label>Código interno</Label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Nome *</Label>
 
-                  <Input
-                    value={rascunho.codigo}
-                    onChange={(e) =>
-                      setRascunho({
-                        ...rascunho,
-                        codigo: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-
-                  <Select
-                    value={rascunho.categoria_slug}
-                    onValueChange={(v) =>
-                      setRascunho({
-                        ...rascunho,
-                        categoria_slug: v,
-                        subcategoria_slug: "",
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      {categorias.map((c) => (
-                        <SelectItem key={c.slug} value={c.slug}>
-                          {c.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Subcategoria</Label>
-
-                  <Select
-                    value={rascunho.subcategoria_slug || "nenhuma"}
-                    onValueChange={(v) =>
-                      setRascunho({
-                        ...rascunho,
-                        subcategoria_slug: v === "nenhuma" ? "" : v,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="nenhuma">Sem subcategoria</SelectItem>
-
-                      {subcategoriasDoRascunho.map((s) => (
-                        <SelectItem key={s.slug} value={s.slug}>
-                          {s.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Preço (R$)</Label>
-
-                  <Input
-                    inputMode="decimal"
-                    value={rascunho.preco}
-                    onChange={(e) =>
-                      setRascunho({
-                        ...rascunho,
-                        preco: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Preço promocional (R$)</Label>
-
-                  <Input
-                    inputMode="decimal"
-                    value={rascunho.preco_promocional}
-                    onChange={(e) =>
-                      setRascunho({
-                        ...rascunho,
-                        preco_promocional: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-
-                <Textarea
-                  rows={3}
-                  value={rascunho.descricao}
-                  onChange={(e) =>
-                    setRascunho({
-                      ...rascunho,
-                      descricao: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Foto</Label>
-
-                <div className="flex items-center gap-3">
-                  <div className="h-16 w-16 overflow-hidden rounded border bg-muted">
-                    {rascunho.imagem ? (
-                      <img src={rascunho.imagem} alt="Pré-visualização" className="h-full w-full object-contain" />
-                    ) : null}
+                    <Input
+                      value={rascunho.nome}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          nome: e.target.value,
+                        })
+                      }
+                    />
                   </div>
 
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    disabled={enviandoFoto}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
+                  <div className="space-y-2">
+                    <Label>Código interno *</Label>
 
-                      if (f) {
-                        void escolherFoto(f);
+                    <Input
+                      value={rascunho.codigo}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          codigo: e.target.value,
+                        })
                       }
-                    }}
-                  />
-                </div>
+                    />
+                  </div>
 
-                {enviandoFoto ? <p className="text-xs text-muted-foreground">Enviando foto...</p> : null}
+                  <div className="space-y-2">
+                    <Label>Código de barras</Label>
+
+                    <Input
+                      inputMode="numeric"
+                      placeholder="Ex.: 7891234567890"
+                      value={rascunho.codigo_barras}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          codigo_barras: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Fabricante</Label>
+
+                    <Input
+                      placeholder="Ex.: EMS"
+                      value={rascunho.fabricante}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          fabricante: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Unidade</Label>
+
+                    <Input
+                      placeholder="Ex.: caixa, frasco, unidade"
+                      value={rascunho.unidade}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          unidade: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Estoque</Label>
+
+                    <Input
+                      type="number"
+                      min="0"
+                      value={rascunho.estoque}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          estoque: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={rascunho.disponivel}
-                    onCheckedChange={(v) =>
-                      setRascunho({
-                        ...rascunho,
-                        disponivel: v,
-                      })
-                    }
-                  />
-                  Disponível
-                </label>
+              {/* ==================================================
+                  CATEGORIA
+                  ================================================== */}
 
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={rascunho.oferta}
-                    onCheckedChange={(v) =>
-                      setRascunho({
-                        ...rascunho,
-                        oferta: v,
-                      })
-                    }
-                  />
-                  Oferta
-                </label>
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Categoria</h3>
 
-                <label className="flex items-center gap-2 text-sm">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Categoria *</Label>
+
+                    <Select
+                      value={rascunho.categoria_slug}
+                      onValueChange={(v) =>
+                        setRascunho({
+                          ...rascunho,
+                          categoria_slug: v,
+                          subcategoria_slug: "",
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        {categorias.map((c) => (
+                          <SelectItem key={c.slug} value={c.slug}>
+                            {c.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Subcategoria</Label>
+
+                    <Select
+                      value={rascunho.subcategoria_slug || "nenhuma"}
+                      onValueChange={(v) =>
+                        setRascunho({
+                          ...rascunho,
+                          subcategoria_slug: v === "nenhuma" ? "" : v,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        <SelectItem value="nenhuma">Sem subcategoria</SelectItem>
+
+                        {subcategoriasDoRascunho.map((s) => (
+                          <SelectItem key={s.slug} value={s.slug}>
+                            {s.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* ==================================================
+                  PREÇOS
+                  ================================================== */}
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Preços</h3>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Preço normal (R$)</Label>
+
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={rascunho.preco}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          preco: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Preço promocional (R$)</Label>
+
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={rascunho.preco_promocional}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          preco_promocional: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Preço Farmácia Popular (R$)</Label>
+
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={rascunho.preco_farmacia_popular}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          preco_farmacia_popular: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-3 rounded-lg border p-3">
                   <Switch
-                    checked={rascunho.rasga_preco}
+                    checked={rascunho.farmacia_popular}
                     onCheckedChange={(v) =>
                       setRascunho({
                         ...rascunho,
-                        rasga_preco: v,
+                        farmacia_popular: v,
                       })
                     }
                   />
-                  Rasga Preço
-                </label>
+
+                  <div>
+                    <p className="text-sm font-medium">Farmácia Popular</p>
+
+                    <p className="text-xs text-muted-foreground">
+                      Marque se este produto participa da Farmácia Popular.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ==================================================
+                  INFORMAÇÕES DO MEDICAMENTO
+                  ================================================== */}
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Informações do produto</h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Princípio ativo</Label>
+
+                    <Input
+                      placeholder="Ex.: Loratadina"
+                      value={rascunho.principio_ativo}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          principio_ativo: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Registro MS</Label>
+
+                    <Input
+                      placeholder="Ex.: 123456789"
+                      value={rascunho.registro_ms}
+                      onChange={(e) =>
+                        setRascunho({
+                          ...rascunho,
+                          registro_ms: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <Label>Descrição</Label>
+
+                  <Textarea
+                    rows={4}
+                    value={rascunho.descricao}
+                    onChange={(e) =>
+                      setRascunho({
+                        ...rascunho,
+                        descricao: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* ==================================================
+                  FOTO
+                  ================================================== */}
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Imagem</h3>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                    {rascunho.imagem ? (
+                      <img src={rascunho.imagem} alt="Pré-visualização" className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                        Sem imagem
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      disabled={enviandoFoto}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+
+                        if (file) {
+                          void escolherFoto(file);
+                        }
+                      }}
+                    />
+
+                    {enviandoFoto ? (
+                      <p className="mt-2 text-xs text-muted-foreground">Enviando foto...</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">Selecione uma imagem do produto.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ==================================================
+                  STATUS
+                  ================================================== */}
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">Status do produto</h3>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                    <Switch
+                      checked={rascunho.disponivel}
+                      onCheckedChange={(v) =>
+                        setRascunho({
+                          ...rascunho,
+                          disponivel: v,
+                        })
+                      }
+                    />
+
+                    <span>Disponível</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                    <Switch
+                      checked={rascunho.oferta}
+                      onCheckedChange={(v) =>
+                        setRascunho({
+                          ...rascunho,
+                          oferta: v,
+                        })
+                      }
+                    />
+
+                    <span>Oferta</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                    <Switch
+                      checked={rascunho.rasga_preco}
+                      onCheckedChange={(v) =>
+                        setRascunho({
+                          ...rascunho,
+                          rasga_preco: v,
+                        })
+                      }
+                    />
+
+                    <span>Rasga Preço</span>
+                  </label>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1173,7 +1483,7 @@ function AdminPage() {
             </Button>
 
             <Button onClick={() => void confirmarSalvar()} disabled={salvando || enviandoFoto}>
-              {salvando ? "Salvando..." : "Salvar"}
+              {salvando ? "Salvando..." : "Salvar produto"}
             </Button>
           </DialogFooter>
         </DialogContent>
