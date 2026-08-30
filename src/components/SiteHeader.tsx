@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 import logoAsset from "@/assets/logo.png.asset.json";
+import popularAsset from "@/assets/farmacia-popular.png.asset.json";
+
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal } from "@/lib/catalog";
 import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
@@ -244,9 +246,24 @@ export function SiteHeader() {
             )}
           </Link>
 
-          <Link to="/" className="shrink-0" aria-label="Página inicial Farmácias Francy">
-            <Logo className="h-9 sm:h-11" />
-          </Link>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link to="/" aria-label="Página inicial Farmácias Francy">
+              <Logo className="h-14 sm:h-20" />
+            </Link>
+
+            <Link
+              to="/farmacia-popular"
+              aria-label="Aqui tem Farmácia Popular"
+              className="rounded-md bg-background/95 p-1 transition-transform hover:scale-105"
+            >
+              <img
+                src={popularAsset.url}
+                alt="Aqui tem Farmácia Popular"
+                className="h-10 w-auto object-contain sm:h-14"
+              />
+            </Link>
+          </div>
+
         </div>
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
