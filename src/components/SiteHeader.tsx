@@ -81,7 +81,6 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                     className="flex-1 px-3 py-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:text-primary"
                   >
                     <span className="mr-2">{c.icone}</span>
-
                     {c.nome}
                   </Link>
 
@@ -134,17 +133,13 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 
 export function SiteHeader() {
   const [menuAberto, setMenuAberto] = useState(false);
-
   const [termo, setTermo] = useState("");
-
   const [focado, setFocado] = useState(false);
 
   const { totalItens } = useCart();
-
   const { categorias } = useCatalogo();
 
   const [pop, setPop] = useState(false);
-
   const primeiro = useRef(true);
 
   const navigate = useNavigate();
@@ -189,101 +184,118 @@ export function SiteHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2.5 sm:gap-4 sm:px-6">
+        {/* ================================
+            CABEÇALHO PRINCIPAL
+            ================================ */}
+
+        <div className="relative mx-auto flex max-w-7xl items-center justify-center px-3 py-2.5 sm:px-6">
+          {/* MENU LATERAL */}
+
           <button
             onClick={() => setMenuAberto(true)}
             aria-label="Abrir menu"
-            className="shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
+            className="absolute left-3 shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10 sm:left-6"
           >
             <Menu className="size-5" strokeWidth={1.75} />
           </button>
 
-          {/* PESQUISA */}
+          {/* ================================
+              PESQUISA + CARRINHO
+              CENTRALIZADOS
+              ================================ */}
 
-          <div className="relative w-full md:w-[520px] md:flex-none">
-            <form onSubmit={enviar}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex w-full max-w-[620px] items-center gap-3">
+            {/* BARRA DE PESQUISA */}
 
-              <input
-                value={termo}
-                onChange={(e) => setTermo(e.target.value)}
-                onFocus={() => setFocado(true)}
-                onBlur={() => setTimeout(() => setFocado(false), 150)}
-                placeholder="O que você está procurando?"
-                aria-label="Pesquisar produtos"
-                className="h-10 w-full rounded-full border-0 bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-brand-red/60 placeholder:text-muted-foreground focus:ring-2"
-              />
-            </form>
+            <div className="relative min-w-0 flex-1">
+              <form onSubmit={enviar}>
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
-            {focado && sugestoes.length > 0 && (
-              <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-card animate-fade-in">
-                <ul className="max-h-80 overflow-y-auto">
-                  {sugestoes.map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        to="/produto/$id"
-                        params={{
-                          id: p.id,
-                        }}
-                        onClick={() => setTermo("")}
-                        className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent"
-                      >
-                        <div className="size-10 shrink-0">
-                          <ProductImage produto={p} />
-                        </div>
+                <input
+                  value={termo}
+                  onChange={(e) => setTermo(e.target.value)}
+                  onFocus={() => setFocado(true)}
+                  onBlur={() => setTimeout(() => setFocado(false), 150)}
+                  placeholder="O que você está procurando?"
+                  aria-label="Pesquisar produtos"
+                  className="h-10 w-full rounded-full border-0 bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-brand-red/60 placeholder:text-muted-foreground focus:ring-2"
+                />
+              </form>
 
-                        <span className="line-clamp-1 flex-1 text-sm">{p.nome}</span>
+              {/* SUGESTÕES DA PESQUISA */}
 
-                        <span className="text-sm font-semibold text-primary">{formatarPreco(precoFinal(p))}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+              {focado && sugestoes.length > 0 && (
+                <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-card animate-fade-in">
+                  <ul className="max-h-80 overflow-y-auto">
+                    {sugestoes.map((p) => (
+                      <li key={p.id}>
+                        <Link
+                          to="/produto/$id"
+                          params={{
+                            id: p.id,
+                          }}
+                          onClick={() => setTermo("")}
+                          className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent"
+                        >
+                          <div className="size-10 shrink-0">
+                            <ProductImage produto={p} />
+                          </div>
 
-                <button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
+                          <span className="line-clamp-1 flex-1 text-sm">{p.nome}</span>
 
-                    navigate({
-                      to: "/busca",
-                      search: {
-                        q: termo.trim(),
-                      },
-                    });
-                  }}
-                  className="block w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-accent"
+                          <span className="text-sm font-semibold text-primary">{formatarPreco(precoFinal(p))}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+
+                      navigate({
+                        to: "/busca",
+                        search: {
+                          q: termo.trim(),
+                        },
+                      });
+                    }}
+                    className="block w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-accent"
+                  >
+                    Ver todos os resultados
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ================================
+                CARRINHO
+                ================================ */}
+
+            <Link
+              to="/carrinho"
+              aria-label="Abrir carrinho"
+              className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
+            >
+              <ShoppingCart className="size-5" strokeWidth={1.75} />
+
+              {totalItens > 0 && (
+                <span
+                  className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
+                    pop ? "cart-pop" : ""
+                  }`}
                 >
-                  Ver todos os resultados
-                </button>
-              </div>
-            )}
+                  {totalItens}
+                </span>
+              )}
+            </Link>
           </div>
 
-          {/* CARRINHO */}
-
-          <Link
-            to="/carrinho"
-            aria-label="Abrir carrinho"
-            className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
-          >
-            <ShoppingCart className="size-5" strokeWidth={1.75} />
-
-            {totalItens > 0 && (
-              <span
-                className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
-                  pop ? "cart-pop" : ""
-                }`}
-              >
-                {totalItens}
-              </span>
-            )}
-          </Link>
-
-          {/* =================================================
+          {/* ================================
               LOGOS
-              ================================================= */}
+              ================================ */}
 
-          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="absolute right-3 flex shrink-0 items-center gap-2 sm:right-6 sm:gap-3">
             {/* LOGO FRANCY */}
 
             <Link
@@ -306,10 +318,13 @@ export function SiteHeader() {
           </div>
         </div>
 
-        {/* CATEGORIAS */}
+        {/* ================================
+            BARRA DE CATEGORIAS
+            CENTRALIZADA
+            ================================ */}
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
-          <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-6 py-2 text-xs font-medium">
+          <div className="mx-auto flex max-w-7xl items-center justify-center gap-5 overflow-x-auto px-6 py-2 text-xs font-medium">
             <button
               onClick={() => setMenuAberto(true)}
               className="whitespace-nowrap opacity-90 transition-opacity hover:opacity-100"
@@ -332,13 +347,15 @@ export function SiteHeader() {
 
             <Link
               to="/farmacia-popular"
-              className="ml-auto whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground"
+              className="whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground"
             >
               Farmácia Popular
             </Link>
           </div>
         </div>
       </header>
+
+      {/* MENU LATERAL */}
 
       <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
     </>
