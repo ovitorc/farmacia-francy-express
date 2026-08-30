@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
+import { Truck, ShieldCheck, Clock } from "lucide-react";
 
 import { ProductCard } from "@/components/ProductCard";
 import { RasgaPreco } from "@/components/RasgaPreco";
-import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
+import { type Produto } from "@/lib/catalog";
 import { useCatalogo } from "@/lib/catalog-context";
-import { supabase } from "@/integrations/supabase/client";
+import { listarBannersPublicos } from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácias Francy. Monte seu pedido online e finalize pelo WhatsApp.",
+          "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácia Francy. Monte seu pedido online e finalize pelo WhatsApp.",
       },
       {
         property: "og:title",
@@ -65,36 +65,14 @@ function BannerCarousel() {
   const {
     data: banners = [],
     isLoading,
-    isError,
+    error,
   } = useQuery({
     queryKey: ["banners"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("banners")
-        .select("id, titulo, imagem, ativo, ordem")
-        .eq("ativo", true)
-        .order("ordem", { ascending: true });
-
-      if (error) {
-        throw error;
-      }
-
-      return data ?? [];
-    },
+    queryFn: () => listarBannersPublicos(),
   });
 
   /* ==========================================================
-     GARANTE QUE O ÍNDICE DO BANNER CONTINUE VÁLIDO
-     ========================================================== */
-
-  useEffect(() => {
-    if (bannerAtual >= banners.length) {
-      setBannerAtual(0);
-    }
-  }, [bannerAtual, banners.length]);
-
-  /* ==========================================================
-     TROCA AUTOMÁTICA
+     TROCA AUTOMÁTICA DOS BANNERS
      ========================================================== */
 
   useEffect(() => {
@@ -103,11 +81,30 @@ function BannerCarousel() {
     }
 
     const intervalo = setInterval(() => {
-      setBannerAtual((atual) => (atual + 1) % banners.length);
+      setBannerAtual((atual) => {
+        return (atual + 1) % banners.length;
+      });
     }, 4000);
 
-    return () => clearInterval(intervalo);
+    return () => {
+      clearInterval(intervalo);
+    };
   }, [banners.length]);
+
+  /* ==========================================================
+     GARANTE QUE O ÍNDICE ATUAL CONTINUE VÁLIDO
+     ========================================================== */
+
+  useEffect(() => {
+    if (banners.length === 0) {
+      setBannerAtual(0);
+      return;
+    }
+
+    if (bannerAtual >= banners.length) {
+      setBannerAtual(0);
+    }
+  }, [bannerAtual, banners.length]);
 
   /* ==========================================================
      CARREGANDO
@@ -116,9 +113,7 @@ function BannerCarousel() {
   if (isLoading) {
     return (
       <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
-        <div className="text-center">
-          <p className="text-sm font-medium text-muted-foreground">Carregando banners...</p>
-        </div>
+        <p className="text-sm text-muted-foreground">Carregando banners...</p>
       </div>
     );
   }
@@ -127,18 +122,22 @@ function BannerCarousel() {
      ERRO
      ========================================================== */
 
-  if (isError) {
+  if (error) {
+    console.error("Erro ao carregar banners:", error);
+
     return (
       <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Não foi possível carregar os banners.</p>
+
+          <p className="mt-1 text-xs text-muted-foreground/70">Verifique a configuração dos banners.</p>
         </div>
       </div>
     );
   }
 
   /* ==========================================================
-     SEM BANNERS
+     NENHUM BANNER
      ========================================================== */
 
   if (banners.length === 0) {
@@ -147,7 +146,7 @@ function BannerCarousel() {
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Área de banners promocionais</p>
 
-          <p className="mt-1 text-xs text-muted-foreground/70">Os banners serão adicionados pela administração.</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">Nenhum banner ativo no momento.</p>
         </div>
       </div>
     );
@@ -164,7 +163,7 @@ function BannerCarousel() {
           <img
             key={banner.id}
             src={banner.imagem}
-            alt={banner.titulo || "Banner da Farmácias Francy"}
+            alt={banner.titulo || "Banner promocional da Farmácias Francy"}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
               index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
@@ -221,10 +220,6 @@ function Index() {
               Farmácia Francy, credibilidade popular
             </h1>
           </div>
-
-          {/* ==================================================
-              BANNERS
-              ================================================== */}
 
           <BannerCarousel />
         </div>
