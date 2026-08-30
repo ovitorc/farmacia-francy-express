@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
+
 import { ProductCard } from "@/components/ProductCard";
 import { RasgaPreco } from "@/components/RasgaPreco";
 import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
 import { useCatalogo } from "@/lib/catalog-context";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -30,6 +33,10 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+/* ============================================================
+   BENEFÍCIOS
+   ============================================================ */
+
 const beneficios = [
   {
     icone: Truck,
@@ -48,59 +55,92 @@ const beneficios = [
   },
 ];
 
-/*
- * ============================================================
- * BANNERS DA HOME
- * ============================================================
- *
- * IMPORTANTE:
- * Não existem imagens obrigatórias aqui.
- *
- * Enquanto nenhuma imagem for cadastrada, o carrossel mostra
- * apenas uma área vazia organizada, evitando erro 404.
- *
- * Quando você tiver as imagens, poderá colocá-las aqui.
- *
- * Exemplo:
- *
- * {
- *   id: 1,
- *   imagem: "/banners/fralda-da-semana.webp",
- *   alt: "Fralda da Semana"
- * }
- *
- * Não colocar imagens que ainda não existem.
- */
-
-const banners: {
-  id: number;
-  imagem: string;
-  alt: string;
-}[] = [];
-
-/*
- * ============================================================
- * CARROSSEL
- * ============================================================
- */
+/* ============================================================
+   CARROSSEL DE BANNERS
+   ============================================================ */
 
 function BannerCarousel() {
   const [bannerAtual, setBannerAtual] = useState(0);
 
+  const {
+    data: banners = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["banners"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("banners")
+        .select("id, titulo, imagem, ativo, ordem")
+        .eq("ativo", true)
+        .order("ordem", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return data ?? [];
+    },
+  });
+
+  /* ==========================================================
+     GARANTE QUE O ÍNDICE DO BANNER CONTINUE VÁLIDO
+     ========================================================== */
+
   useEffect(() => {
-    if (banners.length <= 1) return;
+    if (bannerAtual >= banners.length) {
+      setBannerAtual(0);
+    }
+  }, [bannerAtual, banners.length]);
+
+  /* ==========================================================
+     TROCA AUTOMÁTICA
+     ========================================================== */
+
+  useEffect(() => {
+    if (banners.length <= 1) {
+      return;
+    }
 
     const intervalo = setInterval(() => {
       setBannerAtual((atual) => (atual + 1) % banners.length);
     }, 4000);
 
     return () => clearInterval(intervalo);
-  }, []);
+  }, [banners.length]);
 
-  /*
-   * Caso ainda não existam banners cadastrados,
-   * não tentar carregar imagens inexistentes.
-   */
+  /* ==========================================================
+     CARREGANDO
+     ========================================================== */
+
+  if (isLoading) {
+    return (
+      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
+        <div className="text-center">
+          <p className="text-sm font-medium text-muted-foreground">Carregando banners...</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ==========================================================
+     ERRO
+     ========================================================== */
+
+  if (isError) {
+    return (
+      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
+        <div className="text-center">
+          <p className="text-sm font-medium text-muted-foreground">Não foi possível carregar os banners.</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ==========================================================
+     SEM BANNERS
+     ========================================================== */
+
   if (banners.length === 0) {
     return (
       <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
@@ -113,6 +153,10 @@ function BannerCarousel() {
     );
   }
 
+  /* ==========================================================
+     BANNERS
+     ========================================================== */
+
   return (
     <div className="relative w-full overflow-hidden rounded-2xl">
       <div className="relative aspect-[16/6] w-full bg-muted">
@@ -120,13 +164,17 @@ function BannerCarousel() {
           <img
             key={banner.id}
             src={banner.imagem}
-            alt={banner.alt}
+            alt={banner.titulo || "Banner da Farmácias Francy"}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
               index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           />
         ))}
       </div>
+
+      {/* ======================================================
+          INDICADORES
+          ====================================================== */}
 
       {banners.length > 1 && (
         <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
@@ -147,11 +195,9 @@ function BannerCarousel() {
   );
 }
 
-/*
- * ============================================================
- * HOME
- * ============================================================
- */
+/* ============================================================
+   HOME
+   ============================================================ */
 
 function Index() {
   const { categorias, ofertas: emOferta, rasgaPreco, destaques } = useCatalogo();
@@ -165,7 +211,7 @@ function Index() {
   return (
     <div>
       {/* ======================================================
-          NOVA PARTE SUPERIOR
+          PARTE SUPERIOR
           ====================================================== */}
 
       <section className="border-b border-border bg-background">
@@ -176,12 +222,16 @@ function Index() {
             </h1>
           </div>
 
+          {/* ==================================================
+              BANNERS
+              ================================================== */}
+
           <BannerCarousel />
         </div>
       </section>
 
       {/* ======================================================
-          CONTEÚDO ORIGINAL
+          BENEFÍCIOS
           ====================================================== */}
 
       <section className="border-b border-border bg-card">
@@ -202,7 +252,15 @@ function Index() {
         </div>
       </section>
 
+      {/* ======================================================
+          RASGA PREÇO
+          ====================================================== */}
+
       <RasgaPreco />
+
+      {/* ======================================================
+          CATEGORIAS
+          ====================================================== */}
 
       <section className="mx-auto max-w-7xl px-6 py-8">
         <h2 className="text-xl font-bold text-primary sm:text-2xl">Categorias</h2>
@@ -223,18 +281,24 @@ function Index() {
         </div>
       </section>
 
+      {/* ======================================================
+          OFERTAS
+          ====================================================== */}
+
       <Vitrine titulo="Ofertas da semana" itens={ofertas} />
+
+      {/* ======================================================
+          MAIS PROCURADOS
+          ====================================================== */}
 
       <Vitrine titulo="Mais procurados" itens={maisVendidos} />
     </div>
   );
 }
 
-/*
- * ============================================================
- * VITRINE
- * ============================================================
- */
+/* ============================================================
+   VITRINE
+   ============================================================ */
 
 function Vitrine({ titulo, itens }: { titulo: string; itens: Produto[] }) {
   return (
