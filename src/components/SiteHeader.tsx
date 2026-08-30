@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
+
 import logoAsset from "@/assets/logo.png.asset.json";
+import popularAsset from "@/assets/farmacia-popular.png.asset.json";
+
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal } from "@/lib/catalog";
 import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
@@ -10,6 +13,16 @@ import { ProductImage } from "@/components/ProductCard";
 
 function Logo({ className = "h-11" }: { className?: string }) {
   return <img src={logoAsset.url} alt="Farmácias Francy" className={`${className} w-auto rounded-md object-contain`} />;
+}
+
+function PopularLogo({ className = "h-11" }: { className?: string }) {
+  return (
+    <img
+      src={popularAsset.url}
+      alt="Aqui tem Farmácia Popular"
+      className={`${className} w-auto rounded-md object-contain`}
+    />
+  );
 }
 
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
@@ -65,6 +78,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                     className="flex-1 px-3 py-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:text-primary"
                   >
                     <span className="mr-2">{c.icone}</span>
+
                     {c.nome}
                   </Link>
 
@@ -89,7 +103,9 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                         <li key={sub.slug}>
                           <Link
                             to="/categoria/$slug"
-                            params={{ slug: c.slug }}
+                            params={{
+                              slug: c.slug,
+                            }}
                             search={{
                               sub: sub.slug,
                               ordem: "relevancia",
@@ -115,12 +131,18 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 
 export function SiteHeader() {
   const [menuAberto, setMenuAberto] = useState(false);
+
   const [termo, setTermo] = useState("");
+
   const [focado, setFocado] = useState(false);
+
   const { totalItens } = useCart();
   const { categorias } = useCatalogo();
+
   const [pop, setPop] = useState(false);
+
   const primeiro = useRef(true);
+
   const navigate = useNavigate();
 
   const pathname = useRouterState({
@@ -154,7 +176,9 @@ export function SiteHeader() {
 
     navigate({
       to: "/busca",
-      search: { q: termo.trim() },
+      search: {
+        q: termo.trim(),
+      },
     });
   };
 
@@ -193,7 +217,9 @@ export function SiteHeader() {
                     <li key={p.id}>
                       <Link
                         to="/produto/$id"
-                        params={{ id: p.id }}
+                        params={{
+                          id: p.id,
+                        }}
                         onClick={() => setTermo("")}
                         className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent"
                       >
@@ -215,7 +241,9 @@ export function SiteHeader() {
 
                     navigate({
                       to: "/busca",
-                      search: { q: termo.trim() },
+                      search: {
+                        q: termo.trim(),
+                      },
                     });
                   }}
                   className="block w-full border-t border-border px-3 py-2 text-center text-xs font-medium text-primary hover:bg-accent"
@@ -244,9 +272,29 @@ export function SiteHeader() {
             )}
           </Link>
 
-          <Link to="/" className="shrink-0" aria-label="Página inicial Farmácias Francy">
-            <Logo className="h-9 sm:h-11" />
-          </Link>
+          {/* =================================================
+              LOGOS
+              ================================================= */}
+
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            {/* Farmácia Francy */}
+            <Link
+              to="/"
+              aria-label="Página inicial Farmácias Francy"
+              className="shrink-0 transition-transform hover:scale-105"
+            >
+              <Logo className="h-10 sm:h-12" />
+            </Link>
+
+            {/* Farmácia Popular */}
+            <Link
+              to="/farmacia-popular"
+              aria-label="Farmácia Popular"
+              className="shrink-0 transition-transform hover:scale-105"
+            >
+              <PopularLogo className="h-10 sm:h-12" />
+            </Link>
+          </div>
         </div>
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
@@ -262,7 +310,9 @@ export function SiteHeader() {
               <Link
                 key={c.slug}
                 to="/categoria/$slug"
-                params={{ slug: c.slug }}
+                params={{
+                  slug: c.slug,
+                }}
                 className="whitespace-nowrap opacity-90 transition-opacity hover:opacity-100"
               >
                 {c.nome}
