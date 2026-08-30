@@ -1,8 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
-import { BannerCarousel } from "@/components/BannerCarousel";
-
 import { RasgaPreco } from "@/components/RasgaPreco";
 import popularAsset from "@/assets/farmacia-popular.png.asset.json";
 import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
@@ -41,10 +39,7 @@ function Index() {
 
   return (
     <div>
-      <BannerCarousel />
-
       <section className="bg-primary text-primary-foreground">
-
         <div className="mx-auto grid max-w-7xl items-center gap-8 px-6 py-10 md:grid-cols-2 md:py-16">
           <div>
             <span className="inline-block rounded-full bg-brand-red px-3 py-1 text-xs font-bold text-brand-red-foreground">
