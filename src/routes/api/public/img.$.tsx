@@ -7,13 +7,20 @@ export const Route = createFileRoute("/api/public/img/$")({
         const path = (params as { _splat?: string })._splat ?? "";
         if (!path || path.includes("..")) return new Response("Not found", { status: 404 });
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data, error } = await supabaseAdmin.storage.from("produtos").download(path);
-        if (error || !data) return new Response("Not found", { status: 404 });
+        const url = process.env["SUPABASE_URL"];
+        const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+        if (!url || !key) return new Response("Not found", { status: 404 });
 
-        return new Response(await data.arrayBuffer(), {
+        const upstream = await fetch(
+          `${url}/storage/v1/object/produtos/${path.split("/").map(encodeURIComponent).join("/")}`,
+          { headers: { apikey: key } },
+        );
+
+        if (!upstream.ok) return new Response("Not found", { status: 404 });
+
+        return new Response(await upstream.arrayBuffer(), {
           headers: {
-            "content-type": data.type || "image/jpeg",
+            "content-type": upstream.headers.get("content-type") ?? "image/jpeg",
             "cache-control": "public, max-age=3600",
           },
         });
