@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -83,6 +83,16 @@ const iconePagamento: Record<FormaPagamento, typeof Banknote> = {
 
 type Fase = "form" | "calculando" | "confirmar" | "lista";
 
+function formatarCep(valor: string) {
+  const digitos = valor.replace(/\D/g, "").slice(0, 8);
+
+  if (digitos.length <= 5) {
+    return digitos;
+  }
+
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
 function CarrinhoPage() {
   const { itens, total, definirQuantidade, remover, limpar } = useCart();
 
@@ -92,9 +102,27 @@ function CarrinhoPage() {
   const [erros, setErros] = useState<string[]>([]);
   const [buscandoCep, setBuscandoCep] = useState(false);
 
+  /*
+   * Controla a requisição atual do CEP.
+   *
+   * Quando o cliente altera o CEP, a consulta anterior
+   * é cancelada para impedir respostas antigas.
+   */
+  const cepAbortController = useRef<AbortController | null>(null);
+
+  /*
+   * Guarda qual CEP está sendo consultado.
+   *
+   * Isso impede que uma resposta de um CEP antigo
+   * sobrescreva os dados de um CEP novo.
+   */
+  const cepAtual = useRef("");
+
   const [fase, setFase] = useState<Fase>("form");
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
+
   const resolverUnidade = useServerFn(unidadeMaisProximaDoEndereco);
+
   const [selecionada, setSelecionada] = useState<{
     unidade: Unidade;
     distancia: number | null;
@@ -103,15 +131,58 @@ function CarrinhoPage() {
   } | null>(null);
 
   function atualizarEndereco(campo: keyof Endereco, valor: string) {
-    setEndereco((prev) => ({ ...prev, [campo]: valor }));
+    setEndereco((prev) => ({
+      ...prev,
+      [campo]: valor,
+    }));
   }
 
   async function buscarCep(valor: string) {
     const digitos = valor.replace(/\D/g, "");
-    if (digitos.length !== 8) return;
+
+    /*
+     * Cancela qualquer busca anterior.
+     */
+    cepAbortController.current?.abort();
+    cepAbortController.current = null;
+
+    /*
+     * Se o CEP foi apagado ou ainda está incompleto,
+     * encerra qualquer estado de carregamento.
+     *
+     * Isso permite digitar outro CEP imediatamente.
+     */
+    if (digitos.length !== 8) {
+      cepAtual.current = "";
+      setBuscandoCep(false);
+      return;
+    }
+
+    /*
+     * Evita buscar novamente o mesmo CEP
+     * enquanto ele já estiver sendo processado.
+     */
+    if (cepAtual.current === digitos && buscandoCep) {
+      return;
+    }
+
+    cepAtual.current = digitos;
+
+    const controller = new AbortController();
+
+    cepAbortController.current = controller;
+
     setBuscandoCep(true);
+
     try {
-      const resp = await fetch(`https://viacep.com.br/ws/${digitos}/json/`);
+      const resp = await fetch(`https://viacep.com.br/ws/${digitos}/json/`, {
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        return;
+      }
+
       const dados = (await resp.json()) as {
         logradouro?: string;
         bairro?: string;
@@ -119,26 +190,128 @@ function CarrinhoPage() {
         uf?: string;
         erro?: boolean | string;
       };
-      if (!dados.erro) {
-        setEndereco((prev) => ({
-          ...prev,
-          rua: dados.logradouro || prev.rua,
-          bairro: dados.bairro || prev.bairro,
-          cidade: dados.localidade || prev.cidade,
-          estado: dados.uf || prev.estado,
-        }));
+
+      /*
+       * Se o cliente mudou o CEP enquanto a API respondia,
+       * ignora completamente esta resposta antiga.
+       */
+      if (controller.signal.aborted || cepAtual.current !== digitos) {
+        return;
       }
-    } catch {
-      /* silencioso: o cliente pode preencher manualmente */
+
+      if (!dados.erro) {
+        setEndereco((prev) => {
+          /*
+           * Proteção extra:
+           *
+           * Se o usuário já estiver em outro CEP,
+           * não altera o endereço.
+           */
+          const cepDoFormulario = prev.cep.replace(/\D/g, "");
+
+          if (cepDoFormulario !== digitos) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+
+            /*
+             * Preenche automaticamente os dados
+             * retornados pelo ViaCEP.
+             *
+             * Caso a API não retorne algum dado,
+             * mantém o valor que o cliente já possuía.
+             */
+            rua: dados.logradouro || prev.rua,
+
+            bairro: dados.bairro || prev.bairro,
+
+            cidade: dados.localidade || prev.cidade,
+
+            estado: dados.uf || prev.estado,
+          };
+        });
+      }
+    } catch (erro) {
+      /*
+       * AbortError é esperado quando o cliente
+       * troca ou apaga o CEP.
+       *
+       * Não devemos mostrar erro nesse caso.
+       */
+      if (erro instanceof DOMException && erro.name === "AbortError") {
+        return;
+      }
+
+      /*
+       * Se houver erro de rede,
+       * o cliente continua podendo preencher
+       * o endereço manualmente.
+       */
     } finally {
-      setBuscandoCep(false);
+      /*
+       * Apenas a requisição atual pode desligar
+       * o loading.
+       *
+       * Isso evita que uma requisição antiga
+       * altere o estado visual.
+       */
+      if (cepAbortController.current === controller) {
+        cepAbortController.current = null;
+
+        setBuscandoCep(false);
+      }
     }
+  }
+
+  function alterarCep(valor: string) {
+    const cepFormatado = formatarCep(valor);
+
+    /*
+     * Atualiza imediatamente o campo.
+     */
+    atualizarEndereco("cep", cepFormatado);
+
+    const digitos = cepFormatado.replace(/\D/g, "");
+
+    /*
+     * Se o cliente apagou ou deixou o CEP incompleto:
+     *
+     * cancela a consulta anterior.
+     */
+    if (digitos.length !== 8) {
+      cepAbortController.current?.abort();
+
+      cepAbortController.current = null;
+
+      cepAtual.current = "";
+
+      setBuscandoCep(false);
+
+      return;
+    }
+
+    /*
+     * Assim que completar os 8 números,
+     * busca automaticamente.
+     *
+     * Não depende mais do onBlur.
+     */
+    void buscarCep(cepFormatado);
   }
 
   function validar(): string[] {
     const lista: string[] = [];
-    if (itens.length === 0) lista.push("Adicione produtos ao carrinho para continuar.");
-    if (!nome.trim()) lista.push("Preencha seu nome para continuar.");
+
+    if (itens.length === 0) {
+      lista.push("Adicione produtos ao carrinho para continuar.");
+    }
+
+    if (!nome.trim()) {
+      lista.push("Preencha seu nome para continuar.");
+    }
+
     if (
       !endereco.cep.trim() ||
       !endereco.rua.trim() ||
@@ -146,17 +319,28 @@ function CarrinhoPage() {
       !endereco.bairro.trim() ||
       !endereco.cidade.trim() ||
       !endereco.estado.trim()
-    )
+    ) {
       lista.push("Informe o endereço de entrega completo.");
-    if (!pagamento) lista.push("Selecione uma forma de pagamento.");
+    }
+
+    if (!pagamento) {
+      lista.push("Selecione uma forma de pagamento.");
+    }
+
     return lista;
   }
 
   async function iniciarFinalizacao() {
     const lista = validar();
+
     setErros(lista);
-    if (lista.length > 0) return;
+
+    if (lista.length > 0) {
+      return;
+    }
+
     setAvisoLocal(null);
+
     setFase("calculando");
 
     try {
@@ -172,92 +356,144 @@ function CarrinhoPage() {
       });
 
       if (!resultado) {
-        setAvisoLocal(
-          "Não conseguimos identificar a unidade mais próxima pelo seu endereço.",
-        );
+        setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
         setFase("lista");
+
         return;
       }
 
       const unidade = UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId);
+
       if (!unidade) {
         setAvisoLocal("Não encontramos unidades disponíveis.");
+
         setFase("lista");
+
         return;
       }
 
       setAvisoLocal(resultado.aviso);
+
       setSelecionada({
         unidade,
+
         distancia: resultado.distanciaKm,
+
         duracaoMin: resultado.duracaoMin,
+
         porRota: resultado.origem === "rota",
       });
+
       setFase("confirmar");
     } catch {
       setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
       setFase("lista");
     }
   }
 
   function montarMensagem(unidade: Unidade, distancia: number | null, porRota: boolean) {
     const linhasProdutos = itens.map(
-      (i) =>
-        `${i.quantidade}x ${i.produto.nome} — ${formatarPreco(precoFinal(i.produto) * i.quantidade)}`,
+      (i) => `${i.quantidade}x ${i.produto.nome} — ${formatarPreco(precoFinal(i.produto) * i.quantidade)}`,
     );
+
     const partes = [
       "Olá, Farmácia Francy!",
+
       "",
+
       "Gostaria de realizar um pedido pelo site.",
+
       "",
+
       "*DADOS DO COMPRADOR*",
+
       "",
+
       `Nome: ${nome.trim()}`,
+
       "",
+
       "*ENDEREÇO DE ENTREGA*",
+
       "",
+
       `CEP: ${endereco.cep}`,
+
       `Rua: ${endereco.rua}`,
+
       `Número: ${endereco.numero}`,
+
       ...(endereco.complemento.trim() ? [`Complemento: ${endereco.complemento}`] : []),
+
       `Bairro: ${endereco.bairro}`,
+
       `Cidade: ${endereco.cidade}`,
+
       `Estado: ${endereco.estado}`,
+
       "",
+
       "*FORMA DE PAGAMENTO*",
+
       "",
+
       pagamento ? rotuloPagamento(pagamento) : "",
+
       "",
+
       "*PRODUTOS*",
+
       "",
+
       ...linhasProdutos,
+
       "",
+
       "*TOTAL DO PEDIDO*",
+
       "",
+
       formatarPreco(total),
+
       "",
+
       "*UNIDADE FRANCY*",
+
       "",
+
       unidade.name,
+
       ...(distancia !== null
         ? [`Distância aproximada: ${formatarDistancia(distancia)}${porRota ? " (por rota)" : ""}`]
         : []),
+
       "",
+
       `Pedido feito em ${new Date().toLocaleString("pt-BR")}`,
     ];
+
     return partes.join("\n");
   }
 
   function enviarPedido(unidade: Unidade, distancia: number | null, porRota: boolean) {
-    const url = linkWhatsAppComTexto(
-      unidade.whatsapp_url,
-      montarMensagem(unidade, distancia, porRota),
-    );
+    const url = linkWhatsAppComTexto(unidade.whatsapp_url, montarMensagem(unidade, distancia, porRota));
+
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function escolherUnidade(unidade: Unidade) {
-    setSelecionada({ unidade, distancia: null, duracaoMin: null, porRota: false });
+    setSelecionada({
+      unidade,
+
+      distancia: null,
+
+      duracaoMin: null,
+
+      porRota: false,
+    });
+
     setFase("confirmar");
   }
 
@@ -265,10 +501,13 @@ function CarrinhoPage() {
     return (
       <div className="mx-auto max-w-3xl px-6 py-20 text-center">
         <ShoppingCart className="mx-auto size-12 text-primary/40" />
+
         <h1 className="mt-4 text-2xl font-bold text-primary">Seu carrinho está vazio</h1>
+
         <p className="mt-2 text-sm text-muted-foreground">
           Explore o catálogo e monte seu pedido. A finalização é feita pelo WhatsApp.
         </p>
+
         <Link
           to="/"
           className="mt-6 inline-flex rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
@@ -291,18 +530,13 @@ function CarrinhoPage() {
           <ul className="space-y-3">
             {itens.map((item) => {
               const p = item.produto;
+
               return (
-                <li
-                  key={p.id}
-                  className="flex gap-4 rounded-xl border border-border bg-card p-3 sm:p-4"
-                >
-                  <Link
-                    to="/produto/$id"
-                    params={{ id: p.id }}
-                    className="size-20 shrink-0 rounded-lg bg-white p-1.5"
-                  >
+                <li key={p.id} className="flex gap-4 rounded-xl border border-border bg-card p-3 sm:p-4">
+                  <Link to="/produto/$id" params={{ id: p.id }} className="size-20 shrink-0 rounded-lg bg-white p-1.5">
                     <ProductImage produto={p} />
                   </Link>
+
                   <div className="flex flex-1 flex-col gap-2">
                     <Link
                       to="/produto/$id"
@@ -311,7 +545,9 @@ function CarrinhoPage() {
                     >
                       {p.nome}
                     </Link>
+
                     <p className="text-xs text-muted-foreground">Código {p.codigo}</p>
+
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center rounded-full border border-border">
                         <button
@@ -321,9 +557,9 @@ function CarrinhoPage() {
                         >
                           <Minus className="size-4" />
                         </button>
-                        <span className="min-w-8 text-center text-sm font-semibold">
-                          {item.quantidade}
-                        </span>
+
+                        <span className="min-w-8 text-center text-sm font-semibold">{item.quantidade}</span>
+
                         <button
                           aria-label="Aumentar quantidade"
                           onClick={() => definirQuantidade(p.id, item.quantidade + 1)}
@@ -332,10 +568,12 @@ function CarrinhoPage() {
                           <Plus className="size-4" />
                         </button>
                       </div>
+
                       <div className="flex items-center gap-3">
                         <span className="text-base font-bold text-primary">
                           {formatarPreco(precoFinal(p) * item.quantidade)}
                         </span>
+
                         <button
                           aria-label={`Remover ${p.nome}`}
                           onClick={() => remover(p.id)}
@@ -352,10 +590,13 @@ function CarrinhoPage() {
           </ul>
 
           {/* Dados do comprador */}
+
           <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="flex items-center gap-2 text-base font-semibold text-primary">
-              <User className="size-4" /> Dados do comprador
+              <User className="size-4" />
+              Dados do comprador
             </h2>
+
             <label className="mt-4 block text-xs font-medium text-muted-foreground">
               Nome completo
               <input
@@ -369,10 +610,13 @@ function CarrinhoPage() {
           </section>
 
           {/* Endereço */}
+
           <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="flex items-center gap-2 text-base font-semibold text-primary">
-              <MapPin className="size-4" /> Endereço de entrega
+              <MapPin className="size-4" />
+              Endereço de entrega
             </h2>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-6">
               <label className="text-xs font-medium text-muted-foreground sm:col-span-2">
                 CEP
@@ -382,15 +626,21 @@ function CarrinhoPage() {
                     value={endereco.cep}
                     maxLength={9}
                     inputMode="numeric"
-                    onChange={(e) => atualizarEndereco("cep", e.target.value)}
-                    onBlur={(e) => void buscarCep(e.target.value)}
+                    /*
+                     * Agora a busca acontece
+                     * automaticamente quando
+                     * o CEP chega a 8 números.
+                     */
+                    onChange={(e) => alterarCep(e.target.value)}
                     placeholder="00000-000"
                   />
+
                   {buscandoCep && (
                     <Loader2 className="absolute right-2 top-3.5 size-4 animate-spin text-muted-foreground" />
                   )}
                 </div>
               </label>
+
               <label className="text-xs font-medium text-muted-foreground sm:col-span-3">
                 Rua
                 <input
@@ -401,6 +651,7 @@ function CarrinhoPage() {
                   placeholder="Nome da rua"
                 />
               </label>
+
               <label className="text-xs font-medium text-muted-foreground">
                 Número
                 <input
@@ -411,6 +662,7 @@ function CarrinhoPage() {
                   placeholder="123"
                 />
               </label>
+
               <label className="text-xs font-medium text-muted-foreground sm:col-span-3">
                 Complemento (opcional)
                 <input
@@ -421,6 +673,7 @@ function CarrinhoPage() {
                   placeholder="Apto, bloco, referência"
                 />
               </label>
+
               <label className="text-xs font-medium text-muted-foreground sm:col-span-3">
                 Bairro
                 <input
@@ -431,6 +684,7 @@ function CarrinhoPage() {
                   placeholder="Bairro"
                 />
               </label>
+
               <label className="text-xs font-medium text-muted-foreground sm:col-span-4">
                 Cidade
                 <input
@@ -441,6 +695,7 @@ function CarrinhoPage() {
                   placeholder="Cidade"
                 />
               </label>
+
               <label className="text-xs font-medium text-muted-foreground sm:col-span-2">
                 Estado
                 <input
@@ -455,14 +710,19 @@ function CarrinhoPage() {
           </section>
 
           {/* Pagamento */}
+
           <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="flex items-center gap-2 text-base font-semibold text-primary">
-              <CreditCard className="size-4" /> Forma de pagamento
+              <CreditCard className="size-4" />
+              Forma de pagamento
             </h2>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {FORMAS_PAGAMENTO.map((forma) => {
                 const Icone = iconePagamento[forma.id];
+
                 const ativo = pagamento === forma.id;
+
                 return (
                   <button
                     key={forma.id}
@@ -476,16 +736,19 @@ function CarrinhoPage() {
                     }`}
                   >
                     <span
-                      className={`rounded-lg p-2 ${ativo ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                      className={`rounded-lg p-2 ${
+                        ativo ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}
                     >
                       <Icone className="size-4" />
                     </span>
+
                     <span className="flex-1">
                       <span className="block text-sm font-semibold">{forma.titulo}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {forma.descricao}
-                      </span>
+
+                      <span className="block text-xs text-muted-foreground">{forma.descricao}</span>
                     </span>
+
                     {ativo && <Check className="size-4 text-primary" />}
                   </button>
                 );
@@ -495,28 +758,31 @@ function CarrinhoPage() {
         </div>
 
         <aside className="h-fit space-y-4 rounded-xl border border-border bg-card p-5 lg:sticky lg:top-24">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Resumo do pedido
-          </h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Resumo do pedido</h2>
+
           <div className="flex items-center justify-between text-lg font-bold text-primary">
             <span>Total</span>
+
             <span>{formatarPreco(total)}</span>
           </div>
+
           <p className="text-xs text-muted-foreground">
             {pagamento
               ? `Forma de pagamento: ${rotuloPagamento(pagamento)}`
               : "Selecione a forma de pagamento ao lado."}
           </p>
+
           <p className="text-xs text-muted-foreground">
-            O pedido é confirmado por WhatsApp, incluindo disponibilidade em estoque, frete e forma
-            de pagamento.
+            O pedido é confirmado por WhatsApp, incluindo disponibilidade em estoque, frete e forma de pagamento.
           </p>
 
           {erros.length > 0 && fase === "form" && (
             <ul className="space-y-1 rounded-lg border border-brand-red/30 bg-brand-red/5 p-3 text-xs text-brand-red">
               {erros.map((e) => (
                 <li key={e} className="flex gap-2">
-                  <AlertCircle className="size-3.5 shrink-0" /> {e}
+                  <AlertCircle className="size-3.5 shrink-0" />
+
+                  {e}
                 </li>
               ))}
             </ul>
@@ -527,7 +793,8 @@ function CarrinhoPage() {
               onClick={iniciarFinalizacao}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-5 py-3 text-sm font-bold text-brand-red-foreground transition-opacity hover:opacity-90"
             >
-              <MessageCircle className="size-4" /> Finalizar pelo WhatsApp
+              <MessageCircle className="size-4" />
+              Finalizar pelo WhatsApp
             </button>
           )}
 
@@ -541,33 +808,38 @@ function CarrinhoPage() {
           {fase === "confirmar" && selecionada && (
             <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <Navigation className="size-4" /> Encontramos a Farmácia Francy mais próxima!
+                <Navigation className="size-4" />
+                Encontramos a Farmácia Francy mais próxima!
               </p>
+
               <p className="flex items-start gap-2 text-sm font-bold">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-brand-red" />
+
                 {selecionada.unidade.name}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {enderecoUnidade(selecionada.unidade)}
-              </p>
+
+              <p className="text-xs text-muted-foreground">{enderecoUnidade(selecionada.unidade)}</p>
+
               {selecionada.distancia !== null && (
                 <p className="text-xs font-medium text-primary">
                   {formatarDistancia(selecionada.distancia)}
+
                   {selecionada.porRota ? " por rota" : " em linha reta"}
-                  {selecionada.duracaoMin !== null
-                    ? ` — cerca de ${selecionada.duracaoMin} min de carro`
-                    : ""}
+
+                  {selecionada.duracaoMin !== null ? ` — cerca de ${selecionada.duracaoMin} min de carro` : ""}
                 </p>
               )}
+
               {avisoLocal && <p className="text-xs text-brand-red">{avisoLocal}</p>}
+
               <button
-                onClick={() =>
-                  enviarPedido(selecionada.unidade, selecionada.distancia, selecionada.porRota)
-                }
+                onClick={() => enviarPedido(selecionada.unidade, selecionada.distancia, selecionada.porRota)}
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-5 py-3 text-sm font-bold text-brand-red-foreground transition-opacity hover:opacity-90"
               >
-                <MessageCircle className="size-4" /> Enviar pedido
+                <MessageCircle className="size-4" />
+                Enviar pedido
               </button>
+
               <button
                 onClick={() => setFase("lista")}
                 className="w-full rounded-full border border-border px-5 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
@@ -582,14 +854,13 @@ function CarrinhoPage() {
               {avisoLocal && (
                 <>
                   <p className="text-sm font-semibold text-brand-red">{avisoLocal}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Você pode escolher uma Farmácia Francy manualmente.
-                  </p>
+
+                  <p className="text-xs text-muted-foreground">Você pode escolher uma Farmácia Francy manualmente.</p>
                 </>
               )}
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Unidades Francy
-              </p>
+
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Unidades Francy</p>
+
               <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
                 {UNIDADES_ATIVAS.map((u) => (
                   <li key={u.id}>
@@ -598,13 +869,13 @@ function CarrinhoPage() {
                       className="w-full rounded-lg border border-border p-3 text-left transition-colors hover:border-primary"
                     >
                       <span className="block text-sm font-semibold text-primary">{u.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {enderecoUnidade(u)}
-                      </span>
+
+                      <span className="block text-xs text-muted-foreground">{enderecoUnidade(u)}</span>
                     </button>
                   </li>
                 ))}
               </ul>
+
               <button
                 onClick={() => setFase("form")}
                 className="w-full rounded-full border border-border px-5 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
