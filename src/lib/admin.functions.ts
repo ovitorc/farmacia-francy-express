@@ -50,6 +50,8 @@ const bannerSchema = z.object({
 
   imagem: z.string().min(1),
 
+  imagem_mobile: z.string().nullable().default(null),
+
   ativo: z.boolean().default(true),
 
   ordem: z.number().int().default(0),
@@ -377,7 +379,7 @@ export const listarBannersPublicos = createServerFn({
 
   const { data, error } = await supabasePublico
     .from("banners")
-    .select("id, titulo, imagem, ativo, ordem")
+    .select("id, titulo, imagem, imagem_mobile, ativo, ordem")
     .eq("ativo", true)
     .order("ordem", {
       ascending: true,
@@ -414,6 +416,7 @@ export const salvarBanner = createServerFn({
         .update({
           titulo: campos.titulo,
           imagem: campos.imagem,
+          imagem_mobile: campos.imagem_mobile,
           ativo: campos.ativo,
           ordem: campos.ordem,
         })
@@ -437,6 +440,7 @@ export const salvarBanner = createServerFn({
       .insert({
         titulo: campos.titulo,
         imagem: campos.imagem,
+        imagem_mobile: campos.imagem_mobile,
         ativo: campos.ativo,
         ordem: campos.ordem,
       })
