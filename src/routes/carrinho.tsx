@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Minus,
   Plus,
@@ -23,15 +24,14 @@ import { formatarPreco, precoFinal } from "@/lib/catalog";
 import {
   FORMAS_PAGAMENTO,
   UNIDADES_ATIVAS,
-  distanciaKm,
   enderecoUnidade,
   formatarDistancia,
   linkWhatsAppComTexto,
   rotuloPagamento,
-  unidadeMaisProxima,
   type FormaPagamento,
   type Unidade,
 } from "@/lib/pharmacies";
+import { unidadeMaisProximaDoEndereco } from "@/lib/geo.functions";
 
 export const Route = createFileRoute("/carrinho")({
   head: () => ({
@@ -81,7 +81,7 @@ const iconePagamento: Record<FormaPagamento, typeof Banknote> = {
   credit_link: Link2,
 };
 
-type Fase = "form" | "permissao" | "localizando" | "confirmar" | "lista";
+type Fase = "form" | "calculando" | "confirmar" | "lista";
 
 function CarrinhoPage() {
   const { itens, total, definirQuantidade, remover, limpar } = useCart();
@@ -94,10 +94,12 @@ function CarrinhoPage() {
 
   const [fase, setFase] = useState<Fase>("form");
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
-  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const resolverUnidade = useServerFn(unidadeMaisProximaDoEndereco);
   const [selecionada, setSelecionada] = useState<{
     unidade: Unidade;
     distancia: number | null;
+    duracaoMin: number | null;
+    porRota: boolean;
   } | null>(null);
 
   function atualizarEndereco(campo: keyof Endereco, valor: string) {
@@ -150,44 +152,55 @@ function CarrinhoPage() {
     return lista;
   }
 
-  function iniciarFinalizacao() {
+  async function iniciarFinalizacao() {
     const lista = validar();
     setErros(lista);
     if (lista.length > 0) return;
     setAvisoLocal(null);
-    setFase("permissao");
-  }
+    setFase("calculando");
 
-  function pedirLocalizacao() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setAvisoLocal("Não conseguimos acessar sua localização.");
-      setFase("lista");
-      return;
-    }
-    setFase("localizando");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        setCoords({ lat, lon });
-        const proxima = unidadeMaisProxima(lat, lon);
-        if (!proxima) {
-          setAvisoLocal("Não encontramos unidades disponíveis.");
-          setFase("lista");
-          return;
-        }
-        setSelecionada({ unidade: proxima.unidade, distancia: proxima.distancia });
-        setFase("confirmar");
-      },
-      () => {
-        setAvisoLocal("Não conseguimos acessar sua localização.");
+    try {
+      const resultado = await resolverUnidade({
+        data: {
+          cep: endereco.cep,
+          rua: endereco.rua,
+          numero: endereco.numero,
+          bairro: endereco.bairro,
+          cidade: endereco.cidade,
+          estado: endereco.estado,
+        },
+      });
+
+      if (!resultado) {
+        setAvisoLocal(
+          "Não conseguimos identificar a unidade mais próxima pelo seu endereço.",
+        );
         setFase("lista");
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-    );
+        return;
+      }
+
+      const unidade = UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId);
+      if (!unidade) {
+        setAvisoLocal("Não encontramos unidades disponíveis.");
+        setFase("lista");
+        return;
+      }
+
+      setAvisoLocal(resultado.aviso);
+      setSelecionada({
+        unidade,
+        distancia: resultado.distanciaKm,
+        duracaoMin: resultado.duracaoMin,
+        porRota: resultado.origem === "rota",
+      });
+      setFase("confirmar");
+    } catch {
+      setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+      setFase("lista");
+    }
   }
 
-  function montarMensagem(unidade: Unidade, distancia: number | null) {
+  function montarMensagem(unidade: Unidade, distancia: number | null, porRota: boolean) {
     const linhasProdutos = itens.map(
       (i) =>
         `${i.quantidade}x ${i.produto.nome} — ${formatarPreco(precoFinal(i.produto) * i.quantidade)}`,
@@ -226,24 +239,25 @@ function CarrinhoPage() {
       "*UNIDADE FRANCY*",
       "",
       unidade.name,
-      ...(distancia !== null ? [`Distância aproximada: ${formatarDistancia(distancia)}`] : []),
-      ...(coords ? [`Localização do cliente: ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`] : []),
+      ...(distancia !== null
+        ? [`Distância aproximada: ${formatarDistancia(distancia)}${porRota ? " (por rota)" : ""}`]
+        : []),
       "",
       `Pedido feito em ${new Date().toLocaleString("pt-BR")}`,
     ];
     return partes.join("\n");
   }
 
-  function enviarPedido(unidade: Unidade, distancia: number | null) {
-    const url = linkWhatsAppComTexto(unidade.whatsapp_url, montarMensagem(unidade, distancia));
+  function enviarPedido(unidade: Unidade, distancia: number | null, porRota: boolean) {
+    const url = linkWhatsAppComTexto(
+      unidade.whatsapp_url,
+      montarMensagem(unidade, distancia, porRota),
+    );
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function escolherUnidade(unidade: Unidade) {
-    const distancia = coords
-      ? distanciaKm(coords.lat, coords.lon, unidade.latitude, unidade.longitude)
-      : null;
-    setSelecionada({ unidade, distancia });
+    setSelecionada({ unidade, distancia: null, duracaoMin: null, porRota: false });
     setFase("confirmar");
   }
 
@@ -517,46 +531,17 @@ function CarrinhoPage() {
             </button>
           )}
 
-          {fase === "permissao" && (
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <p className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <Navigation className="size-4" /> Encontraremos a Farmácia Francy mais próxima de
-                você.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Precisamos acessar sua localização para encaminhar seu pedido para a unidade mais
-                próxima.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Sua localização será usada somente para identificar a Farmácia Francy responsável
-                pelo pedido.
-              </p>
-              <button
-                onClick={pedirLocalizacao}
-                className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
-              >
-                Permitir localização
-              </button>
-              <button
-                onClick={() => setFase("lista")}
-                className="w-full rounded-full border border-border px-5 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                Escolher unidade manualmente
-              </button>
-            </div>
-          )}
-
-          {fase === "localizando" && (
+          {fase === "calculando" && (
             <div className="flex items-center gap-2 rounded-lg border border-border p-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin text-primary" />
-              Localizando a Farmácia Francy mais próxima...
+              Localizando a Farmácia Francy mais próxima do seu endereço...
             </div>
           )}
 
           {fase === "confirmar" && selecionada && (
             <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-              <p className="text-sm font-semibold text-primary">
-                Encontramos a Farmácia Francy mais próxima!
+              <p className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <Navigation className="size-4" /> Encontramos a Farmácia Francy mais próxima!
               </p>
               <p className="flex items-start gap-2 text-sm font-bold">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-brand-red" />
@@ -567,11 +552,18 @@ function CarrinhoPage() {
               </p>
               {selecionada.distancia !== null && (
                 <p className="text-xs font-medium text-primary">
-                  {formatarDistancia(selecionada.distancia)} de distância
+                  {formatarDistancia(selecionada.distancia)}
+                  {selecionada.porRota ? " por rota" : " em linha reta"}
+                  {selecionada.duracaoMin !== null
+                    ? ` — cerca de ${selecionada.duracaoMin} min de carro`
+                    : ""}
                 </p>
               )}
+              {avisoLocal && <p className="text-xs text-brand-red">{avisoLocal}</p>}
               <button
-                onClick={() => enviarPedido(selecionada.unidade, selecionada.distancia)}
+                onClick={() =>
+                  enviarPedido(selecionada.unidade, selecionada.distancia, selecionada.porRota)
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-5 py-3 text-sm font-bold text-brand-red-foreground transition-opacity hover:opacity-90"
               >
                 <MessageCircle className="size-4" /> Enviar pedido
