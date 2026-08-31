@@ -23,15 +23,14 @@ import { formatarPreco, precoFinal } from "@/lib/catalog";
 import {
   FORMAS_PAGAMENTO,
   UNIDADES_ATIVAS,
-  distanciaKm,
   enderecoUnidade,
   formatarDistancia,
   linkWhatsAppComTexto,
   rotuloPagamento,
-  unidadeMaisProxima,
   type FormaPagamento,
   type Unidade,
 } from "@/lib/pharmacies";
+import { unidadeMaisProximaDoEndereco } from "@/lib/geo.functions";
 
 export const Route = createFileRoute("/carrinho")({
   head: () => ({
