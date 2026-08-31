@@ -85,8 +85,18 @@ function normalizarCep(valor: string) {
    CACHE
 ========================================================= */
 
+/*
+ * Versão do cálculo.
+ *
+ * Sempre que as coordenadas das unidades ou o critério
+ * de escolha mudarem, aumente este número para descartar
+ * resultados antigos guardados em cache.
+ */
+const VERSAO_CALCULO = "v3-coordenadas-conferidas";
+
 export function chaveCache(endereco: EnderecoConsulta) {
   return [
+    VERSAO_CALCULO,
     normalizarCep(endereco.cep),
     normalizarTexto(endereco.rua),
     normalizarTexto(endereco.numero),
