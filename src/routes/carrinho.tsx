@@ -366,6 +366,81 @@ function CarrinhoPage() {
     return lista;
   }
 
+  /*
+   * Calcula a unidade mais próxima do endereço atual.
+   *
+   * Só aplica o resultado se o endereço continuar
+   * exatamente igual ao que originou o cálculo.
+   */
+  const calcularUnidade = useCallback(
+    async (dados: Endereco, chave: string) => {
+      const id = calculoIdRef.current + 1;
+
+      calculoIdRef.current = id;
+
+      /* Invalida imediatamente qualquer resultado anterior. */
+      setSelecionada(null);
+
+      setAvisoLocal(null);
+
+      setFase("calculando");
+
+      const valido = () => id === calculoIdRef.current && enderecoKeyRef.current === chave;
+
+      try {
+        const resultado = await resolverUnidade({
+          data: {
+            cep: dados.cep,
+            rua: dados.rua,
+            numero: dados.numero,
+            bairro: dados.bairro,
+            cidade: dados.cidade,
+            estado: dados.estado,
+          },
+        });
+
+        if (!valido()) {
+          return;
+        }
+
+        const unidade = resultado ? UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId) : undefined;
+
+        if (!resultado || !unidade) {
+          setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
+          setFase("lista");
+
+          return;
+        }
+
+        setAvisoLocal(resultado.aviso);
+
+        setSelecionada({
+          unidade,
+
+          distancia: resultado.distanciaKm,
+
+          duracaoMin: resultado.duracaoMin,
+
+          porRota: resultado.origem === "rota",
+
+          chave,
+        });
+
+        setFase("confirmar");
+      } catch {
+        if (!valido()) {
+          return;
+        }
+
+        setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
+        setFase("lista");
+      }
+    },
+    [resolverUnidade],
+  );
+
   async function iniciarFinalizacao() {
     const lista = validar();
 
@@ -375,59 +450,51 @@ function CarrinhoPage() {
       return;
     }
 
+    await calcularUnidade(endereco, enderecoKey);
+  }
+
+  /*
+   * Endereço alterado:
+   *
+   * a unidade anterior é removida na hora e,
+   * se o endereço estiver completo, o cálculo
+   * é refeito automaticamente.
+   */
+  const primeiroRender = useRef(true);
+
+  useEffect(() => {
+    if (primeiroRender.current) {
+      primeiroRender.current = false;
+
+      return;
+    }
+
+    /* Invalida qualquer cálculo em andamento. */
+    calculoIdRef.current += 1;
+
+    setSelecionada(null);
+
     setAvisoLocal(null);
 
-    setFase("calculando");
-
-    try {
-      const resultado = await resolverUnidade({
-        data: {
-          cep: endereco.cep,
-          rua: endereco.rua,
-          numero: endereco.numero,
-          bairro: endereco.bairro,
-          cidade: endereco.cidade,
-          estado: endereco.estado,
-        },
-      });
-
-      if (!resultado) {
-        setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
-
-        setFase("lista");
-
-        return;
+    setFase((atual) => {
+      if (atual === "form") {
+        return atual;
       }
 
-      const unidade = UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId);
+      return enderecoCompleto ? "calculando" : "form";
+    });
 
-      if (!unidade) {
-        setAvisoLocal("Não encontramos unidades disponíveis.");
-
-        setFase("lista");
-
-        return;
-      }
-
-      setAvisoLocal(resultado.aviso);
-
-      setSelecionada({
-        unidade,
-
-        distancia: resultado.distanciaKm,
-
-        duracaoMin: resultado.duracaoMin,
-
-        porRota: resultado.origem === "rota",
-      });
-
-      setFase("confirmar");
-    } catch {
-      setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
-
-      setFase("lista");
+    if (!enderecoCompleto) {
+      return;
     }
-  }
+
+    /*
+     * Recalcula apenas quando o cliente já havia
+     * iniciado a finalização (evita chamadas a cada tecla).
+     */
+    setFase((atual) => atual);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enderecoKey]);
 
   function montarMensagem(unidade: Unidade, distancia: number | null, porRota: boolean) {
     const linhasProdutos = itens.map(
