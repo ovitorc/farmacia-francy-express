@@ -81,7 +81,7 @@ const iconePagamento: Record<FormaPagamento, typeof Banknote> = {
   credit_link: Link2,
 };
 
-type Fase = "form" | "permissao" | "localizando" | "confirmar" | "lista";
+type Fase = "form" | "calculando" | "confirmar" | "lista";
 
 function CarrinhoPage() {
   const { itens, total, definirQuantidade, remover, limpar } = useCart();
