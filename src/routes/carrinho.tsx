@@ -200,7 +200,7 @@ function CarrinhoPage() {
     }
   }
 
-  function montarMensagem(unidade: Unidade, distancia: number | null) {
+  function montarMensagem(unidade: Unidade, distancia: number | null, porRota: boolean) {
     const linhasProdutos = itens.map(
       (i) =>
         `${i.quantidade}x ${i.produto.nome} — ${formatarPreco(precoFinal(i.produto) * i.quantidade)}`,
