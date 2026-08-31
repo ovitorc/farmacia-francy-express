@@ -150,41 +150,52 @@ function CarrinhoPage() {
     return lista;
   }
 
-  function iniciarFinalizacao() {
+  async function iniciarFinalizacao() {
     const lista = validar();
     setErros(lista);
     if (lista.length > 0) return;
     setAvisoLocal(null);
-    setFase("permissao");
-  }
+    setFase("calculando");
 
-  function pedirLocalizacao() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setAvisoLocal("Não conseguimos acessar sua localização.");
-      setFase("lista");
-      return;
-    }
-    setFase("localizando");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        setCoords({ lat, lon });
-        const proxima = unidadeMaisProxima(lat, lon);
-        if (!proxima) {
-          setAvisoLocal("Não encontramos unidades disponíveis.");
-          setFase("lista");
-          return;
-        }
-        setSelecionada({ unidade: proxima.unidade, distancia: proxima.distancia });
-        setFase("confirmar");
-      },
-      () => {
-        setAvisoLocal("Não conseguimos acessar sua localização.");
+    try {
+      const resultado = await resolverUnidade({
+        data: {
+          cep: endereco.cep,
+          rua: endereco.rua,
+          numero: endereco.numero,
+          bairro: endereco.bairro,
+          cidade: endereco.cidade,
+          estado: endereco.estado,
+        },
+      });
+
+      if (!resultado) {
+        setAvisoLocal(
+          "Não conseguimos identificar a unidade mais próxima pelo seu endereço.",
+        );
         setFase("lista");
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-    );
+        return;
+      }
+
+      const unidade = UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId);
+      if (!unidade) {
+        setAvisoLocal("Não encontramos unidades disponíveis.");
+        setFase("lista");
+        return;
+      }
+
+      setAvisoLocal(resultado.aviso);
+      setSelecionada({
+        unidade,
+        distancia: resultado.distanciaKm,
+        duracaoMin: resultado.duracaoMin,
+        porRota: resultado.origem === "rota",
+      });
+      setFase("confirmar");
+    } catch {
+      setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+      setFase("lista");
+    }
   }
 
   function montarMensagem(unidade: Unidade, distancia: number | null) {
