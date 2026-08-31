@@ -91,6 +91,7 @@ type Banner = {
   id: string;
   titulo: string;
   imagem: string;
+  imagem_mobile?: string | null;
   ativo: boolean;
   ordem: number;
   created_at?: string;
@@ -176,6 +177,8 @@ function AdminPage() {
   const [bannerTitulo, setBannerTitulo] = useState("");
 
   const [bannerImagem, setBannerImagem] = useState<string | null>(null);
+
+  const [bannerImagemMobile, setBannerImagemMobile] = useState<string | null>(null);
 
   const [bannerAtivo, setBannerAtivo] = useState(true);
 
@@ -522,6 +525,7 @@ function AdminPage() {
     setBannerEditando(null);
     setBannerTitulo("");
     setBannerImagem(null);
+    setBannerImagemMobile(null);
     setBannerAtivo(true);
 
     const maiorOrdem = banners.length > 0 ? Math.max(...banners.map((b: Banner) => b.ordem)) + 1 : 0;
@@ -538,6 +542,8 @@ function AdminPage() {
 
     setBannerImagem(banner.imagem);
 
+    setBannerImagemMobile(banner.imagem_mobile ?? null);
+
     setBannerAtivo(banner.ativo);
 
     setBannerOrdem(String(banner.ordem ?? 0));
@@ -545,7 +551,7 @@ function AdminPage() {
     setBannerAberto(true);
   }
 
-  async function escolherBanner(file: File) {
+  async function escolherBanner(file: File, destino: "desktop" | "mobile" = "desktop") {
     setEnviandoBanner(true);
 
     try {
@@ -567,7 +573,11 @@ function AdminPage() {
         },
       });
 
-      setBannerImagem(url);
+      if (destino === "mobile") {
+        setBannerImagemMobile(url);
+      } else {
+        setBannerImagem(url);
+      }
 
       toast.success("Banner enviado.");
     } catch {
@@ -598,6 +608,8 @@ function AdminPage() {
 
           imagem: bannerImagem,
 
+          imagem_mobile: bannerImagemMobile,
+
           ativo: bannerAtivo,
 
           ordem: Number(bannerOrdem) || 0,
@@ -609,6 +621,7 @@ function AdminPage() {
       setBannerEditando(null);
       setBannerTitulo("");
       setBannerImagem(null);
+      setBannerImagemMobile(null);
       setBannerAtivo(true);
       setBannerOrdem("0");
 
@@ -1027,7 +1040,55 @@ function AdminPage() {
               {enviandoBanner ? (
                 <p className="text-xs text-muted-foreground">Enviando banner...</p>
               ) : (
-                <p className="text-xs text-muted-foreground">Recomendado: imagem horizontal em formato 16:6.</p>
+                <p className="text-xs text-muted-foreground">
+                  Recomendado para computador: imagem horizontal 1600 x 600 px.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Imagem para celular (opcional)</Label>
+
+              <div className="mx-auto w-48 overflow-hidden rounded-xl border bg-muted">
+                {bannerImagemMobile ? (
+                  <img
+                    src={bannerImagemMobile}
+                    alt="Pré-visualização do banner para celular"
+                    className="aspect-[4/5] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[4/5] items-center justify-center">
+                    <p className="px-3 text-center text-xs text-muted-foreground">Sem imagem de celular</p>
+                  </div>
+                )}
+              </div>
+
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={enviandoBanner}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+
+                  if (file) {
+                    void escolherBanner(file, "mobile");
+                  }
+                }}
+              />
+
+              <p className="text-xs text-muted-foreground">
+                Recomendado para celular: 1080 x 1350 px (4:5). Sem esta imagem, o celular usa a versão de computador
+                sem deformar.
+              </p>
+
+              {bannerImagemMobile && (
+                <button
+                  type="button"
+                  onClick={() => setBannerImagemMobile(null)}
+                  className="text-xs font-medium text-muted-foreground underline"
+                >
+                  Remover imagem de celular
+                </button>
               )}
             </div>
 

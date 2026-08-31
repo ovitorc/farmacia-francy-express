@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           imagem: string
+          imagem_mobile: string | null
           link: string | null
           ordem: number
           titulo: string
@@ -29,6 +30,7 @@ export type Database = {
           created_at?: string
           id?: string
           imagem: string
+          imagem_mobile?: string | null
           link?: string | null
           ordem?: number
           titulo?: string
@@ -38,6 +40,7 @@ export type Database = {
           created_at?: string
           id?: string
           imagem?: string
+          imagem_mobile?: string | null
           link?: string | null
           ordem?: number
           titulo?: string

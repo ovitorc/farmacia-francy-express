@@ -130,7 +130,7 @@ function credenciais(): Record<string, string> | null {
   const headers: Record<string, string> = {};
 
   if (lovableKey) {
-    headers.Authorization = `Bearer ${lovableKey}`;
+    headers["Authorization"] = `Bearer ${lovableKey}`;
   }
 
   if (mapsKey) {
@@ -722,23 +722,22 @@ async function calcularMatrizDeRotas(
  * utilizando os metros retornados pelo
  * Google Routes.
  */
-function escolherMelhorRota(rotas: ResultadoRota[]) {
-  return [...rotas].sort((a, b) => {
+function escolherMelhorRota(rotas: ResultadoRota[]): ResultadoRota | null {
+  const ordenadas = [...rotas].sort((a, b) => {
     /*
      * PRIMEIRO CRITÉRIO:
      *
-     * MENOR DISTÂNCIA.
+     * MENOR TEMPO ESTIMADO DE DESLOCAMENTO.
      */
-    if (a.metros !== b.metros) {
-      return a.metros - b.metros;
-    }
+    if (a.segundos !== null && b.segundos !== null && a.segundos !== b.segundos) {
+      /*
+       * Empate técnico (diferença menor que 1 minuto):
+       * decide pela menor distância.
+       */
+      if (Math.abs(a.segundos - b.segundos) < 60) {
+        return a.metros - b.metros;
+      }
 
-    /*
-     * SEGUNDO CRITÉRIO:
-     *
-     * MENOR TEMPO.
-     */
-    if (a.segundos !== null && b.segundos !== null) {
       return a.segundos - b.segundos;
     }
 
@@ -750,8 +749,15 @@ function escolherMelhorRota(rotas: ResultadoRota[]) {
       return 1;
     }
 
-    return 0;
-  })[0];
+    /*
+     * SEGUNDO CRITÉRIO:
+     *
+     * MENOR DISTÂNCIA DA ROTA.
+     */
+    return a.metros - b.metros;
+  });
+
+  return ordenadas[0] ?? null;
 }
 
 /* =========================================================
@@ -906,9 +912,9 @@ export async function resolverUnidadeMaisProxima(endereco: EnderecoConsulta): Pr
   if (rotas && rotas.length > 0) {
     const melhorRota = escolherMelhorRota(rotas);
 
-    const unidade = unidades[melhorRota.indice];
+    const unidade = melhorRota ? unidades[melhorRota.indice] : undefined;
 
-    if (unidade) {
+    if (melhorRota && unidade) {
       resultado = {
         unidadeId: unidade.id,
 
@@ -936,7 +942,7 @@ export async function resolverUnidadeMaisProxima(endereco: EnderecoConsulta): Pr
 
         duracaoMin: resultado.duracaoMin,
 
-        criterio: "MENOR DISTÂNCIA REAL DE CARRO",
+        criterio: "MENOR TEMPO DE ROTA (desempate por distância)",
       });
     }
   }

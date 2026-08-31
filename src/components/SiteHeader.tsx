@@ -216,19 +216,49 @@ export function SiteHeader() {
             CABEÇALHO PRINCIPAL
         ======================================== */}
 
-        <div className="relative mx-auto flex max-w-7xl items-center justify-center px-3 py-2.5 sm:px-6">
-          {/* MENU */}
-          <button
-            onClick={() => setMenuAberto(true)}
-            aria-label="Abrir menu"
-            className="absolute left-3 shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10 sm:left-6"
-          >
-            <Menu className="size-5" strokeWidth={1.75} />
-          </button>
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+          {/* PRIMEIRA LINHA (MOBILE): MENU | LOGO | CARRINHO */}
+          <div className="flex items-center justify-between gap-3 md:contents">
+            {/* MENU */}
+            <button
+              onClick={() => setMenuAberto(true)}
+              aria-label="Abrir menu"
+              className="shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10 md:order-1"
+            >
+              <Menu className="size-5" strokeWidth={1.75} />
+            </button>
 
-          {/* PESQUISA + CARRINHO */}
-          <div className="flex w-full max-w-[620px] items-center gap-3">
-            {/* BARRA DE PESQUISA */}
+            {/* LOGO FARMÁCIA FRANCY */}
+            <Link
+              to="/"
+              aria-label="Página inicial Farmácias Francy"
+              className="shrink-0 transition-transform hover:scale-105 md:order-2"
+            >
+              <Logo className="h-9 sm:h-11" />
+            </Link>
+
+            {/* CARRINHO */}
+            <Link
+              to="/carrinho"
+              aria-label="Abrir carrinho"
+              className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10 md:order-4"
+            >
+              <ShoppingCart className="size-5" strokeWidth={1.75} />
+
+              {totalItens > 0 && (
+                <span
+                  className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
+                    pop ? "cart-pop" : ""
+                  }`}
+                >
+                  {totalItens}
+                </span>
+              )}
+            </Link>
+          </div>
+
+          {/* SEGUNDA LINHA (MOBILE): BARRA DE PESQUISA */}
+          <div className="flex w-full min-w-0 items-center md:order-3">
             <div className="relative min-w-0 flex-1">
               <form onSubmit={enviar}>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -289,35 +319,6 @@ export function SiteHeader() {
               )}
             </div>
 
-            {/* CARRINHO */}
-            <Link
-              to="/carrinho"
-              aria-label="Abrir carrinho"
-              className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
-            >
-              <ShoppingCart className="size-5" strokeWidth={1.75} />
-
-              {totalItens > 0 && (
-                <span
-                  className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
-                    pop ? "cart-pop" : ""
-                  }`}
-                >
-                  {totalItens}
-                </span>
-              )}
-            </Link>
-          </div>
-
-          {/* LOGO FARMÁCIA FRANCY */}
-          <div className="absolute right-3 flex shrink-0 items-center gap-3 sm:right-6">
-            <Link
-              to="/"
-              aria-label="Página inicial Farmácias Francy"
-              className="shrink-0 transition-transform hover:scale-105"
-            >
-              <Logo className="h-10 sm:h-12" />
-            </Link>
           </div>
         </div>
 

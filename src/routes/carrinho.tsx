@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -128,7 +128,46 @@ function CarrinhoPage() {
     distancia: number | null;
     duracaoMin: number | null;
     porRota: boolean;
+    chave: string;
   } | null>(null);
+
+  /*
+   * Chave única do endereço atual.
+   *
+   * Qualquer alteração em CEP, rua, número, bairro,
+   * cidade ou estado gera uma chave nova e invalida
+   * imediatamente a unidade calculada anteriormente.
+   */
+  const enderecoKey = useMemo(
+    () =>
+      [endereco.cep, endereco.rua, endereco.numero, endereco.bairro, endereco.cidade, endereco.estado]
+        .map((valor) => valor.trim().toLocaleLowerCase("pt-BR"))
+        .join("|"),
+    [endereco.cep, endereco.rua, endereco.numero, endereco.bairro, endereco.cidade, endereco.estado],
+  );
+
+  const enderecoKeyRef = useRef(enderecoKey);
+
+  enderecoKeyRef.current = enderecoKey;
+
+  /*
+   * Identificador da requisição de cálculo atual.
+   *
+   * Uma resposta antiga nunca pode sobrescrever
+   * o resultado do endereço atual.
+   */
+  const calculoIdRef = useRef(0);
+
+  /* Indica que o cliente já pediu para finalizar o pedido. */
+  const finalizouRef = useRef(false);
+
+  const enderecoCompleto =
+    Boolean(endereco.cep.trim()) &&
+    Boolean(endereco.rua.trim()) &&
+    Boolean(endereco.numero.trim()) &&
+    Boolean(endereco.bairro.trim()) &&
+    Boolean(endereco.cidade.trim()) &&
+    Boolean(endereco.estado.trim());
 
   function atualizarEndereco(campo: keyof Endereco, valor: string) {
     setEndereco((prev) => ({
@@ -330,6 +369,81 @@ function CarrinhoPage() {
     return lista;
   }
 
+  /*
+   * Calcula a unidade mais próxima do endereço atual.
+   *
+   * Só aplica o resultado se o endereço continuar
+   * exatamente igual ao que originou o cálculo.
+   */
+  const calcularUnidade = useCallback(
+    async (dados: Endereco, chave: string) => {
+      const id = calculoIdRef.current + 1;
+
+      calculoIdRef.current = id;
+
+      /* Invalida imediatamente qualquer resultado anterior. */
+      setSelecionada(null);
+
+      setAvisoLocal(null);
+
+      setFase("calculando");
+
+      const valido = () => id === calculoIdRef.current && enderecoKeyRef.current === chave;
+
+      try {
+        const resultado = await resolverUnidade({
+          data: {
+            cep: dados.cep,
+            rua: dados.rua,
+            numero: dados.numero,
+            bairro: dados.bairro,
+            cidade: dados.cidade,
+            estado: dados.estado,
+          },
+        });
+
+        if (!valido()) {
+          return;
+        }
+
+        const unidade = resultado ? UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId) : undefined;
+
+        if (!resultado || !unidade) {
+          setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
+          setFase("lista");
+
+          return;
+        }
+
+        setAvisoLocal(resultado.aviso);
+
+        setSelecionada({
+          unidade,
+
+          distancia: resultado.distanciaKm,
+
+          duracaoMin: resultado.duracaoMin,
+
+          porRota: resultado.origem === "rota",
+
+          chave,
+        });
+
+        setFase("confirmar");
+      } catch {
+        if (!valido()) {
+          return;
+        }
+
+        setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
+
+        setFase("lista");
+      }
+    },
+    [resolverUnidade],
+  );
+
   async function iniciarFinalizacao() {
     const lista = validar();
 
@@ -339,59 +453,60 @@ function CarrinhoPage() {
       return;
     }
 
+    finalizouRef.current = true;
+
+    await calcularUnidade(endereco, enderecoKey);
+  }
+
+  /*
+   * Endereço alterado:
+   *
+   * a unidade anterior é removida na hora e,
+   * se o endereço estiver completo, o cálculo
+   * é refeito automaticamente.
+   */
+  const primeiroRender = useRef(true);
+
+  const enderecoRef = useRef(endereco);
+
+  enderecoRef.current = endereco;
+
+  useEffect(() => {
+    if (primeiroRender.current) {
+      primeiroRender.current = false;
+
+      return;
+    }
+
+    /* Invalida imediatamente o cálculo e o resultado anteriores. */
+    calculoIdRef.current += 1;
+
+    setSelecionada(null);
+
     setAvisoLocal(null);
+
+    if (!finalizouRef.current) {
+      return;
+    }
+
+    if (!enderecoCompleto) {
+      setFase("form");
+
+      return;
+    }
+
+    /* Debounce curto para não chamar a cada tecla digitada. */
+    const chave = enderecoKey;
 
     setFase("calculando");
 
-    try {
-      const resultado = await resolverUnidade({
-        data: {
-          cep: endereco.cep,
-          rua: endereco.rua,
-          numero: endereco.numero,
-          bairro: endereco.bairro,
-          cidade: endereco.cidade,
-          estado: endereco.estado,
-        },
-      });
+    const timer = setTimeout(() => {
+      void calcularUnidade(enderecoRef.current, chave);
+    }, 600);
 
-      if (!resultado) {
-        setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
-
-        setFase("lista");
-
-        return;
-      }
-
-      const unidade = UNIDADES_ATIVAS.find((u) => u.id === resultado.unidadeId);
-
-      if (!unidade) {
-        setAvisoLocal("Não encontramos unidades disponíveis.");
-
-        setFase("lista");
-
-        return;
-      }
-
-      setAvisoLocal(resultado.aviso);
-
-      setSelecionada({
-        unidade,
-
-        distancia: resultado.distanciaKm,
-
-        duracaoMin: resultado.duracaoMin,
-
-        porRota: resultado.origem === "rota",
-      });
-
-      setFase("confirmar");
-    } catch {
-      setAvisoLocal("Não conseguimos identificar a unidade mais próxima pelo seu endereço.");
-
-      setFase("lista");
-    }
-  }
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enderecoKey]);
 
   function montarMensagem(unidade: Unidade, distancia: number | null, porRota: boolean) {
     const linhasProdutos = itens.map(
@@ -492,6 +607,8 @@ function CarrinhoPage() {
       duracaoMin: null,
 
       porRota: false,
+
+      chave: enderecoKey,
     });
 
     setFase("confirmar");
@@ -805,7 +922,7 @@ function CarrinhoPage() {
             </div>
           )}
 
-          {fase === "confirmar" && selecionada && (
+          {fase === "confirmar" && selecionada && selecionada.chave === enderecoKey && (
             <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-primary">
                 <Navigation className="size-4" />

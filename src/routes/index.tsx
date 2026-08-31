@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
@@ -63,6 +63,7 @@ type Banner = {
   id: string;
   titulo: string;
   imagem: string;
+  imagem_mobile: string | null;
   ativo: boolean;
   ordem: number;
 };
@@ -74,6 +75,8 @@ type Banner = {
 function BannerCarousel() {
   const [bannerAtual, setBannerAtual] = useState(0);
 
+  const trilhoMobile = useRef<HTMLDivElement | null>(null);
+
   const {
     data: banners = [],
     isLoading,
@@ -83,18 +86,11 @@ function BannerCarousel() {
     queryFn: () => listarBannersPublicos(),
   });
 
-  /* ==========================================================
-     QUANDO OS BANNERS MUDAM
-     ========================================================== */
-
   useEffect(() => {
     setBannerAtual(0);
   }, [banners.length]);
 
-  /* ==========================================================
-     CARROSSEL AUTOMÁTICO
-     ========================================================== */
-
+  /* Carrossel automático (qualquer quantidade de banners). */
   useEffect(() => {
     if (banners.length <= 1) {
       return;
@@ -102,20 +98,43 @@ function BannerCarousel() {
 
     const intervalo = setInterval(() => {
       setBannerAtual((atual) => (atual + 1) % banners.length);
-    }, 4000);
+    }, 5000);
 
     return () => {
       clearInterval(intervalo);
     };
   }, [banners.length]);
 
-  /* ==========================================================
-     CARREGANDO
-     ========================================================== */
+  /* Acompanha o swipe do dedo no celular. */
+  function aoRolarMobile() {
+    const trilho = trilhoMobile.current;
+
+    if (!trilho) {
+      return;
+    }
+
+    const largura = trilho.clientWidth || 1;
+
+    const indice = Math.round(trilho.scrollLeft / (largura * 0.88));
+
+    setBannerAtual(Math.min(Math.max(indice, 0), Math.max(banners.length - 1, 0)));
+  }
+
+  function irPara(indice: number) {
+    setBannerAtual(indice);
+
+    const trilho = trilhoMobile.current;
+
+    if (trilho) {
+      const cartao = trilho.children[indice] as HTMLElement | undefined;
+
+      cartao?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }
 
   if (isLoading) {
     return (
-      <div className="relative aspect-[16/6] w-full overflow-hidden rounded-2xl border border-border bg-muted/40">
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-border bg-muted/40 sm:aspect-[16/6]">
         <div className="flex h-full items-center justify-center">
           <p className="text-sm text-muted-foreground">Carregando banners...</p>
         </div>
@@ -123,13 +142,9 @@ function BannerCarousel() {
     );
   }
 
-  /* ==========================================================
-     ERRO
-     ========================================================== */
-
   if (isError) {
     return (
-      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
+      <div className="relative flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40 sm:aspect-[16/6]">
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Não foi possível carregar os banners.</p>
 
@@ -139,13 +154,9 @@ function BannerCarousel() {
     );
   }
 
-  /* ==========================================================
-     NENHUM BANNER
-     ========================================================== */
-
   if (banners.length === 0) {
     return (
-      <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40">
+      <div className="relative flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/40 sm:aspect-[16/6]">
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Área de banners promocionais</p>
 
@@ -155,73 +166,86 @@ function BannerCarousel() {
     );
   }
 
-  /* ==========================================================
-     BANNERS
-     ========================================================== */
+  const lista = banners as Banner[];
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl">
-      <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
-        {banners.map((banner: Banner, index: number) => (
-          <img
-            key={banner.id}
-            src={banner.imagem}
-            alt={banner.titulo || "Banner promocional da Farmácias Francy"}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
-              index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          />
+    <div className="relative w-full">
+      {/* ====================== MOBILE ====================== */}
+
+      <div
+        ref={trilhoMobile}
+        onScroll={aoRolarMobile}
+        className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden"
+      >
+        {lista.map((banner) => (
+          <div key={banner.id} className="w-[88%] shrink-0 snap-center overflow-hidden rounded-2xl bg-muted">
+            <img
+              src={banner.imagem_mobile || banner.imagem}
+              alt={banner.titulo || "Banner promocional da Farmácias Francy"}
+              loading="lazy"
+              className="aspect-[4/5] w-full object-cover"
+            />
+          </div>
         ))}
       </div>
 
-      {/* ======================================================
-          BOLINHAS DE NAVEGAÇÃO
-          ====================================================== */}
+      {/* ====================== DESKTOP ====================== */}
 
-      {banners.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
-          {banners.map((banner: Banner, index: number) => (
-            <button
+      <div className="relative hidden w-full overflow-hidden rounded-2xl sm:block">
+        <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
+          {lista.map((banner, index) => (
+            <img
               key={banner.id}
-              type="button"
-              aria-label={`Ir para o banner ${index + 1}`}
-              onClick={() => setBannerAtual(index)}
-              className={`rounded-full transition-all duration-300 ${
-                index === bannerAtual ? "h-2.5 w-6 bg-white" : "size-2.5 bg-white/60 hover:bg-white/90"
+              src={banner.imagem}
+              alt={banner.titulo || "Banner promocional da Farmácias Francy"}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
+                index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
             />
           ))}
         </div>
-      )}
 
-      {/* ======================================================
-          SETA ESQUERDA
-          ====================================================== */}
+        {lista.length > 1 && (
+          <>
+            <button
+              type="button"
+              aria-label="Banner anterior"
+              onClick={() => setBannerAtual((bannerAtual - 1 + lista.length) % lista.length)}
+              className="absolute left-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
+            >
+              ‹
+            </button>
 
-      {banners.length > 1 && (
-        <button
-          type="button"
-          aria-label="Banner anterior"
-          onClick={() => setBannerAtual((bannerAtual - 1 + banners.length) % banners.length)}
-          className="absolute left-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
-        >
-          ‹
-        </button>
-      )}
+            <button
+              type="button"
+              aria-label="Próximo banner"
+              onClick={() => setBannerAtual((bannerAtual + 1) % lista.length)}
+              className="absolute right-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
+            >
+              ›
+            </button>
+          </>
+        )}
+      </div>
 
-      {/* ======================================================
-          SETA DIREITA
-          ====================================================== */}
+      {/* ====================== INDICADORES ====================== */}
 
-      {banners.length > 1 && (
-        <button
-          type="button"
-          aria-label="Próximo banner"
-          onClick={() => setBannerAtual((bannerAtual + 1) % banners.length)}
-          className="absolute right-3 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-2xl text-white backdrop-blur-sm transition hover:bg-black/50"
-        >
-          ›
-        </button>
+      {lista.length > 1 && (
+        <div className="mt-3 flex items-center justify-center gap-2 sm:absolute sm:bottom-4 sm:left-1/2 sm:mt-0 sm:-translate-x-1/2 sm:rounded-full sm:bg-black/30 sm:px-3 sm:py-2 sm:backdrop-blur-sm">
+          {lista.map((banner, index) => (
+            <button
+              key={banner.id}
+              type="button"
+              aria-label={`Ir para o banner ${index + 1}`}
+              onClick={() => irPara(index)}
+              className={`rounded-full transition-all duration-300 ${
+                index === bannerAtual
+                  ? "h-2.5 w-6 bg-primary sm:bg-white"
+                  : "size-2.5 bg-primary/30 hover:bg-primary/60 sm:bg-white/60 sm:hover:bg-white/90"
+              }`}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
