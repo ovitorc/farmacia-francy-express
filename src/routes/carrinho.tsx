@@ -462,6 +462,10 @@ function CarrinhoPage() {
    */
   const primeiroRender = useRef(true);
 
+  const enderecoRef = useRef(endereco);
+
+  enderecoRef.current = endereco;
+
   useEffect(() => {
     if (primeiroRender.current) {
       primeiroRender.current = false;
@@ -469,30 +473,33 @@ function CarrinhoPage() {
       return;
     }
 
-    /* Invalida qualquer cálculo em andamento. */
+    /* Invalida imediatamente o cálculo e o resultado anteriores. */
     calculoIdRef.current += 1;
 
     setSelecionada(null);
 
     setAvisoLocal(null);
 
-    setFase((atual) => {
-      if (atual === "form") {
-        return atual;
-      }
-
-      return enderecoCompleto ? "calculando" : "form";
-    });
-
-    if (!enderecoCompleto) {
+    if (!finalizouRef.current) {
       return;
     }
 
-    /*
-     * Recalcula apenas quando o cliente já havia
-     * iniciado a finalização (evita chamadas a cada tecla).
-     */
-    setFase((atual) => atual);
+    if (!enderecoCompleto) {
+      setFase("form");
+
+      return;
+    }
+
+    /* Debounce curto para não chamar a cada tecla digitada. */
+    const chave = enderecoKey;
+
+    setFase("calculando");
+
+    const timer = setTimeout(() => {
+      void calcularUnidade(enderecoRef.current, chave);
+    }, 600);
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enderecoKey]);
 
