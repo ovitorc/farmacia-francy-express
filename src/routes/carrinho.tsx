@@ -922,7 +922,7 @@ function CarrinhoPage() {
             </div>
           )}
 
-          {fase === "confirmar" && selecionada && (
+          {fase === "confirmar" && selecionada && selecionada.chave === enderecoKey && (
             <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-primary">
                 <Navigation className="size-4" />
