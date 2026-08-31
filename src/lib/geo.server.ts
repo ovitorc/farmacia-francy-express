@@ -34,8 +34,8 @@ type ResultadoGeocodingGoogle = {
   formatted_address?: string;
   geometry?: {
     location?: {
-      lat: number;
-      lng: number;
+      lat?: number;
+      lng?: number;
     };
   };
   address_components?: ComponenteEnderecoGoogle[];
@@ -44,12 +44,23 @@ type ResultadoGeocodingGoogle = {
 
 type RespostaGeocodingGoogle = {
   status?: string;
+  error_message?: string;
   results?: ResultadoGeocodingGoogle[];
+};
+
+type ResultadoRota = {
+  indice: number;
+  metros: number;
+  segundos: number | null;
 };
 
 const cache = new Map<string, ResultadoUnidade>();
 
 const CACHE_MAX = 500;
+
+/* =========================================================
+   NORMALIZAÇÃO
+========================================================= */
 
 function normalizarTexto(valor: string) {
   return valor
@@ -67,66 +78,94 @@ function normalizarCep(valor: string) {
   return somenteDigitos(valor).slice(0, 8);
 }
 
-export function chaveCache(e: EnderecoConsulta) {
+/* =========================================================
+   CACHE
+========================================================= */
+
+export function chaveCache(endereco: EnderecoConsulta) {
   return [
-    normalizarCep(e.cep),
-    normalizarTexto(e.rua),
-    normalizarTexto(e.numero),
-    normalizarTexto(e.bairro),
-    normalizarTexto(e.cidade),
-    normalizarTexto(e.estado),
+    normalizarCep(endereco.cep),
+    normalizarTexto(endereco.rua),
+    normalizarTexto(endereco.numero),
+    normalizarTexto(endereco.bairro),
+    normalizarTexto(endereco.cidade),
+    normalizarTexto(endereco.estado),
   ].join("|");
-}
-
-function guardarCache(chave: string, valor: ResultadoUnidade) {
-  if (cache.size >= CACHE_MAX) {
-    const primeira = cache.keys().next().value;
-
-    if (primeira) {
-      cache.delete(primeira);
-    }
-  }
-
-  cache.set(chave, valor);
 }
 
 export function lerCache(chave: string) {
   return cache.get(chave) ?? null;
 }
 
-function credenciais() {
+function guardarCache(chave: string, resultado: ResultadoUnidade) {
+  if (cache.size >= CACHE_MAX) {
+    const primeiraChave = cache.keys().next().value;
+
+    if (primeiraChave) {
+      cache.delete(primeiraChave);
+    }
+  }
+
+  cache.set(chave, resultado);
+}
+
+/* =========================================================
+   CREDENCIAIS GOOGLE MAPS / LOVABLE
+========================================================= */
+
+function credenciais(): Record<string, string> | null {
   const lovableKey = process.env["LOVABLE_API_KEY"];
+
   const mapsKey = process.env["GOOGLE_MAPS_API_KEY"];
 
-  if (!lovableKey || !mapsKey) {
+  /*
+   * Mantemos a compatibilidade com a integração
+   * existente do Lovable.
+   */
+
+  if (!lovableKey && !mapsKey) {
+    console.error("[GEO] Nenhuma credencial do Google Maps/Lovable foi encontrada.");
+
     return null;
   }
 
-  return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": mapsKey,
-  } as Record<string, string>;
+  const headers: Record<string, string> = {};
+
+  if (lovableKey) {
+    headers.Authorization = `Bearer ${lovableKey}`;
+  }
+
+  if (mapsKey) {
+    headers["X-Connection-Api-Key"] = mapsKey;
+  }
+
+  return headers;
 }
 
+/* =========================================================
+   ENDEREÇOS DE CONSULTA
+========================================================= */
+
 /*
- * Monta o endereço mais completo possível.
+ * Endereço completo informado pelo cliente.
  *
- * A cidade NÃO fica limitada a João Pessoa.
- * O endereço informado pelo cliente é respeitado,
- * permitindo Santa Rita, Cabedelo e outras localidades.
+ * Não existe nenhuma limitação para João Pessoa.
+ *
+ * A cidade informada pode ser:
+ * - João Pessoa
+ * - Santa Rita
+ * - Cabedelo
+ * - qualquer outra cidade válida.
  */
-function enderecoCompleto(e: EnderecoConsulta) {
+function montarEnderecoCompleto(endereco: EnderecoConsulta) {
+  const ruaNumero = [endereco.rua.trim(), endereco.numero.trim()].filter(Boolean).join(", ");
+
   const partes = [
-    [e.rua.trim(), e.numero.trim()].filter(Boolean).join(", "),
-
-    e.bairro.trim(),
-
-    e.cidade.trim(),
-
-    e.estado.trim(),
-
-    normalizarCep(e.cep),
-
+    ruaNumero,
+    endereco.bairro.trim(),
+    endereco.cidade.trim(),
+    endereco.estado.trim(),
+    normalizarCep(endereco.cep),
     "Brasil",
   ].filter(Boolean);
 
@@ -134,13 +173,10 @@ function enderecoCompleto(e: EnderecoConsulta) {
 }
 
 /*
- * Busca alternativa priorizando o CEP.
- *
- * O CEP é uma das informações mais confiáveis
- * para localizar corretamente o município e a região.
+ * Busca alternativa utilizando CEP.
  */
-function enderecoPorCep(e: EnderecoConsulta) {
-  const cep = normalizarCep(e.cep);
+function montarEnderecoComCep(endereco: EnderecoConsulta) {
+  const cep = normalizarCep(endereco.cep);
 
   if (!cep) {
     return "";
@@ -148,22 +184,40 @@ function enderecoPorCep(e: EnderecoConsulta) {
 
   const partes = [
     cep,
-
-    [e.rua.trim(), e.numero.trim()].filter(Boolean).join(", "),
-
-    e.bairro.trim(),
-
-    e.cidade.trim(),
-
-    e.estado.trim(),
-
+    endereco.rua.trim(),
+    endereco.numero.trim(),
+    endereco.bairro.trim(),
+    endereco.cidade.trim(),
+    endereco.estado.trim(),
     "Brasil",
   ].filter(Boolean);
 
   return partes.join(", ");
 }
 
-function valorComponente(componentes: ComponenteEnderecoGoogle[] | undefined, tipos: string[]) {
+/*
+ * Busca alternativa mais simples.
+ *
+ * Útil quando o Google não reconhece
+ * imediatamente o endereço completo.
+ */
+function montarEnderecoSimplificado(endereco: EnderecoConsulta) {
+  const partes = [
+    endereco.rua.trim(),
+    endereco.numero.trim(),
+    endereco.cidade.trim(),
+    endereco.estado.trim(),
+    "Brasil",
+  ].filter(Boolean);
+
+  return partes.join(", ");
+}
+
+/* =========================================================
+   COMPONENTES DO GOOGLE
+========================================================= */
+
+function obterComponente(componentes: ComponenteEnderecoGoogle[] | undefined, tipos: string[]) {
   if (!componentes) {
     return "";
   }
@@ -173,159 +227,175 @@ function valorComponente(componentes: ComponenteEnderecoGoogle[] | undefined, ti
   return componente?.long_name || componente?.short_name || "";
 }
 
-function resultadoTemCidade(resultado: ResultadoGeocodingGoogle, cidade: string) {
-  const cidadeNormalizada = normalizarTexto(cidade);
+/* =========================================================
+   VALIDAÇÃO DE RESULTADOS
+========================================================= */
 
-  if (!cidadeNormalizada) {
+function resultadoCorrespondeCidade(resultado: ResultadoGeocodingGoogle, cidadeInformada: string) {
+  const cidade = normalizarTexto(cidadeInformada);
+
+  if (!cidade) {
     return true;
   }
 
-  const cidadeGoogle = valorComponente(resultado.address_components, [
-    "locality",
-    "administrative_area_level_2",
-    "sublocality",
-    "sublocality_level_1",
-  ]);
+  const formattedAddress = normalizarTexto(resultado.formatted_address || "");
 
-  const cidadeGoogleNormalizada = normalizarTexto(cidadeGoogle);
+  /*
+   * O Google pode utilizar diferentes
+   * componentes dependendo da região.
+   */
+  const candidatos = [
+    obterComponente(resultado.address_components, ["locality"]),
 
-  const enderecoFormatado = normalizarTexto(resultado.formatted_address || "");
+    obterComponente(resultado.address_components, ["administrative_area_level_2"]),
+
+    obterComponente(resultado.address_components, ["sublocality"]),
+
+    obterComponente(resultado.address_components, ["sublocality_level_1"]),
+  ]
+    .filter(Boolean)
+    .map(normalizarTexto);
 
   return (
-    cidadeGoogleNormalizada === cidadeNormalizada ||
-    cidadeGoogleNormalizada.includes(cidadeNormalizada) ||
-    cidadeNormalizada.includes(cidadeGoogleNormalizada) ||
-    enderecoFormatado.includes(cidadeNormalizada)
+    candidatos.some((valor) => valor === cidade || valor.includes(cidade) || cidade.includes(valor)) ||
+    formattedAddress.includes(cidade)
   );
 }
 
-function resultadoTemEstado(resultado: ResultadoGeocodingGoogle, estado: string) {
-  const estadoNormalizado = normalizarTexto(estado);
+function resultadoCorrespondeEstado(resultado: ResultadoGeocodingGoogle, estadoInformado: string) {
+  const estado = normalizarTexto(estadoInformado);
 
-  if (!estadoNormalizado) {
+  if (!estado) {
     return true;
   }
 
-  const estadoGoogle = valorComponente(resultado.address_components, ["administrative_area_level_1"]);
-
-  const estadoGoogleNormalizado = normalizarTexto(estadoGoogle);
+  const estadoGoogle = normalizarTexto(obterComponente(resultado.address_components, ["administrative_area_level_1"]));
 
   const enderecoFormatado = normalizarTexto(resultado.formatted_address || "");
 
-  return (
-    estadoGoogleNormalizado === estadoNormalizado ||
-    estadoGoogleNormalizado.includes(estadoNormalizado) ||
-    enderecoFormatado.includes(estadoNormalizado)
-  );
+  /*
+   * PB pode aparecer como:
+   * - PB
+   * - Paraíba
+   * - Paraiba
+   */
+  const estadoCompativel =
+    estadoGoogle === estado || estadoGoogle.includes(estado) || enderecoFormatado.includes(estado);
+
+  if (estado === "pb") {
+    return estadoCompativel || estadoGoogle.includes("paraiba") || enderecoFormatado.includes("paraiba");
+  }
+
+  return estadoCompativel;
 }
 
-/*
- * Calcula uma pontuação para cada resultado
- * retornado pelo Google Maps.
- *
- * Não utilizamos simplesmente results[0].
- *
- * O resultado que mais corresponde aos dados
- * fornecidos pelo cliente recebe maior prioridade.
- */
+/* =========================================================
+   PONTUAÇÃO DOS RESULTADOS
+========================================================= */
+
 function pontuarResultado(resultado: ResultadoGeocodingGoogle, endereco: EnderecoConsulta) {
   let pontos = 0;
 
   const enderecoFormatado = normalizarTexto(resultado.formatted_address || "");
 
-  const cidade = normalizarTexto(endereco.cidade);
-
-  const bairro = normalizarTexto(endereco.bairro);
-
   const rua = normalizarTexto(endereco.rua);
 
   const numero = normalizarTexto(endereco.numero);
 
-  const cep = normalizarCep(endereco.cep);
+  const bairro = normalizarTexto(endereco.bairro);
 
-  if (resultadoTemCidade(resultado, endereco.cidade)) {
-    pontos += 40;
-  }
-
-  if (resultadoTemEstado(resultado, endereco.estado)) {
-    pontos += 25;
-  }
-
-  if (cidade && enderecoFormatado.includes(cidade)) {
-    pontos += 15;
-  }
-
-  if (bairro && enderecoFormatado.includes(bairro)) {
-    pontos += 15;
-  }
-
-  if (rua && enderecoFormatado.includes(rua)) {
-    pontos += 20;
-  }
-
-  if (numero && enderecoFormatado.includes(numero)) {
-    pontos += 10;
-  }
+  const cidade = normalizarTexto(endereco.cidade);
 
   /*
-   * O CEP pode aparecer no endereço formatado
-   * dependendo da resposta do Google.
+   * Cidade
    */
-  if (cep && enderecoFormatado.replace(/\D/g, "").includes(cep)) {
+  if (resultadoCorrespondeCidade(resultado, endereco.cidade)) {
     pontos += 50;
   }
 
   /*
-   * Resultados do tipo endereço completo
-   * são preferíveis a resultados genéricos
-   * de cidade ou região.
+   * Estado
    */
-  if (resultado.types?.includes("street_address")) {
-    pontos += 25;
+  if (resultadoCorrespondeEstado(resultado, endereco.estado)) {
+    pontos += 30;
   }
 
-  if (resultado.types?.includes("premise")) {
-    pontos += 20;
+  /*
+   * Rua
+   */
+  if (rua && enderecoFormatado.includes(rua)) {
+    pontos += 35;
   }
 
-  if (resultado.types?.includes("subpremise")) {
+  /*
+   * Número
+   */
+  if (numero && enderecoFormatado.includes(numero)) {
     pontos += 15;
   }
 
+  /*
+   * Bairro
+   */
+  if (bairro && enderecoFormatado.includes(bairro)) {
+    pontos += 20;
+  }
+
+  /*
+   * Cidade no endereço formatado
+   */
+  if (cidade && enderecoFormatado.includes(cidade)) {
+    pontos += 15;
+  }
+
+  /*
+   * Tipos de resultado preferidos
+   */
+  if (resultado.types?.includes("street_address")) {
+    pontos += 30;
+  }
+
+  if (resultado.types?.includes("premise")) {
+    pontos += 25;
+  }
+
   if (resultado.types?.includes("route")) {
-    pontos += 10;
+    pontos += 15;
   }
 
   return pontos;
 }
 
-function selecionarMelhorResultado(resultados: ResultadoGeocodingGoogle[], endereco: EnderecoConsulta) {
-  const resultadosComCoordenadas = resultados.filter(
-    (resultado) =>
-      typeof resultado.geometry?.location?.lat === "number" && typeof resultado.geometry?.location?.lng === "number",
-  );
+/* =========================================================
+   ESCOLHER MELHOR RESULTADO
+========================================================= */
 
-  if (resultadosComCoordenadas.length === 0) {
+function selecionarMelhorResultado(resultados: ResultadoGeocodingGoogle[], endereco: EnderecoConsulta) {
+  const validos = resultados.filter((resultado) => {
+    const lat = resultado.geometry?.location?.lat;
+
+    const lng = resultado.geometry?.location?.lng;
+
+    return typeof lat === "number" && typeof lng === "number";
+  });
+
+  if (validos.length === 0) {
     return null;
   }
 
-  const candidatos = resultadosComCoordenadas
-    .map((resultado) => ({
-      resultado,
-      pontos: pontuarResultado(resultado, endereco),
-    }))
-    .sort((a, b) => b.pontos - a.pontos);
-
-  /*
-   * Preferimos um resultado compatível
-   * com cidade e estado informados.
-   */
-  const compativel = candidatos.find(
-    ({ resultado }) => resultadoTemCidade(resultado, endereco.cidade) && resultadoTemEstado(resultado, endereco.estado),
+  return (
+    validos
+      .map((resultado) => ({
+        resultado,
+        pontos: pontuarResultado(resultado, endereco),
+      }))
+      .sort((a, b) => b.pontos - a.pontos)[0]?.resultado ?? null
   );
-
-  return compativel?.resultado || candidatos[0]?.resultado || null;
 }
+
+/* =========================================================
+   CONSULTA GOOGLE GEOCODING
+========================================================= */
 
 async function consultarGoogleGeocoding(endereco: string, headers: Record<string, string>) {
   if (!endereco.trim()) {
@@ -334,78 +404,132 @@ async function consultarGoogleGeocoding(endereco: string, headers: Record<string
 
   const url =
     `${GATEWAY_URL}/maps/api/geocode/json` +
-    `?region=br` +
-    `&components=country:BR` +
-    `&address=${encodeURIComponent(endereco)}`;
+    `?address=${encodeURIComponent(endereco)}` +
+    `&region=br` +
+    `&components=country:BR`;
 
-  const resp = await fetch(url, {
-    headers,
-  });
+  try {
+    const resposta = await fetch(url, {
+      headers,
+    });
 
-  if (!resp.ok) {
-    console.error(`Geocoding falhou [${resp.status}]: ${await resp.text()}`);
+    if (!resposta.ok) {
+      const texto = await resposta.text();
+
+      console.error(`[GEO] Google Geocoding falhou (${resposta.status}):`, texto);
+
+      return [];
+    }
+
+    const dados = (await resposta.json()) as RespostaGeocodingGoogle;
+
+    if (dados.status !== "OK" || !Array.isArray(dados.results)) {
+      console.error("[GEO] Google não encontrou o endereço:", {
+        endereco,
+        status: dados.status,
+        erro: dados.error_message,
+      });
+
+      return [];
+    }
+
+    return dados.results;
+  } catch (erro) {
+    console.error("[GEO] Erro ao consultar Google Geocoding:", erro);
 
     return [];
   }
-
-  const dados = (await resp.json()) as RespostaGeocodingGoogle;
-
-  if (dados.status !== "OK" || !Array.isArray(dados.results)) {
-    return [];
-  }
-
-  return dados.results;
 }
 
+/* =========================================================
+   GEOCODIFICAR ENDEREÇO
+========================================================= */
+
 /*
- * Geocodifica o endereço do cliente.
+ * Aqui está a parte mais importante.
  *
- * Estratégia:
+ * Tentamos mais de uma forma de encontrar
+ * o endereço do cliente.
  *
- * 1. Tenta o endereço completo.
- * 2. Tenta novamente priorizando o CEP.
- * 3. Junta os resultados.
- * 4. Seleciona o resultado mais compatível.
- *
- * Isso evita depender simplesmente do
- * primeiro resultado retornado pelo Google.
+ * Isso permite encontrar corretamente ruas
+ * em João Pessoa, Santa Rita e Cabedelo,
+ * inclusive regiões como Tibiri.
  */
-async function geocodificar(endereco: EnderecoConsulta, headers: Record<string, string>): Promise<Coordenadas | null> {
-  const textoCompleto = enderecoCompleto(endereco);
+async function geocodificarEndereco(
+  endereco: EnderecoConsulta,
+  headers: Record<string, string>,
+): Promise<Coordenadas | null> {
+  const consultas = [
+    montarEnderecoCompleto(endereco),
 
-  const textoCep = enderecoPorCep(endereco);
+    montarEnderecoComCep(endereco),
 
-  const resultadosCompletos = await consultarGoogleGeocoding(textoCompleto, headers);
+    montarEnderecoSimplificado(endereco),
+  ]
+    .filter(Boolean)
+    .filter((valor, indice, array) => array.indexOf(valor) === indice);
 
-  let todosResultados = [...resultadosCompletos];
+  let resultados: ResultadoGeocodingGoogle[] = [];
 
   /*
-   * Caso o endereço completo não encontre
-   * um resultado confiável, tentamos
-   * uma busca priorizando o CEP.
+   * Fazemos todas as tentativas disponíveis.
    */
-  const melhorInicial = selecionarMelhorResultado(todosResultados, endereco);
+  for (const consulta of consultas) {
+    const encontrados = await consultarGoogleGeocoding(consulta, headers);
 
-  const precisaTentarCep =
-    !melhorInicial ||
-    !resultadoTemCidade(melhorInicial, endereco.cidade) ||
-    !resultadoTemEstado(melhorInicial, endereco.estado);
+    resultados.push(...encontrados);
 
-  if (precisaTentarCep && textoCep && textoCep !== textoCompleto) {
-    const resultadosCep = await consultarGoogleGeocoding(textoCep, headers);
-
-    todosResultados = [...todosResultados, ...resultadosCep];
+    /*
+     * Se encontramos um endereço com alta
+     * correspondência, podemos continuar
+     * avaliando todos os resultados.
+     */
   }
 
-  const melhorResultado = selecionarMelhorResultado(todosResultados, endereco);
+  /*
+   * Remove duplicados.
+   */
+  const unicos = resultados.filter((resultado, indice, array) => {
+    const lat = resultado.geometry?.location?.lat;
+
+    const lng = resultado.geometry?.location?.lng;
+
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      return false;
+    }
+
+    const chave = `${lat},${lng}`;
+
+    return (
+      array.findIndex((item) => {
+        const itemLat = item.geometry?.location?.lat;
+
+        const itemLng = item.geometry?.location?.lng;
+
+        return itemLat === lat && itemLng === lng;
+      }) === indice
+    );
+  });
+
+  const melhorResultado = selecionarMelhorResultado(unicos, endereco);
 
   const localizacao = melhorResultado?.geometry?.location;
 
   if (!localizacao || typeof localizacao.lat !== "number" || typeof localizacao.lng !== "number") {
-    console.error("Não foi possível encontrar coordenadas para o endereço:", textoCompleto);
+    console.error("[GEO] Não foi possível transformar o endereço em coordenadas.", {
+      endereco,
+      consultasTentadas: consultas,
+    });
 
     return null;
   }
+
+  console.log("[GEO] Endereço localizado:", {
+    enderecoOriginal: endereco,
+    enderecoGoogle: melhorResultado.formatted_address,
+    latitude: localizacao.lat,
+    longitude: localizacao.lng,
+  });
 
   return {
     lat: localizacao.lat,
@@ -413,96 +537,194 @@ async function geocodificar(endereco: EnderecoConsulta, headers: Record<string, 
   };
 }
 
-async function matrizDeRotas(
+/* =========================================================
+   GOOGLE ROUTES
+========================================================= */
+
+function converterDuracaoParaSegundos(duracao?: string) {
+  if (!duracao) {
+    return null;
+  }
+
+  const segundos = Number(String(duracao).replace("s", ""));
+
+  return Number.isFinite(segundos) ? segundos : null;
+}
+
+async function calcularMatrizDeRotas(
   origem: Coordenadas,
   destinos: Unidade[],
   headers: Record<string, string>,
-): Promise<Array<{
-  indice: number;
-  metros: number;
-  segundos: number | null;
-}> | null> {
-  const resp = await fetch(`${GATEWAY_URL}/routes/distanceMatrix/v2:computeRouteMatrix`, {
-    method: "POST",
+): Promise<ResultadoRota[] | null> {
+  if (destinos.length === 0) {
+    return null;
+  }
 
-    headers: {
-      ...headers,
+  try {
+    const resposta = await fetch(`${GATEWAY_URL}/routes/distanceMatrix/v2:computeRouteMatrix`, {
+      method: "POST",
 
-      "Content-Type": "application/json",
+      headers: {
+        ...headers,
 
-      "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters,duration,condition,status",
-    },
+        "Content-Type": "application/json",
 
-    body: JSON.stringify({
-      origins: [
-        {
-          waypoint: {
-            location: {
-              latLng: {
-                latitude: origem.lat,
+        "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters,duration,condition,status",
+      },
 
-                longitude: origem.lon,
+      body: JSON.stringify({
+        origins: [
+          {
+            waypoint: {
+              location: {
+                latLng: {
+                  latitude: origem.lat,
+
+                  longitude: origem.lon,
+                },
               },
             },
           },
-        },
-      ],
+        ],
 
-      destinations: destinos.map((u) => ({
-        waypoint: {
-          location: {
-            latLng: {
-              latitude: u.latitude,
+        destinations: destinos.map((unidade) => ({
+          waypoint: {
+            location: {
+              latLng: {
+                latitude: unidade.latitude,
 
-              longitude: u.longitude,
+                longitude: unidade.longitude,
+              },
             },
           },
-        },
-      })),
+        })),
 
-      travelMode: "DRIVE",
+        /*
+         * Rota real de carro.
+         */
+        travelMode: "DRIVE",
 
-      routingPreference: "TRAFFIC_AWARE",
-    }),
-  });
+        /*
+         * Considera as condições
+         * atuais do trânsito.
+         */
+        routingPreference: "TRAFFIC_AWARE",
+      }),
+    });
 
-  if (!resp.ok) {
-    console.error(`Route matrix falhou [${resp.status}]: ${await resp.text()}`);
+    if (!resposta.ok) {
+      const texto = await resposta.text();
+
+      console.error(`[GEO] Google Routes falhou (${resposta.status}):`, texto);
+
+      return null;
+    }
+
+    const dados = (await resposta.json()) as unknown;
+
+    /*
+     * Normalmente a integração retorna
+     * um array de rotas.
+     */
+    if (!Array.isArray(dados)) {
+      console.error("[GEO] Formato inesperado da resposta do Google Routes:", dados);
+
+      return null;
+    }
+
+    const rotas = dados
+      .filter(
+        (
+          item,
+        ): item is {
+          destinationIndex?: number;
+          distanceMeters?: number;
+          duration?: string;
+          condition?: string;
+        } => typeof item === "object" && item !== null,
+      )
+      .filter(
+        (item) =>
+          typeof item.destinationIndex === "number" &&
+          typeof item.distanceMeters === "number" &&
+          item.condition !== "ROUTE_NOT_FOUND",
+      )
+      .map((item) => ({
+        indice: item.destinationIndex as number,
+
+        metros: item.distanceMeters as number,
+
+        segundos: converterDuracaoParaSegundos(item.duration),
+      }))
+      .filter((rota) => Number.isFinite(rota.metros) && rota.metros >= 0);
+
+    if (rotas.length === 0) {
+      return null;
+    }
+
+    console.log("[GEO] Rotas calculadas:", rotas);
+
+    return rotas;
+  } catch (erro) {
+    console.error("[GEO] Erro ao calcular rotas:", erro);
 
     return null;
   }
-
-  const dados = (await resp.json()) as Array<{
-    destinationIndex?: number;
-    distanceMeters?: number;
-    duration?: string;
-    condition?: string;
-  }>;
-
-  if (!Array.isArray(dados)) {
-    return null;
-  }
-
-  const linhas = dados
-    .filter(
-      (d) =>
-        typeof d.destinationIndex === "number" &&
-        typeof d.distanceMeters === "number" &&
-        d.condition !== "ROUTE_NOT_FOUND",
-    )
-    .map((d) => ({
-      indice: d.destinationIndex as number,
-
-      metros: d.distanceMeters as number,
-
-      segundos: d.duration ? Number(String(d.duration).replace("s", "")) : null,
-    }))
-    .filter((linha) => Number.isFinite(linha.metros) && linha.metros >= 0);
-
-  return linhas.length > 0 ? linhas : null;
 }
 
-function maisProximaLinhaReta(origem: Coordenadas, aviso: string | null): ResultadoUnidade | null {
+/* =========================================================
+   ESCOLHER MELHOR ROTA
+========================================================= */
+
+/*
+ * A prioridade é:
+ *
+ * 1. Menor tempo de deslocamento.
+ * 2. Em caso de empate, menor distância.
+ *
+ * Dessa forma, não escolhemos simplesmente
+ * a loja em linha reta.
+ *
+ * Escolhemos a unidade mais rápida para
+ * chegar ao endereço do cliente.
+ */
+function escolherMelhorRota(rotas: ResultadoRota[]) {
+  return [...rotas].sort((a, b) => {
+    /*
+     * Se as duas rotas possuem duração,
+     * priorizamos a mais rápida.
+     */
+    if (a.segundos !== null && b.segundos !== null) {
+      if (a.segundos !== b.segundos) {
+        return a.segundos - b.segundos;
+      }
+    }
+
+    /*
+     * Se apenas uma possui duração,
+     * priorizamos a que possui cálculo.
+     */
+    if (a.segundos !== null && b.segundos === null) {
+      return -1;
+    }
+
+    if (a.segundos === null && b.segundos !== null) {
+      return 1;
+    }
+
+    /*
+     * Critério secundário:
+     * menor distância.
+     */
+    return a.metros - b.metros;
+  })[0];
+}
+
+/* =========================================================
+   FALLBACK LINHA RETA
+========================================================= */
+
+function calcularMaisProximaLinhaReta(origem: Coordenadas): ResultadoUnidade | null {
   let melhor: ResultadoUnidade | null = null;
 
   for (const unidade of UNIDADES_ATIVAS) {
@@ -522,7 +744,7 @@ function maisProximaLinhaReta(origem: Coordenadas, aviso: string | null): Result
 
         origem: "linha-reta",
 
-        aviso,
+        aviso: "Não foi possível calcular a rota pelo Google Maps. Utilizamos a distância aproximada em linha reta.",
       };
     }
   }
@@ -530,104 +752,137 @@ function maisProximaLinhaReta(origem: Coordenadas, aviso: string | null): Result
   return melhor;
 }
 
+/* =========================================================
+   FUNÇÃO PRINCIPAL
+========================================================= */
+
 /*
- * Resolve qual unidade ativa da Farmácia Francy
- * possui a rota mais próxima do endereço informado.
+ * FLUXO COMPLETO:
  *
- * O cálculo é feito para TODAS as unidades ativas.
- *
- * Não existe limitação por município.
- *
- * Portanto, endereços de:
- *
- * - João Pessoa
- * - Santa Rita
- * - Tibiri
- * - Cabedelo
- *
- * são processados normalmente pelo Google Maps,
- * desde que o endereço informado seja válido.
+ * ENDEREÇO DO CLIENTE
+ *        ↓
+ * GOOGLE GEOCODING
+ *        ↓
+ * COORDENADAS EXATAS
+ *        ↓
+ * GOOGLE ROUTES
+ *        ↓
+ * CALCULA TODAS AS UNIDADES
+ *        ↓
+ * COMPARA TEMPO E DISTÂNCIA
+ *        ↓
+ * ESCOLHE A MELHOR UNIDADE
+ *        ↓
+ * WHATSAPP DA UNIDADE CORRETA
  */
 export async function resolverUnidadeMaisProxima(endereco: EnderecoConsulta): Promise<ResultadoUnidade | null> {
   const chave = chaveCache(endereco);
 
-  const emCache = lerCache(chave);
+  /*
+   * Verifica o cache primeiro.
+   */
+  const resultadoCache = lerCache(chave);
 
-  if (emCache) {
-    return emCache;
+  if (resultadoCache) {
+    console.log("[GEO] Resultado encontrado no cache:", resultadoCache);
+
+    return resultadoCache;
   }
 
+  /*
+   * Credenciais.
+   */
   const headers = credenciais();
 
   if (!headers) {
-    console.error("Credenciais do Google Maps ausentes.");
+    return null;
+  }
+
+  /*
+   * IMPORTANTE:
+   *
+   * UNIDADES_ATIVAS já é a lista de
+   * unidades que o sistema deve utilizar.
+   *
+   * NÃO filtramos novamente por `.active`,
+   * pois isso poderia deixar a lista vazia
+   * dependendo da estrutura do objeto.
+   */
+  const unidades = [...UNIDADES_ATIVAS];
+
+  if (unidades.length === 0) {
+    console.error("[GEO] Nenhuma unidade Francy está disponível para cálculo.");
 
     return null;
   }
 
   /*
-   * Localiza o endereço real do cliente.
+   * 1. Descobre a localização exata
+   * do endereço informado pelo cliente.
    */
-  const origem = await geocodificar(endereco, headers);
+  const origem = await geocodificarEndereco(endereco, headers);
 
   if (!origem) {
-    return null;
-  }
-
-  /*
-   * Busca somente unidades ativas.
-   *
-   * Proteção adicional caso a lista
-   * contenha alguma unidade desativada.
-   */
-  const unidadesAtivas = UNIDADES_ATIVAS.filter((unidade) => unidade.active);
-
-  if (unidadesAtivas.length === 0) {
-    console.error("Não existem unidades Francy ativas para calcular a rota.");
+    console.error("[GEO] Não foi possível localizar o endereço do cliente.", endereco);
 
     return null;
   }
 
   /*
-   * Calcula a rota do endereço do cliente
-   * para TODAS as unidades ativas.
+   * 2. Calcula as rotas para TODAS
+   * as unidades Francy.
    */
-  const linhas = await matrizDeRotas(origem, unidadesAtivas, headers);
+  const rotas = await calcularMatrizDeRotas(origem, unidades, headers);
 
   let resultado: ResultadoUnidade | null = null;
 
-  if (linhas) {
-    const melhor = linhas.reduce((atual, candidato) => (candidato.metros < atual.metros ? candidato : atual));
+  /*
+   * 3. Escolhe a rota mais rápida.
+   */
+  if (rotas && rotas.length > 0) {
+    const melhorRota = escolherMelhorRota(rotas);
 
-    const unidade = unidadesAtivas[melhor.indice];
+    const unidade = unidades[melhorRota.indice];
 
     if (unidade) {
       resultado = {
         unidadeId: unidade.id,
 
-        distanciaKm: melhor.metros / 1000,
+        distanciaKm: melhorRota.metros / 1000,
 
-        duracaoMin: melhor.segundos !== null ? Math.max(1, Math.round(melhor.segundos / 60)) : null,
+        duracaoMin: melhorRota.segundos !== null ? Math.max(1, Math.round(melhorRota.segundos / 60)) : null,
 
         origem: "rota",
 
         aviso: null,
       };
+
+      console.log("[GEO] Melhor unidade encontrada:", {
+        unidade: unidade.name,
+
+        distanciaKm: resultado.distanciaKm,
+
+        duracaoMin: resultado.duracaoMin,
+      });
     }
   }
 
   /*
-   * Caso o Google Routes não consiga
-   * calcular a rota, utilizamos a
-   * distância geográfica como fallback.
+   * 4. Fallback somente se o Google Routes
+   * não conseguir calcular nenhuma rota.
+   *
+   * Mesmo nesse caso, o endereço do cliente
+   * continua sendo geocodificado corretamente.
    */
   if (!resultado) {
-    resultado = maisProximaLinhaReta(
-      origem,
-      "Não foi possível calcular a rota pelo Google Maps. Utilizamos a distância aproximada em linha reta.",
-    );
+    console.warn("[GEO] Nenhuma rota disponível. Usando distância em linha reta.");
+
+    resultado = calcularMaisProximaLinhaReta(origem);
   }
 
+  /*
+   * 5. Guarda o resultado.
+   */
   if (resultado) {
     guardarCache(chave, resultado);
   }
