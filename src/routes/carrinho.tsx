@@ -531,46 +531,17 @@ function CarrinhoPage() {
             </button>
           )}
 
-          {fase === "permissao" && (
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <p className="flex items-center gap-2 text-sm font-semibold text-primary">
-                <Navigation className="size-4" /> Encontraremos a Farmácia Francy mais próxima de
-                você.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Precisamos acessar sua localização para encaminhar seu pedido para a unidade mais
-                próxima.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Sua localização será usada somente para identificar a Farmácia Francy responsável
-                pelo pedido.
-              </p>
-              <button
-                onClick={pedirLocalizacao}
-                className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
-              >
-                Permitir localização
-              </button>
-              <button
-                onClick={() => setFase("lista")}
-                className="w-full rounded-full border border-border px-5 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                Escolher unidade manualmente
-              </button>
-            </div>
-          )}
-
-          {fase === "localizando" && (
+          {fase === "calculando" && (
             <div className="flex items-center gap-2 rounded-lg border border-border p-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin text-primary" />
-              Localizando a Farmácia Francy mais próxima...
+              Localizando a Farmácia Francy mais próxima do seu endereço...
             </div>
           )}
 
           {fase === "confirmar" && selecionada && (
             <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-              <p className="text-sm font-semibold text-primary">
-                Encontramos a Farmácia Francy mais próxima!
+              <p className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <Navigation className="size-4" /> Encontramos a Farmácia Francy mais próxima!
               </p>
               <p className="flex items-start gap-2 text-sm font-bold">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-brand-red" />
@@ -581,11 +552,18 @@ function CarrinhoPage() {
               </p>
               {selecionada.distancia !== null && (
                 <p className="text-xs font-medium text-primary">
-                  {formatarDistancia(selecionada.distancia)} de distância
+                  {formatarDistancia(selecionada.distancia)}
+                  {selecionada.porRota ? " por rota" : " em linha reta"}
+                  {selecionada.duracaoMin !== null
+                    ? ` — cerca de ${selecionada.duracaoMin} min de carro`
+                    : ""}
                 </p>
               )}
+              {avisoLocal && <p className="text-xs text-brand-red">{avisoLocal}</p>}
               <button
-                onClick={() => enviarPedido(selecionada.unidade, selecionada.distancia)}
+                onClick={() =>
+                  enviarPedido(selecionada.unidade, selecionada.distancia, selecionada.porRota)
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-5 py-3 text-sm font-bold text-brand-red-foreground transition-opacity hover:opacity-90"
               >
                 <MessageCircle className="size-4" /> Enviar pedido
