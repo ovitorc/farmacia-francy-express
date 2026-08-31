@@ -4,26 +4,23 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
 
 import logoAsset from "@/assets/logo.png.asset.json";
-import popularAsset from "@/assets/farmacia-popular.png.asset.json";
 
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal } from "@/lib/catalog";
 import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
+/* ============================================
+   LOGO FARMÁCIA FRANCY
+============================================ */
+
 function Logo({ className = "h-11" }: { className?: string }) {
   return <img src={logoAsset.url} alt="Farmácias Francy" className={`${className} w-auto rounded-md object-contain`} />;
 }
 
-function PopularLogo({ className = "h-11" }: { className?: string }) {
-  return (
-    <img
-      src={popularAsset.url}
-      alt="Aqui tem Farmácia Popular"
-      className={`${className} w-auto rounded-md object-contain`}
-    />
-  );
-}
+/* ============================================
+   MENU LATERAL
+============================================ */
 
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
   const [expandida, setExpandida] = useState<string | null>(null);
@@ -32,6 +29,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 
   return (
     <>
+      {/* FUNDO ESCURO */}
       <div
         aria-hidden={!aberto}
         onClick={fechar}
@@ -40,11 +38,13 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
         }`}
       />
 
+      {/* MENU */}
       <aside
         className={`fixed left-0 top-0 z-50 flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform duration-300 ease-out ${
           aberto ? "translate-x-0" : "-translate-x-full"
         }`}
       >
+        {/* CABEÇALHO DO MENU */}
         <div className="flex items-center justify-between bg-primary px-4 py-4">
           <Logo className="h-9" />
 
@@ -57,15 +57,18 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
           </button>
         </div>
 
+        {/* CONTEÚDO DO MENU */}
         <nav className="flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+          {/* FARMÁCIA POPULAR */}
           <Link
             to="/farmacia-popular"
             onClick={fechar}
             className="mb-3 flex items-center gap-3 rounded-lg border border-brand-red/30 bg-brand-red/5 px-3 py-3 text-sm font-semibold text-brand-red"
           >
-            🏥 FARMÁCIA POPULAR
+            FARMÁCIA POPULAR
           </Link>
 
+          {/* CATEGORIAS */}
           {categorias.map((c) => {
             const aberta = expandida === c.slug;
 
@@ -93,6 +96,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                   </button>
                 </div>
 
+                {/* SUBCATEGORIAS */}
                 <div
                   className="grid transition-all duration-300 ease-out"
                   style={{
@@ -131,6 +135,10 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
   );
 }
 
+/* ============================================
+   HEADER PRINCIPAL
+============================================ */
+
 export function SiteHeader() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [termo, setTermo] = useState("");
@@ -148,10 +156,18 @@ export function SiteHeader() {
     select: (s) => s.location.pathname,
   });
 
+  /* ============================================
+     FECHAR MENU AO TROCAR DE PÁGINA
+  ============================================ */
+
   useEffect(() => {
     setMenuAberto(false);
     setFocado(false);
   }, [pathname]);
+
+  /* ============================================
+     ANIMAÇÃO DO CARRINHO
+  ============================================ */
 
   useEffect(() => {
     if (primeiro.current) {
@@ -166,7 +182,15 @@ export function SiteHeader() {
     return () => clearTimeout(t);
   }, [totalItens]);
 
+  /* ============================================
+     SUGESTÕES DE PESQUISA
+  ============================================ */
+
   const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termo.trim(), 6));
+
+  /* ============================================
+     ENVIAR PESQUISA
+  ============================================ */
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,12 +208,14 @@ export function SiteHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground">
-        {/* ================================
+        {/* ========================================
             CABEÇALHO PRINCIPAL
-            ================================ */}
+        ======================================== */}
 
         <div className="relative mx-auto flex max-w-7xl items-center justify-center px-3 py-2.5 sm:px-6">
-          {/* MENU LATERAL */}
+          {/* ========================================
+              MENU
+          ======================================== */}
 
           <button
             onClick={() => setMenuAberto(true)}
@@ -199,10 +225,9 @@ export function SiteHeader() {
             <Menu className="size-5" strokeWidth={1.75} />
           </button>
 
-          {/* ================================
+          {/* ========================================
               PESQUISA + CARRINHO
-              CENTRALIZADOS
-              ================================ */}
+          ======================================== */}
 
           <div className="flex w-full max-w-[620px] items-center gap-3">
             {/* BARRA DE PESQUISA */}
@@ -222,7 +247,9 @@ export function SiteHeader() {
                 />
               </form>
 
-              {/* SUGESTÕES DA PESQUISA */}
+              {/* ========================================
+                  SUGESTÕES DA PESQUISA
+              ======================================== */}
 
               {focado && sugestoes.length > 0 && (
                 <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-card animate-fade-in">
@@ -268,9 +295,9 @@ export function SiteHeader() {
               )}
             </div>
 
-            {/* ================================
+            {/* ========================================
                 CARRINHO
-                ================================ */}
+            ======================================== */}
 
             <Link
               to="/carrinho"
@@ -291,13 +318,11 @@ export function SiteHeader() {
             </Link>
           </div>
 
-          {/* ================================
-              LOGOS
-              ================================ */}
+          {/* ========================================
+              LOGO FARMÁCIA FRANCY
+          ======================================== */}
 
-          <div className="absolute right-3 flex shrink-0 items-center gap-2 sm:right-6 sm:gap-3">
-            {/* LOGO FRANCY */}
-
+          <div className="absolute right-3 flex shrink-0 items-center gap-3 sm:right-6">
             <Link
               to="/"
               aria-label="Página inicial Farmácias Francy"
@@ -305,23 +330,12 @@ export function SiteHeader() {
             >
               <Logo className="h-10 sm:h-12" />
             </Link>
-
-            {/* LOGO FARMÁCIA POPULAR */}
-
-            <Link
-              to="/farmacia-popular"
-              aria-label="Farmácia Popular"
-              className="shrink-0 transition-transform hover:scale-105"
-            >
-              <PopularLogo className="h-10 sm:h-12" />
-            </Link>
           </div>
         </div>
 
-        {/* ================================
+        {/* ========================================
             BARRA DE CATEGORIAS
-            CENTRALIZADA
-            ================================ */}
+        ======================================== */}
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
           <div className="mx-auto flex max-w-7xl items-center justify-center gap-5 overflow-x-auto px-6 py-2 text-xs font-medium">
@@ -345,9 +359,13 @@ export function SiteHeader() {
               </Link>
             ))}
 
+            {/* ========================================
+                FARMÁCIA POPULAR - SOMENTE TEXTO
+            ======================================== */}
+
             <Link
               to="/farmacia-popular"
-              className="whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground"
+              className="whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground transition-transform hover:scale-105"
             >
               Farmácia Popular
             </Link>
@@ -355,7 +373,9 @@ export function SiteHeader() {
         </div>
       </header>
 
-      {/* MENU LATERAL */}
+      {/* ========================================
+          MENU LATERAL
+      ======================================== */}
 
       <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
     </>
