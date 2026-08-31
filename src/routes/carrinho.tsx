@@ -128,7 +128,43 @@ function CarrinhoPage() {
     distancia: number | null;
     duracaoMin: number | null;
     porRota: boolean;
+    chave: string;
   } | null>(null);
+
+  /*
+   * Chave única do endereço atual.
+   *
+   * Qualquer alteração em CEP, rua, número, bairro,
+   * cidade ou estado gera uma chave nova e invalida
+   * imediatamente a unidade calculada anteriormente.
+   */
+  const enderecoKey = useMemo(
+    () =>
+      [endereco.cep, endereco.rua, endereco.numero, endereco.bairro, endereco.cidade, endereco.estado]
+        .map((valor) => valor.trim().toLocaleLowerCase("pt-BR"))
+        .join("|"),
+    [endereco.cep, endereco.rua, endereco.numero, endereco.bairro, endereco.cidade, endereco.estado],
+  );
+
+  const enderecoKeyRef = useRef(enderecoKey);
+
+  enderecoKeyRef.current = enderecoKey;
+
+  /*
+   * Identificador da requisição de cálculo atual.
+   *
+   * Uma resposta antiga nunca pode sobrescrever
+   * o resultado do endereço atual.
+   */
+  const calculoIdRef = useRef(0);
+
+  const enderecoCompleto =
+    Boolean(endereco.cep.trim()) &&
+    Boolean(endereco.rua.trim()) &&
+    Boolean(endereco.numero.trim()) &&
+    Boolean(endereco.bairro.trim()) &&
+    Boolean(endereco.cidade.trim()) &&
+    Boolean(endereco.estado.trim());
 
   function atualizarEndereco(campo: keyof Endereco, valor: string) {
     setEndereco((prev) => ({
