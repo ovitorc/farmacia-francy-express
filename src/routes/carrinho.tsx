@@ -94,10 +94,12 @@ function CarrinhoPage() {
 
   const [fase, setFase] = useState<Fase>("form");
   const [avisoLocal, setAvisoLocal] = useState<string | null>(null);
-  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const resolverUnidade = useServerFn(unidadeMaisProximaDoEndereco);
   const [selecionada, setSelecionada] = useState<{
     unidade: Unidade;
     distancia: number | null;
+    duracaoMin: number | null;
+    porRota: boolean;
   } | null>(null);
 
   function atualizarEndereco(campo: keyof Endereco, valor: string) {
