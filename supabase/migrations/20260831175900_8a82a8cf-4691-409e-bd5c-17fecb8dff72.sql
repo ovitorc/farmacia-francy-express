@@ -1,0 +1,2 @@
+DROP POLICY IF EXISTS "Imagens de produtos visiveis publicamente" ON storage.objects;
+CREATE POLICY "Imagens de produtos visiveis publicamente" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'produtos');
