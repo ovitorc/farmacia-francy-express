@@ -158,6 +158,9 @@ function CarrinhoPage() {
    */
   const calculoIdRef = useRef(0);
 
+  /* Indica que o cliente já pediu para finalizar o pedido. */
+  const finalizouRef = useRef(false);
+
   const enderecoCompleto =
     Boolean(endereco.cep.trim()) &&
     Boolean(endereco.rua.trim()) &&
@@ -450,6 +453,8 @@ function CarrinhoPage() {
       return;
     }
 
+    finalizouRef.current = true;
+
     await calcularUnidade(endereco, enderecoKey);
   }
 
@@ -602,6 +607,8 @@ function CarrinhoPage() {
       duracaoMin: null,
 
       porRota: false,
+
+      chave: enderecoKey,
     });
 
     setFase("confirmar");
