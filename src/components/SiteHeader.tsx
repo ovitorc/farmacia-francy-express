@@ -319,35 +319,6 @@ export function SiteHeader() {
               )}
             </div>
 
-            {/* CARRINHO */}
-            <Link
-              to="/carrinho"
-              aria-label="Abrir carrinho"
-              className="relative shrink-0 rounded-md p-2 transition-colors hover:bg-primary-foreground/10"
-            >
-              <ShoppingCart className="size-5" strokeWidth={1.75} />
-
-              {totalItens > 0 && (
-                <span
-                  className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-brand-red-foreground ${
-                    pop ? "cart-pop" : ""
-                  }`}
-                >
-                  {totalItens}
-                </span>
-              )}
-            </Link>
-          </div>
-
-          {/* LOGO FARMÁCIA FRANCY */}
-          <div className="absolute right-3 flex shrink-0 items-center gap-3 sm:right-6">
-            <Link
-              to="/"
-              aria-label="Página inicial Farmácias Francy"
-              className="shrink-0 transition-transform hover:scale-105"
-            >
-              <Logo className="h-10 sm:h-12" />
-            </Link>
           </div>
         </div>
 
