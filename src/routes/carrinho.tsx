@@ -239,24 +239,25 @@ function CarrinhoPage() {
       "*UNIDADE FRANCY*",
       "",
       unidade.name,
-      ...(distancia !== null ? [`Distância aproximada: ${formatarDistancia(distancia)}`] : []),
-      ...(coords ? [`Localização do cliente: ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`] : []),
+      ...(distancia !== null
+        ? [`Distância aproximada: ${formatarDistancia(distancia)}${porRota ? " (por rota)" : ""}`]
+        : []),
       "",
       `Pedido feito em ${new Date().toLocaleString("pt-BR")}`,
     ];
     return partes.join("\n");
   }
 
-  function enviarPedido(unidade: Unidade, distancia: number | null) {
-    const url = linkWhatsAppComTexto(unidade.whatsapp_url, montarMensagem(unidade, distancia));
+  function enviarPedido(unidade: Unidade, distancia: number | null, porRota: boolean) {
+    const url = linkWhatsAppComTexto(
+      unidade.whatsapp_url,
+      montarMensagem(unidade, distancia, porRota),
+    );
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function escolherUnidade(unidade: Unidade) {
-    const distancia = coords
-      ? distanciaKm(coords.lat, coords.lon, unidade.latitude, unidade.longitude)
-      : null;
-    setSelecionada({ unidade, distancia });
+    setSelecionada({ unidade, distancia: null, duracaoMin: null, porRota: false });
     setFase("confirmar");
   }
 
