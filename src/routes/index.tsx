@@ -48,6 +48,11 @@ const beneficios = [
     titulo: "Produtos registrados",
     texto: "Farmacêutica responsável presente",
   },
+  {
+    icone: Clock,
+    titulo: "Seg a sex, 8h às 17h30",
+    texto: "Atendimento humano e rápido",
+  },
 ];
 
 /* ============================================================
