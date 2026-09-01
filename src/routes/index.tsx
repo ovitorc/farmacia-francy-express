@@ -50,7 +50,7 @@ const beneficios = [
   },
   {
     icone: Clock,
-    titulo: "Seg a sex, 8h às 17h30",
+    titulo: "Domingo a domingo",
     texto: "Atendimento humano e rápido",
   },
 ];
