@@ -86,18 +86,97 @@ function BannerCarousel() {
     queryFn: () => listarBannersPublicos(),
   });
 
+  /* ============================================================
+     FUNÇÃO EXCLUSIVA PARA POSICIONAR O CARROSSEL MOBILE
+
+     O DESKTOP NÃO UTILIZA ESTA FUNÇÃO.
+     ============================================================ */
+
+  function moverParaBannerMobile(indice: number, behavior: ScrollBehavior = "smooth") {
+    const trilho = trilhoMobile.current;
+
+    if (!trilho) {
+      return;
+    }
+
+    const cartao = trilho.children[indice] as HTMLElement | undefined;
+
+    if (!cartao) {
+      return;
+    }
+
+    /*
+      Calcula a posição real do banner dentro do trilho.
+
+      Isso é mais preciso do que usar:
+      scrollLeft / largura
+
+      pois os banners possuem:
+      - largura de 88%;
+      - espaço gap-3;
+      - snap-center.
+    */
+
+    const posicao = cartao.offsetLeft - (trilho.clientWidth - cartao.clientWidth) / 2;
+
+    trilho.scrollTo({
+      left: Math.max(0, posicao),
+      behavior,
+    });
+  }
+
+  /* ============================================================
+     RESET QUANDO OS BANNERS SÃO CARREGADOS
+
+     Exclusivamente para o carrossel mobile.
+     ============================================================ */
+
   useEffect(() => {
     setBannerAtual(0);
+
+    /*
+      Aguarda o DOM renderizar os banners antes
+      de tentar movimentar o trilho.
+    */
+
+    const tempo = setTimeout(() => {
+      moverParaBannerMobile(0, "auto");
+    }, 50);
+
+    return () => {
+      clearTimeout(tempo);
+    };
   }, [banners.length]);
 
-  /* Carrossel automático (qualquer quantidade de banners). */
+  /* ============================================================
+     CARROSSEL AUTOMÁTICO
+
+     DESKTOP:
+     Continua funcionando através do bannerAtual.
+
+     MOBILE:
+     Além de alterar bannerAtual, movimenta
+     fisicamente o trilho.
+     ============================================================ */
+
   useEffect(() => {
     if (banners.length <= 1) {
       return;
     }
 
     const intervalo = setInterval(() => {
-      setBannerAtual((atual) => (atual + 1) % banners.length);
+      setBannerAtual((atual) => {
+        const proximo = (atual + 1) % banners.length;
+
+        /*
+          Esta movimentação só tem efeito
+          no carrossel mobile.
+        */
+
+        moverParaBannerMobile(proximo);
+
+        return proximo;
+      });
     }, 5000);
 
     return () => {
@@ -105,7 +184,15 @@ function BannerCarousel() {
     };
   }, [banners.length]);
 
-  /* Acompanha o swipe do dedo no celular. */
+  /* ============================================================
+     ACOMPANHA O SWIPE DO DEDO NO CELULAR
+
+     Detecta qual banner está mais próximo
+     do centro da tela.
+
+     Não interfere no desktop.
+     ============================================================ */
+
   function aoRolarMobile() {
     const trilho = trilhoMobile.current;
 
@@ -113,24 +200,50 @@ function BannerCarousel() {
       return;
     }
 
-    const largura = trilho.clientWidth || 1;
+    const centroDoTrilho = trilho.scrollLeft + trilho.clientWidth / 2;
 
-    const indice = Math.round(trilho.scrollLeft / (largura * 0.88));
+    let indiceMaisProximo = 0;
 
-    setBannerAtual(Math.min(Math.max(indice, 0), Math.max(banners.length - 1, 0)));
+    let menorDistancia = Infinity;
+
+    Array.from(trilho.children).forEach((elemento, indice) => {
+      const cartao = elemento as HTMLElement;
+
+      const centroDoCartao = cartao.offsetLeft + cartao.clientWidth / 2;
+
+      const distancia = Math.abs(centroDoTrilho - centroDoCartao);
+
+      if (distancia < menorDistancia) {
+        menorDistancia = distancia;
+        indiceMaisProximo = indice;
+      }
+    });
+
+    setBannerAtual(indiceMaisProximo);
   }
+
+  /* ============================================================
+     IR PARA UM BANNER
+
+     Os indicadores continuam funcionando.
+
+     No MOBILE:
+     move o trilho.
+
+     No DESKTOP:
+     o estado bannerAtual continua alterando
+     a imagem normalmente.
+     ============================================================ */
 
   function irPara(indice: number) {
     setBannerAtual(indice);
 
-    const trilho = trilhoMobile.current;
-
-    if (trilho) {
-      const cartao = trilho.children[indice] as HTMLElement | undefined;
-
-      cartao?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    }
+    moverParaBannerMobile(indice);
   }
+
+  /* ============================================================
+     LOADING
+     ============================================================ */
 
   if (isLoading) {
     return (
@@ -141,6 +254,10 @@ function BannerCarousel() {
       </div>
     );
   }
+
+  /* ============================================================
+     ERRO
+     ============================================================ */
 
   if (isError) {
     return (
@@ -153,6 +270,10 @@ function BannerCarousel() {
       </div>
     );
   }
+
+  /* ============================================================
+     SEM BANNERS
+     ============================================================ */
 
   if (banners.length === 0) {
     return (
@@ -170,12 +291,20 @@ function BannerCarousel() {
 
   return (
     <div className="relative w-full">
-      {/* ====================== MOBILE ====================== */}
+      {/* ========================================================
+          MOBILE
+
+          ESTA ÁREA É EXCLUSIVA DO CELULAR.
+          ======================================================== */}
 
       <div
         ref={trilhoMobile}
         onScroll={aoRolarMobile}
         className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x pan-y",
+        }}
       >
         {lista.map((banner) => (
           <div key={banner.id} className="w-[88%] shrink-0 snap-center overflow-hidden rounded-2xl bg-muted">
@@ -183,13 +312,19 @@ function BannerCarousel() {
               src={banner.imagem_mobile || banner.imagem}
               alt={banner.titulo || "Banner promocional da Farmácias Francy"}
               loading="lazy"
+              draggable={false}
               className="aspect-[4/5] w-full object-cover"
             />
           </div>
         ))}
       </div>
 
-      {/* ====================== DESKTOP ====================== */}
+      {/* ========================================================
+          DESKTOP
+
+          MANTIDO EXATAMENTE NA MESMA ESTRUTURA
+          QUE EXISTIA NO ARQUIVO ORIGINAL.
+          ======================================================== */}
 
       <div className="relative hidden w-full overflow-hidden rounded-2xl sm:block">
         <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
@@ -207,6 +342,8 @@ function BannerCarousel() {
 
         {lista.length > 1 && (
           <>
+            {/* BOTÃO ANTERIOR */}
+
             <button
               type="button"
               aria-label="Banner anterior"
@@ -215,6 +352,8 @@ function BannerCarousel() {
             >
               ‹
             </button>
+
+            {/* BOTÃO PRÓXIMO */}
 
             <button
               type="button"
@@ -228,7 +367,11 @@ function BannerCarousel() {
         )}
       </div>
 
-      {/* ====================== INDICADORES ====================== */}
+      {/* ========================================================
+          INDICADORES
+
+          Funciona tanto no mobile quanto no desktop.
+          ======================================================== */}
 
       {lista.length > 1 && (
         <div className="mt-3 flex items-center justify-center gap-2 sm:absolute sm:bottom-4 sm:left-1/2 sm:mt-0 sm:-translate-x-1/2 sm:rounded-full sm:bg-black/30 sm:px-3 sm:py-2 sm:backdrop-blur-sm">
@@ -322,7 +465,9 @@ function Index() {
             <Link
               key={c.slug}
               to="/categoria/$slug"
-              params={{ slug: c.slug }}
+              params={{
+                slug: c.slug,
+              }}
               className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-4 text-center transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-card"
             >
               <span className="text-2xl">{c.icone}</span>
