@@ -71,6 +71,53 @@ export type Database = {
         }
         Relationships: []
       }
+      imagem_sync_logs: {
+        Row: {
+          confidence: number | null
+          ean: string | null
+          error: string | null
+          finished_at: string
+          id: string
+          image_url: string | null
+          produto_id: string | null
+          source: string | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          confidence?: number | null
+          ean?: string | null
+          error?: string | null
+          finished_at?: string
+          id?: string
+          image_url?: string | null
+          produto_id?: string | null
+          source?: string | null
+          started_at?: string
+          status: string
+        }
+        Update: {
+          confidence?: number | null
+          ean?: string | null
+          error?: string | null
+          finished_at?: string
+          id?: string
+          image_url?: string | null
+          produto_id?: string | null
+          source?: string | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "imagem_sync_logs_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produtos: {
         Row: {
           categoria_slug: string
@@ -83,6 +130,18 @@ export type Database = {
           fabricante: string
           farmacia_popular: boolean
           id: string
+          image_candidato_url: string | null
+          image_confidence: number | null
+          image_error: string | null
+          image_format: string | null
+          image_hash: string | null
+          image_height: number | null
+          image_last_synced_at: string | null
+          image_license: string | null
+          image_source: string | null
+          image_source_url: string | null
+          image_status: string
+          image_width: number | null
           imagem: string | null
           informacoes: string[]
           nome: string
@@ -109,6 +168,18 @@ export type Database = {
           fabricante?: string
           farmacia_popular?: boolean
           id?: string
+          image_candidato_url?: string | null
+          image_confidence?: number | null
+          image_error?: string | null
+          image_format?: string | null
+          image_hash?: string | null
+          image_height?: number | null
+          image_last_synced_at?: string | null
+          image_license?: string | null
+          image_source?: string | null
+          image_source_url?: string | null
+          image_status?: string
+          image_width?: number | null
           imagem?: string | null
           informacoes?: string[]
           nome: string
@@ -135,6 +206,18 @@ export type Database = {
           fabricante?: string
           farmacia_popular?: boolean
           id?: string
+          image_candidato_url?: string | null
+          image_confidence?: number | null
+          image_error?: string | null
+          image_format?: string | null
+          image_hash?: string | null
+          image_height?: number | null
+          image_last_synced_at?: string | null
+          image_license?: string | null
+          image_source?: string | null
+          image_source_url?: string | null
+          image_status?: string
+          image_width?: number | null
           imagem?: string | null
           informacoes?: string[]
           nome?: string
