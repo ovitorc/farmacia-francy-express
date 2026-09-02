@@ -493,11 +493,11 @@ export const rejeitarImagem = createServerFn({ method: "POST" })
     };
 
     if (data.removerAtual) {
-      campos.imagem = null;
-      campos.image_hash = null;
-      campos.image_source = null;
-      campos.image_source_url = null;
-      campos.image_confidence = null;
+      campos["imagem"] = null;
+      campos["image_hash"] = null;
+      campos["image_source"] = null;
+      campos["image_source_url"] = null;
+      campos["image_confidence"] = null;
     }
 
     const { error } = await context.supabase.from("produtos").update(campos as any).eq("id", data.produtoId);
