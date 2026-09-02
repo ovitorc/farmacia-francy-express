@@ -170,13 +170,14 @@ export const buscarCandidatos = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const { data: produto, error } = await context.supabase
+    const { data: produtoRaw, error } = await context.supabase
       .from("produtos")
       .select(CAMPOS)
       .eq("id", data.produtoId)
       .single();
 
     if (error) throw new Error(error.message);
+    const produto = produtoRaw as any;
 
     return { produto, candidatos: await candidatosPara(produto, data.termo) };
   });
@@ -188,7 +189,7 @@ export const buscarCandidatos = createServerFn({ method: "POST" })
 async function aplicar(
   context: any,
   produto: any,
-  candidato: { imageUrl: string; source: string; sourceUrl?: string; licenca?: string },
+  candidato: any,
   confianca: number,
   status: "approved" | "manual_review",
 ) {
@@ -251,13 +252,14 @@ export const aplicarCandidato = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const { data: produto, error } = await context.supabase
+    const { data: produtoRaw, error } = await context.supabase
       .from("produtos")
       .select(CAMPOS + ", image_hash")
       .eq("id", data.produtoId)
       .single();
 
     if (error) throw new Error(error.message);
+    const produto = produtoRaw as any;
 
     const url = await aplicar(context, produto, data, data.confianca, "approved");
 
@@ -297,7 +299,7 @@ export const sincronizarLote = createServerFn({ method: "POST" })
     if (data.escopo === "revisao") query = query.eq("image_status", "manual_review");
     if (!data.forcar) query = query.neq("image_status", "not_found").neq("image_status", "error");
 
-    const { data: produtos, error } = await query
+    const { data: produtosRaw, error } = await query
       .order("image_last_synced_at", { ascending: true, nullsFirst: true })
       .limit(data.tamanho);
 
@@ -312,7 +314,9 @@ export const sincronizarLote = createServerFn({ method: "POST" })
       detalhes: [] as Array<{ nome: string; status: string; fonte?: string; confianca?: number }>,
     };
 
-    for (const produto of produtos ?? []) {
+    const produtos = (produtosRaw ?? []) as any[];
+
+    for (const produto of produtos) {
       const inicio = new Date().toISOString();
       resultado.processados++;
 
@@ -435,7 +439,7 @@ export const sincronizarLote = createServerFn({ method: "POST" })
       }
     }
 
-    return { ...resultado, fim: (produtos?.length ?? 0) < data.tamanho };
+    return { ...resultado, fim: produtos.length < data.tamanho };
   });
 
 /* ============================================================
@@ -448,13 +452,14 @@ export const aprovarCandidatoPendente = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const { data: produto, error } = await context.supabase
+    const { data: produtoRaw, error } = await context.supabase
       .from("produtos")
       .select(CAMPOS + ", image_hash")
       .eq("id", data.produtoId)
       .single();
 
     if (error) throw new Error(error.message);
+    const produto = produtoRaw as any;
     if (!produto.image_candidato_url) throw new Error("Não há imagem candidata para este produto.");
 
     const url = await aplicar(
@@ -488,14 +493,14 @@ export const rejeitarImagem = createServerFn({ method: "POST" })
     };
 
     if (data.removerAtual) {
-      campos.imagem = null;
-      campos.image_hash = null;
-      campos.image_source = null;
-      campos.image_source_url = null;
-      campos.image_confidence = null;
+      campos["imagem"] = null;
+      campos["image_hash"] = null;
+      campos["image_source"] = null;
+      campos["image_source_url"] = null;
+      campos["image_confidence"] = null;
     }
 
-    const { error } = await context.supabase.from("produtos").update(campos).eq("id", data.produtoId);
+    const { error } = await context.supabase.from("produtos").update(campos as any).eq("id", data.produtoId);
 
     if (error) throw new Error(error.message);
 
@@ -544,13 +549,14 @@ export const enviarImagemProduto = createServerFn({ method: "POST" })
       produtoId = achados[0]!.id as string;
     }
 
-    const { data: produto, error: erroProduto } = await context.supabase
+    const { data: produtoRaw2, error: erroProduto } = await context.supabase
       .from("produtos")
       .select("id, codigo_barras")
       .eq("id", produtoId)
       .single();
 
     if (erroProduto) throw new Error(erroProduto.message);
+    const produto = produtoRaw2 as any;
 
     const extensao = (data.nomeArquivo.split(".").pop() ?? "jpg").toLowerCase();
 

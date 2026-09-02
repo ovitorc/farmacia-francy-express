@@ -68,7 +68,7 @@ export function similaridadeNome(a: string, b: string): number {
  * Extrai a "apresentação" do produto:
  * quantidade (10 comprimidos) e concentração (500mg, 1g, 200ml).
  */
-export function apresentacao(texto: string): { quantidade?: number; dose?: string } {
+export function apresentacao(texto: string): { quantidade?: number | undefined; dose?: string | undefined } {
   const t = normalizar(texto);
 
   const dose = t.match(/(\d+[.,]?\d*)\s*(mg|g|ml|l|mcg|ui|%)/);

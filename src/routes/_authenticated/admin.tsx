@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -784,12 +784,17 @@ function AdminPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/imagens">Imagens dos produtos</Link>
+          </Button>
+
           <Button variant="outline" onClick={sair}>
             Sair
           </Button>
 
           <Button onClick={abrirNovo}>Novo produto</Button>
         </div>
+
       </div>
 
       {/* ======================================================
