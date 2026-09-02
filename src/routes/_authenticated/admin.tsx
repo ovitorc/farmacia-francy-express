@@ -784,12 +784,17 @@ function AdminPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/imagens">Imagens dos produtos</Link>
+          </Button>
+
           <Button variant="outline" onClick={sair}>
             Sair
           </Button>
 
           <Button onClick={abrirNovo}>Novo produto</Button>
         </div>
+
       </div>
 
       {/* ======================================================
