@@ -31,6 +31,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { ImportarEstoque } from "@/components/ImportarEstoque";
+
+
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
