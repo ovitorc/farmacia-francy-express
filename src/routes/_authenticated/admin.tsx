@@ -784,9 +784,12 @@ function AdminPage() {
         </div>
 
         <div className="flex gap-2">
+          <ImportarEstoque onConcluido={() => void queryClient.invalidateQueries()} />
+
           <Button variant="outline" asChild>
             <Link to="/imagens">Imagens dos produtos</Link>
           </Button>
+
 
           <Button variant="outline" onClick={sair}>
             Sair
