@@ -46,7 +46,7 @@ export const enviarLoteImportacao = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const { error } = await context.supabase
+    const { error } = await (context.supabase as any)
       .from("import_estoque_stage")
       .insert(data.linhas.map((l) => ({ ...l, batch_id: data.batchId })));
 
@@ -123,7 +123,7 @@ export const cancelarImportacao = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const { error } = await context.supabase
+    const { error } = await (context.supabase as any)
       .from("import_estoque_stage")
       .delete()
       .eq("batch_id", data.batchId);
