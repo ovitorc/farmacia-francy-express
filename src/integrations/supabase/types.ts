@@ -118,6 +118,45 @@ export type Database = {
           },
         ]
       }
+      import_estoque_stage: {
+        Row: {
+          batch_id: string
+          codigo: string
+          codigo_barras: string | null
+          created_at: string
+          estoque: number | null
+          fabricante: string | null
+          id: number
+          nome: string | null
+          preco: number | null
+          unidade: string | null
+        }
+        Insert: {
+          batch_id: string
+          codigo: string
+          codigo_barras?: string | null
+          created_at?: string
+          estoque?: number | null
+          fabricante?: string | null
+          id?: number
+          nome?: string | null
+          preco?: number | null
+          unidade?: string | null
+        }
+        Update: {
+          batch_id?: string
+          codigo?: string
+          codigo_barras?: string | null
+          created_at?: string
+          estoque?: number | null
+          fabricante?: string | null
+          id?: number
+          nome?: string | null
+          preco?: number | null
+          unidade?: string | null
+        }
+        Relationships: []
+      }
       importacao_francy: {
         Row: {
           categoria_slug: string | null
@@ -377,6 +416,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_estoque_aplicar: { Args: { _batch: string }; Returns: Json }
+      import_estoque_resumo: { Args: { _batch: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
