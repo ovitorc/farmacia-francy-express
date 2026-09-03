@@ -1,141 +1,309 @@
-CREATE TABLE public.import_estoque_stage (
-  id bigserial PRIMARY KEY,
-  batch_id uuid NOT NULL,
-  codigo text NOT NULL,
-  nome text,
-  preco numeric,
-  estoque integer,
-  codigo_barras text,
-  fabricante text,
-  unidade text,
-  created_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS public.import_estoque_stage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id UUID NOT NULL,
+    codigo TEXT NOT NULL,
+    nome TEXT,
+    preco NUMERIC,
+    estoque INTEGER,
+    codigo_barras TEXT,
+    fabricante TEXT,
+    unidade TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX import_estoque_stage_batch_idx ON public.import_estoque_stage (batch_id);
-CREATE INDEX import_estoque_stage_codigo_idx ON public.import_estoque_stage (batch_id, codigo);
+CREATE INDEX IF NOT EXISTS idx_import_estoque_stage_batch
+ON public.import_estoque_stage(batch_id);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.import_estoque_stage TO authenticated;
-GRANT USAGE, SELECT ON SEQUENCE public.import_estoque_stage_id_seq TO authenticated;
-GRANT ALL ON public.import_estoque_stage TO service_role;
-GRANT ALL ON SEQUENCE public.import_estoque_stage_id_seq TO service_role;
+CREATE INDEX IF NOT EXISTS idx_import_estoque_stage_batch_codigo
+ON public.import_estoque_stage(batch_id, codigo);
 
 ALTER TABLE public.import_estoque_stage ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins gerenciam importacao de estoque"
-ON public.import_estoque_stage FOR ALL TO authenticated
-USING (public.has_role(auth.uid(), 'admin'))
-WITH CHECK (public.has_role(auth.uid(), 'admin'));
+DROP POLICY IF EXISTS "Admins podem visualizar importações"
+ON public.import_estoque_stage;
 
-CREATE OR REPLACE FUNCTION public.import_estoque_resumo(_batch uuid)
-RETURNS json
+CREATE POLICY "Admins podem visualizar importações"
+ON public.import_estoque_stage
+FOR SELECT
+TO authenticated
+USING (
+    public.has_role(auth.uid(), 'admin')
+);
+
+DROP POLICY IF EXISTS "Admins podem inserir importações"
+ON public.import_estoque_stage;
+
+CREATE POLICY "Admins podem inserir importações"
+ON public.import_estoque_stage
+FOR INSERT
+TO authenticated
+WITH CHECK (
+    public.has_role(auth.uid(), 'admin')
+);
+
+DROP POLICY IF EXISTS "Admins podem excluir importações"
+ON public.import_estoque_stage;
+
+CREATE POLICY "Admins podem excluir importações"
+ON public.import_estoque_stage
+FOR DELETE
+TO authenticated
+USING (
+    public.has_role(auth.uid(), 'admin')
+);
+
+CREATE OR REPLACE FUNCTION public.import_estoque_resumo(
+    _batch UUID
+)
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  _linhas int; _validos int; _atualizar int; _novos int; _excluir int; _erros int; _dup int;
+    v_linhas INTEGER;
+    v_encontrados INTEGER;
+    v_atualizar INTEGER;
+    v_novos INTEGER;
+    v_excluir INTEGER;
+    v_erros INTEGER;
+    v_duplicados INTEGER;
+    v_total_banco INTEGER;
 BEGIN
-  IF NOT public.has_role(auth.uid(), 'admin') THEN
-    RAISE EXCEPTION 'Acesso restrito a administradores.';
-  END IF;
 
-  SELECT count(*) INTO _linhas FROM import_estoque_stage WHERE batch_id = _batch;
+    SELECT COUNT(*)
+    INTO v_linhas
+    FROM public.import_estoque_stage
+    WHERE batch_id = _batch;
 
-  SELECT count(*) INTO _erros FROM import_estoque_stage
-   WHERE batch_id = _batch AND (btrim(coalesce(codigo,'')) = '' OR estoque IS NULL);
+    SELECT COUNT(*)
+    INTO v_total_banco
+    FROM public.produtos;
 
-  SELECT count(DISTINCT codigo) INTO _validos FROM import_estoque_stage
-   WHERE batch_id = _batch AND btrim(coalesce(codigo,'')) <> '' AND estoque IS NOT NULL;
+    SELECT COUNT(*)
+    INTO v_duplicados
+    FROM (
+        SELECT codigo
+        FROM public.import_estoque_stage
+        WHERE batch_id = _batch
+        GROUP BY codigo
+        HAVING COUNT(*) > 1
+    ) duplicados;
 
-  _dup := _linhas - _erros - _validos;
+    SELECT COUNT(*)
+    INTO v_encontrados
+    FROM public.import_estoque_stage s
+    INNER JOIN public.produtos p
+        ON TRIM(p.codigo) = TRIM(s.codigo)
+    WHERE s.batch_id = _batch;
 
-  SELECT count(*) INTO _atualizar FROM produtos p
-   WHERE EXISTS (SELECT 1 FROM import_estoque_stage s
-                  WHERE s.batch_id = _batch AND s.codigo = p.codigo AND s.estoque IS NOT NULL);
+    v_atualizar := v_encontrados;
 
-  SELECT count(DISTINCT s.codigo) INTO _novos FROM import_estoque_stage s
-   WHERE s.batch_id = _batch AND btrim(coalesce(s.codigo,'')) <> '' AND s.estoque IS NOT NULL
-     AND btrim(coalesce(s.nome,'')) <> '' AND s.preco IS NOT NULL
-     AND NOT EXISTS (SELECT 1 FROM produtos p WHERE p.codigo = s.codigo);
+    SELECT COUNT(*)
+    INTO v_novos
+    FROM public.import_estoque_stage s
+    LEFT JOIN public.produtos p
+        ON TRIM(p.codigo) = TRIM(s.codigo)
+    WHERE s.batch_id = _batch
+      AND p.codigo IS NULL;
 
-  SELECT count(*) INTO _excluir FROM produtos p
-   WHERE NOT EXISTS (SELECT 1 FROM import_estoque_stage s WHERE s.batch_id = _batch AND s.codigo = p.codigo);
+    SELECT COUNT(*)
+    INTO v_excluir
+    FROM public.produtos p
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM public.import_estoque_stage s
+        WHERE s.batch_id = _batch
+          AND TRIM(s.codigo) = TRIM(p.codigo)
+    );
 
-  RETURN json_build_object(
-    'linhas', _linhas, 'encontrados', _validos, 'atualizar', _atualizar,
-    'novos', _novos, 'excluir', _excluir, 'erros', _erros, 'duplicados', _dup,
-    'total_banco', (SELECT count(*) FROM produtos)
-  );
+    SELECT COUNT(*)
+    INTO v_erros
+    FROM public.import_estoque_stage
+    WHERE batch_id = _batch
+      AND (
+          codigo IS NULL
+          OR TRIM(codigo) = ''
+          OR estoque IS NULL
+      );
+
+    RETURN jsonb_build_object(
+        'linhas', v_linhas,
+        'encontrados', v_encontrados,
+        'atualizar', v_atualizar,
+        'novos', v_novos,
+        'excluir', v_excluir,
+        'erros', v_erros,
+        'duplicados', v_duplicados,
+        'total_banco', v_total_banco
+    );
+
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.import_estoque_aplicar(_batch uuid)
-RETURNS json
+CREATE OR REPLACE FUNCTION public.import_estoque_aplicar(
+    _batch UUID
+)
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  _atualizados int := 0; _inseridos int := 0; _excluidos int := 0; _erros int := 0;
+    v_atualizados INTEGER := 0;
+    v_inseridos INTEGER := 0;
+    v_excluidos INTEGER := 0;
+    v_erros INTEGER := 0;
 BEGIN
-  IF NOT public.has_role(auth.uid(), 'admin') THEN
-    RAISE EXCEPTION 'Acesso restrito a administradores.';
-  END IF;
 
-  SELECT count(*) INTO _erros FROM import_estoque_stage
-   WHERE batch_id = _batch AND (btrim(coalesce(codigo,'')) = '' OR estoque IS NULL);
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.import_estoque_stage
+        WHERE batch_id = _batch
+    ) THEN
+        RAISE EXCEPTION
+        'Nenhum produto foi encontrado para esta importação.';
+    END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM import_estoque_stage WHERE batch_id = _batch) THEN
-    RAISE EXCEPTION 'Nenhum dado importado para processar.';
-  END IF;
+    DELETE FROM public.import_estoque_stage a
+    USING public.import_estoque_stage b
+    WHERE a.batch_id = _batch
+      AND b.batch_id = _batch
+      AND a.codigo = b.codigo
+      AND a.created_at < b.created_at;
 
-  WITH validos AS (
-    SELECT DISTINCT ON (codigo) codigo, nome, preco, estoque, codigo_barras, fabricante, unidade
-      FROM import_estoque_stage
-     WHERE batch_id = _batch AND btrim(coalesce(codigo,'')) <> '' AND estoque IS NOT NULL
-     ORDER BY codigo, id DESC
-  ), upd AS (
-    UPDATE produtos p
-       SET estoque = v.estoque,
-           preco = COALESCE(v.preco, p.preco),
-           disponivel = (v.estoque > 0)
-      FROM validos v
-     WHERE p.codigo = v.codigo
-    RETURNING 1
-  )
-  SELECT count(*) INTO _atualizados FROM upd;
+    UPDATE public.produtos p
+    SET
+        preco = CASE
+            WHEN s.preco IS NOT NULL
+             AND s.preco > 0
+            THEN s.preco
+            ELSE p.preco
+        END,
 
-  WITH validos AS (
-    SELECT DISTINCT ON (codigo) codigo, nome, preco, estoque, codigo_barras, fabricante, unidade
-      FROM import_estoque_stage
-     WHERE batch_id = _batch AND btrim(coalesce(codigo,'')) <> '' AND estoque IS NOT NULL
-       AND btrim(coalesce(nome,'')) <> '' AND preco IS NOT NULL
-     ORDER BY codigo, id DESC
-  ), ins AS (
-    INSERT INTO produtos (codigo, nome, preco, estoque, codigo_barras, fabricante, unidade, categoria_slug, disponivel)
-    SELECT v.codigo, v.nome, v.preco, v.estoque, v.codigo_barras, coalesce(v.fabricante,''), coalesce(v.unidade,''),
-           'medicamentos', (v.estoque > 0)
-      FROM validos v
-     WHERE NOT EXISTS (SELECT 1 FROM produtos p WHERE p.codigo = v.codigo)
-    RETURNING 1
-  )
-  SELECT count(*) INTO _inseridos FROM ins;
+        estoque = COALESCE(
+            s.estoque,
+            p.estoque
+        ),
 
-  WITH del AS (
-    DELETE FROM produtos p
-     WHERE NOT EXISTS (SELECT 1 FROM import_estoque_stage s WHERE s.batch_id = _batch AND s.codigo = p.codigo)
-    RETURNING 1
-  )
-  SELECT count(*) INTO _excluidos FROM del;
+        disponivel = CASE
+            WHEN COALESCE(s.estoque, 0) > 0
+            THEN TRUE
+            ELSE FALSE
+        END,
 
-  DELETE FROM import_estoque_stage WHERE batch_id = _batch;
+        nome = COALESCE(
+            NULLIF(TRIM(s.nome), ''),
+            p.nome
+        ),
 
-  RETURN json_build_object('atualizados', _atualizados, 'inseridos', _inseridos,
-                           'excluidos', _excluidos, 'erros', _erros);
+        codigo_barras = COALESCE(
+            NULLIF(TRIM(s.codigo_barras), ''),
+            p.codigo_barras
+        ),
+
+        fabricante = COALESCE(
+            NULLIF(TRIM(s.fabricante), ''),
+            p.fabricante
+        ),
+
+        unidade = COALESCE(
+            NULLIF(TRIM(s.unidade), ''),
+            p.unidade
+        )
+
+    FROM public.import_estoque_stage s
+    WHERE s.batch_id = _batch
+      AND TRIM(p.codigo) = TRIM(s.codigo);
+
+    GET DIAGNOSTICS v_atualizados = ROW_COUNT;
+
+    INSERT INTO public.produtos (
+        codigo,
+        nome,
+        preco,
+        estoque,
+        disponivel,
+        codigo_barras,
+        fabricante,
+        unidade
+    )
+    SELECT
+        TRIM(s.codigo),
+
+        COALESCE(
+            NULLIF(TRIM(s.nome), ''),
+            'Produto sem nome'
+        ),
+
+        COALESCE(
+            NULLIF(s.preco, 0),
+            0
+        ),
+
+        COALESCE(
+            s.estoque,
+            0
+        ),
+
+        CASE
+            WHEN COALESCE(s.estoque, 0) > 0
+            THEN TRUE
+            ELSE FALSE
+        END,
+
+        NULLIF(
+            TRIM(s.codigo_barras),
+            ''
+        ),
+
+        NULLIF(
+            TRIM(s.fabricante),
+            ''
+        ),
+
+        NULLIF(
+            TRIM(s.unidade),
+            ''
+        )
+
+    FROM public.import_estoque_stage s
+    WHERE s.batch_id = _batch
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.produtos p
+          WHERE TRIM(p.codigo) = TRIM(s.codigo)
+      );
+
+    GET DIAGNOSTICS v_inseridos = ROW_COUNT;
+
+    DELETE FROM public.produtos p
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM public.import_estoque_stage s
+        WHERE s.batch_id = _batch
+          AND TRIM(s.codigo) = TRIM(p.codigo)
+    );
+
+    GET DIAGNOSTICS v_excluidos = ROW_COUNT;
+
+    DELETE FROM public.import_estoque_stage
+    WHERE batch_id = _batch;
+
+    RETURN jsonb_build_object(
+        'atualizados', v_atualizados,
+        'inseridos', v_inseridos,
+        'excluidos', v_excluidos,
+        'erros', v_erros
+    );
+
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.import_estoque_resumo(uuid) FROM public;
-REVOKE ALL ON FUNCTION public.import_estoque_aplicar(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.import_estoque_resumo(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.import_estoque_aplicar(uuid) TO authenticated;
+GRANT EXECUTE
+ON FUNCTION public.import_estoque_resumo(UUID)
+TO authenticated;
+
+GRANT EXECUTE
+ON FUNCTION public.import_estoque_aplicar(UUID)
+TO authenticated;
