@@ -34,14 +34,8 @@ const CAMPOS =
    CONFIGURAÇÕES
    ============================================================ */
 
-/**
- * Máximo de imagens exibidas para cada produto.
- */
 const MAX_CANDIDATOS_POR_PRODUTO = 20;
 
-/**
- * Quantidade padrão de produtos processados em lote.
- */
 const TAMANHO_PADRAO_LOTE = 20;
 
 /* ============================================================
@@ -396,9 +390,6 @@ export const listarProdutosImagens =
           error,
         } =
           await query
-            /**
-             * Produtos COM imagem primeiro.
-             */
             .order(
               "imagem",
               {
@@ -406,9 +397,6 @@ export const listarProdutosImagens =
                 nullsFirst: false,
               },
             )
-            /**
-             * Depois maior relevância da imagem.
-             */
             .order(
               "image_confidence",
               {
@@ -416,9 +404,13 @@ export const listarProdutosImagens =
                 nullsFirst: false,
               },
             )
-            /**
-             * Mantém uma ordem estável.
-             */
+            .order(
+              "image_last_synced_at",
+              {
+                ascending: false,
+                nullsFirst: false,
+              },
+            )
             .order(
               "nome",
               {
@@ -456,15 +448,34 @@ export const listarProdutosImagens =
    REMOVER DUPLICADOS
    ============================================================ */
 
+function chaveDaImagem(
+  url: string,
+): string {
+  try {
+    const parsed =
+      new URL(
+        url,
+      );
+
+    return `${parsed.origin}${parsed.pathname}`
+      .toLowerCase()
+      .trim();
+  } catch {
+    return url
+      .toLowerCase()
+      .trim()
+      .split("?")[0]
+      .split("#")[0];
+  }
+}
+
 function removerCandidatosDuplicados<
   T extends Candidato,
 >(
   candidatos: T[],
 ): T[] {
   const urls =
-    new Set<
-      string
-    >();
+    new Set<string>();
 
   const resultado:
     T[] =
@@ -484,13 +495,12 @@ function removerCandidatosDuplicados<
     }
 
     const chave =
-      url
-        .toLowerCase()
-        .split(
-          "?",
-        )[0];
+      chaveDaImagem(
+        url,
+      );
 
     if (
+      !chave ||
       urls.has(
         chave,
       )
@@ -508,6 +518,57 @@ function removerCandidatosDuplicados<
   }
 
   return resultado;
+}
+
+/* ============================================================
+   PRIORIDADE DAS FONTES
+   ============================================================ */
+
+function prioridadeFonte(
+  source:
+    | string
+    | undefined,
+): number {
+  const fonte =
+    (
+      source ??
+      ""
+    )
+      .toLowerCase()
+      .trim();
+
+  const prioridades:
+    Record<
+      string,
+      number
+    > = {
+    google_images: 100,
+
+    pague_menos: 95,
+
+    farmacia_permanente: 90,
+
+    drogasil: 85,
+
+    droga_raia: 80,
+
+    cosmos: 70,
+
+    open_beauty_facts: 60,
+
+    open_products_facts: 55,
+
+    open_food_facts: 50,
+
+    manual: 100,
+  };
+
+  return (
+    prioridades[
+      fonte
+    ] ??
+    10
+  );
 }
 
 /* ============================================================
@@ -535,9 +596,6 @@ function ordenarCandidatos(
       a,
       b,
     ) => {
-      /**
-       * 1. EAN confirmado sempre primeiro.
-       */
       const aEan =
         Boolean(
           a.eanConfirmado,
@@ -557,9 +615,26 @@ function ordenarCandidatos(
           : 1;
       }
 
-      /**
-       * 2. Maior confiança.
-       */
+      const prioridadeA =
+        prioridadeFonte(
+          a.source,
+        );
+
+      const prioridadeB =
+        prioridadeFonte(
+          b.source,
+        );
+
+      if (
+        prioridadeB !==
+        prioridadeA
+      ) {
+        return (
+          prioridadeB -
+          prioridadeA
+        );
+      }
+
       if (
         b.confianca !==
         a.confianca
@@ -570,9 +645,6 @@ function ordenarCandidatos(
         );
       }
 
-      /**
-       * 3. Sem conflito.
-       */
       if (
         a.conflito !==
         b.conflito
@@ -582,9 +654,6 @@ function ordenarCandidatos(
           : -1;
       }
 
-      /**
-       * 4. Candidato que possui EAN informado.
-       */
       const aTemEan =
         Boolean(
           a.ean,
@@ -610,187 +679,87 @@ function ordenarCandidatos(
 }
 
 /* ============================================================
-   BUSCA DE CANDIDATOS
+   BUSCA CENTRALIZADA DE CANDIDATOS
    ============================================================ */
 
 async function candidatosPara(
   produto: any,
   termoManual?: string,
-) {
+): Promise<
+  CandidatoAvaliado[]
+> {
   const {
-    providersAtivos,
+    buscarAte20Imagens,
   } =
     await import(
       "@/lib/images/providers.server"
     );
 
-  const ean =
-    (
-      produto.codigo_barras ??
-      ""
-    ).replace(
-      /\D/g,
+  const produtoParaBusca = {
+    ...produto,
+
+    nome:
+      termoManual?.trim() ||
+      produto.nome,
+
+    fabricante:
+      produto.fabricante ??
       "",
+
+    codigo_barras:
+      produto.codigo_barras ??
+      "",
+  };
+
+  const brutos =
+    await buscarAte20Imagens(
+      produtoParaBusca,
     );
 
   const encontrados:
     CandidatoAvaliado[] =
     [];
 
-  const providers =
-    providersAtivos();
-
-  /* ==========================================================
-     ETAPA 1
-     CÓDIGO DE BARRAS
-     ========================================================== */
-
-  if (
-    ean
-  ) {
-    for (
-      const provider
-      of providers
-    ) {
-      if (
-        !provider.buscarPorEan
-      ) {
-        continue;
-      }
-
-      try {
-        const brutos =
-          await provider.buscarPorEan(
-            ean,
-          );
-
-        for (
-          const candidato
-          of brutos
-        ) {
-          const avaliacao =
-            avaliarCandidato(
-              produto,
-              candidato,
-            );
-
-          encontrados.push({
-            ...candidato,
-
-            /**
-             * NÃO LIMITAMOS MAIS
-             * Google e farmácias a 70.
-             *
-             * Se o EAN for confirmado,
-             * a imagem merece prioridade máxima.
-             */
-            confianca:
-              avaliacao.confianca,
-
-            conflito:
-              avaliacao.conflito,
-
-            motivos:
-              avaliacao.motivos,
-
-            eanConfirmado:
-              avaliacao.eanConfirmado,
-          });
-        }
-      } catch {
-        /**
-         * Uma fonte falhar não interrompe
-         * a busca nas demais.
-         */
-      }
-    }
-  }
-
-  /* ==========================================================
-     ETAPA 2
-     NOME DO PRODUTO
-     ========================================================== */
-
   for (
-    const provider
-    of providers
+    const candidato
+    of brutos
   ) {
-    if (
-      !provider.buscarPorNome
-    ) {
-      continue;
-    }
-
     try {
-      const brutos =
-        await provider.buscarPorNome(
-          {
-            nome:
-              termoManual ||
-              produto.nome,
-
-            fabricante:
-              produto.fabricante,
-
-            codigo_barras:
-              produto.codigo_barras,
-          },
+      const avaliacao =
+        avaliarCandidato(
+          produto,
+          candidato,
         );
 
-      for (
-        const candidato
-        of brutos
-      ) {
-        const avaliacao =
-          avaliarCandidato(
-            produto,
-            candidato,
-          );
+      encontrados.push({
+        ...candidato,
 
-        encontrados.push({
-          ...candidato,
+        confianca:
+          avaliacao.confianca,
 
-          confianca:
-            avaliacao.confianca,
+        conflito:
+          avaliacao.conflito,
 
-          conflito:
-            avaliacao.conflito,
+        motivos:
+          avaliacao.motivos,
 
-          motivos:
-            avaliacao.motivos,
-
-          eanConfirmado:
-            avaliacao.eanConfirmado,
-        });
-      }
+        eanConfirmado:
+          avaliacao.eanConfirmado,
+      });
     } catch {
-      /**
-       * Continua para a próxima fonte.
-       */
+      continue;
     }
   }
-
-  /* ==========================================================
-     REMOVE DUPLICADOS
-     ========================================================== */
 
   const semDuplicados =
     removerCandidatosDuplicados(
       encontrados,
     );
 
-  /* ==========================================================
-     ORDENA POR RELEVÂNCIA
-     ========================================================== */
-
   const ordenados =
     ordenarCandidatos(
       semDuplicados,
     );
-
-  /* ==========================================================
-     RETORNA NO MÁXIMO 20
-     ========================================================== */
 
   return ordenados.slice(
     0,
@@ -939,7 +908,8 @@ async function aplicar(
         "produtos",
       )
       .update({
-        imagem: url,
+        imagem:
+          url,
 
         image_status:
           status,
@@ -1262,10 +1232,16 @@ export const sincronizarLote =
         } =
           await query
             .order(
+              "codigo_barras",
+              {
+                ascending: false,
+                nullsFirst: false,
+              },
+            )
+            .order(
               "image_last_synced_at",
               {
                 ascending: true,
-
                 nullsFirst: true,
               },
             )
@@ -1784,15 +1760,15 @@ export const rejeitarImagem =
             string,
             unknown
           > = {
-            image_candidato_url:
-              null,
+          image_candidato_url:
+            null,
 
-            image_status:
-              "not_found",
+          image_status:
+            "not_found",
 
-            image_last_synced_at:
-              new Date().toISOString(),
-          };
+          image_last_synced_at:
+            new Date().toISOString(),
+        };
 
         if (
           data.removerAtual
