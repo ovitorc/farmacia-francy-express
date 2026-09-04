@@ -6,13 +6,15 @@ import { getCatalogo, buscarProdutos, listarProdutos, obterProduto } from "@/lib
 
 import {
   acharCategoria,
+  categoriaFoiRemovida,
   ordenarCategoriasPorRelevancia,
   ordenarProdutosPorRelevancia,
+  removerProdutosDeCategoriasRemovidas,
   type Catalogo,
 } from "@/lib/catalog";
 
 /* ============================================================
-   CATÁLOGO
+   QUERY PRINCIPAL DO CATÁLOGO
    ============================================================ */
 
 export const catalogoQueryOptions = queryOptions({
@@ -66,15 +68,7 @@ export const produtoQueryOptions = (id: string) =>
    LISTAGEM DE PRODUTOS
    ============================================================ */
 
-export const listaQueryOptions = (params: {
-  categoria: string;
-
-  sub?: string;
-
-  ordem?: string;
-
-  pagina?: number;
-}) =>
+export const listaQueryOptions = (params: { categoria: string; sub?: string; ordem?: string; pagina?: number }) =>
   queryOptions({
     queryKey: ["produtos", params],
 
@@ -84,6 +78,12 @@ export const listaQueryOptions = (params: {
       }),
 
     staleTime: 30_000,
+
+    /*
+     * Não faz consulta para categorias removidas.
+     */
+
+    enabled: !categoriaFoiRemovida(params.categoria),
   });
 
 /* ============================================================
@@ -104,75 +104,84 @@ export function CatalogProvider({ value, children }: { value: Catalogo; children
 }
 
 /* ============================================================
-   HOOK PRINCIPAL
+   HOOK PRINCIPAL DO CATÁLOGO
    ============================================================ */
 
 export function useCatalogo() {
   const catalogo = useContext(CatalogContext);
 
   return useMemo(() => {
-    /**
+    /*
      * ========================================================
-     * PRODUTOS
+     * REMOVER PRODUTOS PET
      * ========================================================
-     *
-     * Todo produto disponível no catálogo passa pela
-     * ordenação de relevância.
      */
 
-    const produtosOrdenados = ordenarProdutosPorRelevancia(catalogo.produtos);
+    const produtosPermitidos = removerProdutosDeCategoriasRemovidas(catalogo.produtos);
 
-    /**
+    /*
      * ========================================================
-     * CATEGORIAS
+     * ORDENAR TODOS OS PRODUTOS
      * ========================================================
      *
-     * Categorias são organizadas de acordo com:
+     * Produtos com imagem aparecem primeiro.
+     */
+
+    const produtosOrdenados = ordenarProdutosPorRelevancia(produtosPermitidos);
+
+    /*
+     * ========================================================
+     * ORDENAR CATEGORIAS
+     * ========================================================
      *
-     * quantidade de produtos que possuem imagem.
+     * Categorias com mais produtos com imagem
+     * aparecem primeiro.
      */
 
     const categoriasOrdenadas = ordenarCategoriasPorRelevancia(catalogo.categorias, produtosOrdenados);
 
-    /**
+    /*
      * ========================================================
      * RASGA PREÇO
      * ========================================================
      */
 
-    const rasgaPreco = ordenarProdutosPorRelevancia(
-      catalogo.vitrines?.rasgaPreco ?? produtosOrdenados.filter((p) => p.rasgaPreco),
-    );
+    const rasgaPrecoOriginal =
+      catalogo.vitrines?.rasgaPreco ?? produtosOrdenados.filter((produto) => produto.rasgaPreco);
 
-    /**
+    const rasgaPreco = ordenarProdutosPorRelevancia(removerProdutosDeCategoriasRemovidas(rasgaPrecoOriginal));
+
+    /*
      * ========================================================
      * OFERTAS
      * ========================================================
      */
 
-    const ofertas = ordenarProdutosPorRelevancia(
-      catalogo.vitrines?.ofertas ?? produtosOrdenados.filter((p) => p.oferta),
-    );
+    const ofertasOriginal = catalogo.vitrines?.ofertas ?? produtosOrdenados.filter((produto) => produto.oferta);
 
-    /**
+    const ofertas = ordenarProdutosPorRelevancia(removerProdutosDeCategoriasRemovidas(ofertasOriginal));
+
+    /*
      * ========================================================
      * DESTAQUES
      * ========================================================
+     *
+     * Também obedecem à prioridade visual.
      */
 
     const destaques = ordenarProdutosPorRelevancia(produtosOrdenados);
 
+    /*
+     * ========================================================
+     * RETORNO
+     * ========================================================
+     */
+
     return {
       ...catalogo,
 
-      /**
-       * Categorias agora NÃO seguem ordem alfabética.
-       */
       categorias: categoriasOrdenadas,
 
-      /**
-       * Produtos globais já organizados.
-       */
       produtos: produtosOrdenados,
 
       getCategoria: (slug: string) => acharCategoria(categoriasOrdenadas, slug),
