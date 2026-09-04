@@ -1,120 +1,71 @@
 /**
  * ============================================================
- * COMPARAÇÃO E PONTUAÇÃO DE CONFIANÇA
+ * COMPARAÇÃO, PONTUAÇÃO E ORDENAÇÃO DE IMAGENS
  * ============================================================
  *
- * Este arquivo é responsável por decidir qual imagem encontrada
- * possui maior probabilidade de pertencer ao produto correto.
+ * PRIORIDADE:
  *
- * PRIORIDADE DE RELEVÂNCIA:
- *
- * 1. EAN / Código de barras idêntico
+ * 1. EAN / código de barras idêntico
  * 2. Nome do produto
  * 3. Apresentação
- *    Exemplo:
- *    - 500mg
- *    - 20 comprimidos
- *    - 200ml
  * 4. Fabricante
+ * 5. Fonte da imagem
  *
- * Uma imagem encontrada através do código de barras correto deve
- * possuir prioridade muito superior a uma imagem encontrada apenas
- * pelo nome.
+ * O objetivo é garantir que imagens encontradas utilizando o
+ * código de barras correto tenham prioridade máxima.
  *
  * ============================================================
  */
 
-/**
- * Informações de uma imagem candidata.
- */
+/* ============================================================
+   TIPOS
+   ============================================================ */
+
 export type Candidato = {
   imageUrl: string;
-
   source: string;
-
   sourceUrl?: string;
-
   ean?: string;
-
   nome?: string;
-
   fabricante?: string;
-
   licenca?: string;
 };
 
-/**
- * Informações básicas do produto que estamos procurando.
- */
 export type ProdutoRef = {
   nome: string;
-
   fabricante?: string | null;
-
   codigo_barras?: string | null;
 };
 
+export type Avaliacao = {
+  confianca: number;
+  conflito: boolean;
+  motivos: string[];
+  eanConfirmado: boolean;
+};
+
+export type CandidatoAvaliado = Candidato &
+  Avaliacao & {
+    relevancia?: number;
+  };
+
 /* ============================================================
-   PESOS DE CONFIANÇA
+   PESOS
    ============================================================ */
 
-/**
- * O EAN possui prioridade máxima.
- *
- * Se o código de barras for idêntico:
- *
- * 80 pontos.
- *
- * Isso significa que uma imagem encontrada pelo código de barras
- * correto poderá ser aprovada automaticamente mesmo quando a fonte
- * não informar perfeitamente o nome ou fabricante.
- */
 export const PESOS = {
-  /**
-   * Código de barras idêntico.
-   */
   ean: 80,
-
-  /**
-   * Compatibilidade entre o nome do produto.
-   */
   nome: 12,
-
-  /**
-   * Fabricante compatível.
-   */
   fabricante: 3,
-
-  /**
-   * Apresentação compatível.
-   *
-   * Exemplos:
-   *
-   * 500mg
-   * 20 comprimidos
-   * 200ml
-   */
   apresentacao: 5,
 };
 
 /* ============================================================
-   LIMITES DE DECISÃO
+   LIMITES
    ============================================================ */
 
 export const LIMITES = {
-  /**
-   * A partir dessa pontuação a imagem pode ser aprovada
-   * automaticamente.
-   *
-   * Um EAN idêntico + qualquer confirmação adicional normalmente
-   * ultrapassa esse valor.
-   */
   aprovarAutomatico: 80,
-
-  /**
-   * A partir dessa pontuação a imagem fica disponível
-   * para revisão manual.
-   */
   revisaoManual: 45,
 };
 
@@ -124,19 +75,8 @@ export const LIMITES = {
 
 const ACENTOS = /[\u0300-\u036f]/g;
 
-/**
- * Remove acentos, caracteres especiais e diferenças de maiúsculas.
- *
- * Exemplo:
- *
- * "Dipirona 500 MG"
- *
- * vira:
- *
- * "dipirona 500 mg"
- */
 export function normalizar(texto: string): string {
-  return texto
+  return String(texto ?? "")
     .normalize("NFD")
     .replace(ACENTOS, "")
     .toLowerCase()
@@ -144,35 +84,18 @@ export function normalizar(texto: string): string {
     .trim();
 }
 
-/**
- * Normaliza um código de barras.
- *
- * Mantém apenas números.
- */
 export function normalizarEan(valor: string | null | undefined): string {
-  return (valor ?? "").replace(/\D/g, "");
+  return String(valor ?? "").replace(/\D/g, "");
 }
 
-/**
- * Remove zeros à esquerda para permitir comparação entre fontes
- * que eventualmente armazenam o GTIN com formatação diferente.
- */
 function eanSemZeros(valor: string): string {
   const resultado = valor.replace(/^0+/, "");
 
   return resultado || valor;
 }
 
-/**
- * Verifica se dois EANs representam o mesmo produto.
- */
-export function eanIgual(
-  a: string | null | undefined,
-
-  b: string | null | undefined,
-): boolean {
+export function eanIgual(a: string | null | undefined, b: string | null | undefined): boolean {
   const primeiro = normalizarEan(a);
-
   const segundo = normalizarEan(b);
 
   if (!primeiro || !segundo) {
@@ -190,11 +113,6 @@ export function eanIgual(
    TOKENS
    ============================================================ */
 
-/**
- * Transforma o nome em palavras importantes.
- *
- * Palavras muito pequenas são ignoradas.
- */
 function tokens(texto: string): string[] {
   return normalizar(texto)
     .split(" ")
@@ -202,60 +120,51 @@ function tokens(texto: string): string[] {
 }
 
 /* ============================================================
-   SIMILARIDADE DE NOME
+   SIMILARIDADE DO NOME
    ============================================================ */
 
-/**
- * Compara dois nomes.
- *
- * Retorna um valor entre:
- *
- * 0 = completamente diferente
- *
- * 1 = completamente compatível
- */
 export function similaridadeNome(a: string, b: string): number {
   const ta = tokens(a);
-
   const tb = tokens(b);
 
   if (!ta.length || !tb.length) {
     return 0;
   }
 
+  const setA = new Set(ta);
   const setB = new Set(tb);
 
-  const iguais = ta.filter((token) => setB.has(token)).length;
+  let iguais = 0;
 
-  return iguais / Math.max(ta.length, tb.length);
+  for (const token of setA) {
+    if (setB.has(token)) {
+      iguais++;
+    }
+  }
+
+  /*
+   * Utilizamos uma relação baseada no maior conjunto.
+   *
+   * Isso evita que produtos com nomes muito diferentes
+   * recebam pontuação alta apenas por possuírem uma palavra
+   * em comum.
+   */
+  return iguais / Math.max(setA.size, setB.size);
 }
 
 /* ============================================================
-   APRESENTAÇÃO DO PRODUTO
+   APRESENTAÇÃO
    ============================================================ */
 
 export type Apresentacao = {
-  quantidade?: number | undefined;
-
-  dose?: string | undefined;
+  quantidade?: number;
+  dose?: string;
 };
 
-/**
- * Procura informações importantes no nome do produto.
- *
- * Exemplos reconhecidos:
- *
- * 500mg
- * 1g
- * 200ml
- * 30 comprimidos
- * 20 cápsulas
- * 60 unidades
- */
 export function apresentacao(texto: string): Apresentacao {
   const textoNormalizado = normalizar(texto);
 
-  const dose = textoNormalizado.match(/(\d+[.,]?\d*)\s*(mg|g|ml|l|mcg|ui|%)/);
+  const dose = textoNormalizado.match(/(\d+(?:[.,]\d+)?)\s*(mg|g|ml|l|mcg|ui|%)/);
 
   const quantidade = textoNormalizado.match(
     /(\d+)\s*(cp|cps|comp|comprimidos?|capsulas?|caps|drageas?|envelopes?|unidades?|un|tabletes?|saches?|ampolas?|frascos?)\b/,
@@ -264,69 +173,97 @@ export function apresentacao(texto: string): Apresentacao {
   return {
     quantidade: quantidade ? Number(quantidade[1]) : undefined,
 
-    dose: dose ? `${dose[1]!.replace(",", ".")}${dose[2]}` : undefined,
+    dose: dose ? `${dose[1].replace(",", ".")}${dose[2]}` : undefined,
   };
 }
 
 /* ============================================================
-   RESULTADO DA AVALIAÇÃO
+   PRIORIDADE DAS FONTES
    ============================================================ */
 
-export type Avaliacao = {
-  /**
-   * Pontuação entre 0 e 100.
-   */
-  confianca: number;
+/*
+ * Esta prioridade é usada somente como desempate.
+ *
+ * A IMAGEM CORRETA NÃO DEVE PERDER PARA UMA FONTE DE MAIOR
+ * PRIORIDADE.
+ *
+ * Portanto:
+ *
+ * EAN confirmado > confiança > ausência de conflito > fonte.
+ */
 
-  /**
-   * Indica se existem informações incompatíveis.
-   */
-  conflito: boolean;
+export function prioridadeFonte(source: string | undefined): number {
+  const fonte = normalizar(source ?? "");
 
-  /**
-   * Explicação utilizada pelo painel administrativo.
-   */
-  motivos: string[];
+  const prioridades: Record<string, number> = {
+    google: 100,
+    google_images: 100,
 
-  /**
-   * Verdadeiro quando o EAN foi confirmado.
+    pague_menos: 95,
+    pague: 95,
+    pague_menos_com_br: 95,
+
+    farmacia_permanente: 90,
+    permanente: 90,
+
+    drogasil: 85,
+
+    droga_raia: 80,
+    drogaraia: 80,
+
+    cosmos: 75,
+    bluesoft: 75,
+
+    manual: 70,
+
+    open_beauty_facts: 60,
+    open_products_facts: 55,
+    open_food_facts: 50,
+  };
+
+  if (prioridades[fonte] !== undefined) {
+    return prioridades[fonte];
+  }
+
+  /*
+   * Permite reconhecer variações enviadas pelos providers.
    */
-  eanConfirmado: boolean;
-};
+
+  if (fonte.includes("google")) {
+    return 100;
+  }
+
+  if (fonte.includes("pague") || fonte.includes("menos")) {
+    return 95;
+  }
+
+  if (fonte.includes("permanente")) {
+    return 90;
+  }
+
+  if (fonte.includes("drogasil")) {
+    return 85;
+  }
+
+  if (fonte.includes("raia")) {
+    return 80;
+  }
+
+  if (fonte.includes("cosmos") || fonte.includes("bluesoft")) {
+    return 75;
+  }
+
+  if (fonte.includes("manual")) {
+    return 70;
+  }
+
+  return 10;
+}
 
 /* ============================================================
    AVALIAÇÃO DO CANDIDATO
    ============================================================ */
 
-/**
- * Avalia uma imagem candidata.
- *
- * REGRAS IMPORTANTES:
- *
- * ------------------------------------------------------------
- * EAN IDÊNTICO
- * ------------------------------------------------------------
- *
- * Possui prioridade máxima.
- *
- * ------------------------------------------------------------
- * EAN DIFERENTE
- * ------------------------------------------------------------
- *
- * Nunca aprova automaticamente.
- *
- * Vai para revisão manual.
- *
- * ------------------------------------------------------------
- * SEM EAN
- * ------------------------------------------------------------
- *
- * A decisão é feita utilizando:
- *
- * - nome
- * - apresentação
- * - fabricante
- */
 export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Avaliacao {
   const motivos: string[] = [];
 
@@ -341,33 +278,31 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
   const eanCandidato = normalizarEan(candidato.ean);
 
   /* ==========================================================
-     EAN / CÓDIGO DE BARRAS
+     EAN
      ========================================================== */
 
   if (eanProduto && eanCandidato) {
     if (eanIgual(eanProduto, eanCandidato)) {
-      /**
-       * PRIORIDADE MÁXIMA.
-       */
       pontos += PESOS.ean;
 
       eanConfirmado = true;
 
       motivos.push("EAN / código de barras idêntico");
     } else {
-      /**
+      /*
        * EAN diferente é um conflito grave.
        *
-       * Mesmo que o nome seja parecido,
-       * não podemos aprovar automaticamente.
+       * Mesmo que o nome seja parecido, esta imagem
+       * não pode ser aprovada automaticamente.
        */
+
       conflito = true;
 
       motivos.push("EAN / código de barras diferente");
     }
   } else if (eanProduto && !eanCandidato) {
     motivos.push("Fonte não informou o EAN");
-  } else if (!eanProduto) {
+  } else {
     motivos.push("Produto não possui EAN cadastrado");
   }
 
@@ -383,6 +318,16 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
     pontos += pontosNome;
 
     motivos.push(`Nome ${Math.round(similaridade * 100)}% compatível`);
+
+    /*
+     * Se os nomes forem extremamente diferentes e existir
+     * EAN confirmado, NÃO criamos conflito.
+     *
+     * O EAN correto possui prioridade máxima.
+     */
+    if (similaridade < 0.15 && !eanConfirmado) {
+      motivos.push("Nome possui baixa compatibilidade");
+    }
   } else {
     motivos.push("Fonte não informou o nome do produto");
   }
@@ -410,18 +355,15 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
       quantidadeProduto && quantidadeCandidato && quantidadeProduto !== quantidadeCandidato,
     );
 
-    if (doseConflita || quantidadeConflita) {
-      /**
-       * Exemplo:
-       *
-       * Produto:
-       * Dipirona 500mg
-       *
-       * Candidato:
-       * Dipirona 1g
-       *
-       * Mesmo nome, apresentação diferente.
-       */
+    /*
+     * Uma apresentação diferente somente gera conflito
+     * se NÃO houver confirmação pelo EAN.
+     *
+     * Isso evita rejeitar um produto correto quando uma fonte
+     * descreve a embalagem de maneira incompleta.
+     */
+
+    if ((doseConflita || quantidadeConflita) && !eanConfirmado) {
       conflito = true;
 
       motivos.push("Apresentação diferente");
@@ -436,6 +378,8 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
         pontos += PESOS.apresentacao;
 
         motivos.push("Apresentação compatível");
+      } else if (doseConflita || quantidadeConflita) {
+        motivos.push("Apresentação diferente, porém EAN confirmado");
       }
     }
   }
@@ -449,31 +393,22 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
   const fabricanteCandidato = normalizar(candidato.fabricante ?? "");
 
   if (fabricanteProduto && fabricanteCandidato) {
-    const primeiroProduto = fabricanteProduto.split(" ").filter(Boolean)[0];
+    const palavrasProduto = new Set(fabricanteProduto.split(" ").filter((palavra) => palavra.length > 2));
 
-    const primeiroCandidato = fabricanteCandidato.split(" ").filter(Boolean)[0];
+    const palavrasCandidato = new Set(fabricanteCandidato.split(" ").filter((palavra) => palavra.length > 2));
 
-    const compativel = Boolean(
-      primeiroProduto &&
-      primeiroCandidato &&
-      (fabricanteProduto.includes(primeiroCandidato) || fabricanteCandidato.includes(primeiroProduto)),
-    );
+    const possuiPalavraIgual = [...palavrasProduto].some((palavra) => palavrasCandidato.has(palavra));
+
+    const compativel =
+      possuiPalavraIgual ||
+      fabricanteProduto.includes(fabricanteCandidato) ||
+      fabricanteCandidato.includes(fabricanteProduto);
 
     if (compativel) {
       pontos += PESOS.fabricante;
 
       motivos.push("Fabricante compatível");
     } else {
-      /**
-       * Fabricante diferente não necessariamente significa
-       * que a imagem está errada.
-       *
-       * Algumas fontes possuem fabricante incompleto,
-       * distribuidor ou grupo empresarial.
-       *
-       * Portanto, reduzimos a confiança indiretamente
-       * sem criar conflito automático.
-       */
       motivos.push("Fabricante não confirmado");
     }
   } else if (fabricanteProduto) {
@@ -481,73 +416,40 @@ export function avaliarCandidato(produto: ProdutoRef, candidato: Candidato): Ava
   }
 
   /* ==========================================================
-     EAN CONFIRMADO
-     ==========================================================
-     *
-     * Quando o EAN é confirmado, evitamos que pequenas diferenças
-     * no nome reduzam a prioridade do resultado.
-     */
+     RESULTADO PRIORITÁRIO PELO EAN
+     ========================================================== */
 
   if (eanConfirmado && !conflito) {
     motivos.push("Resultado priorizado por código de barras");
   }
 
-  /* ==========================================================
-     LIMITA A PONTUAÇÃO ENTRE 0 E 100
-     ========================================================== */
-
   const confianca = Math.max(0, Math.min(100, pontos));
 
   return {
     confianca,
-
     conflito,
-
     motivos,
-
     eanConfirmado,
   };
 }
 
 /* ============================================================
-   CLASSIFICAÇÃO FINAL
+   CLASSIFICAÇÃO
    ============================================================ */
 
-/**
- * Decide o destino da imagem.
- *
- * ------------------------------------------------------------
- * CONFLITO
- * ------------------------------------------------------------
- *
- * Sempre revisão manual.
- *
- * ------------------------------------------------------------
- * 80 OU MAIS
- * ------------------------------------------------------------
- *
- * Aprovada automaticamente.
- *
- * ------------------------------------------------------------
- * 45 A 79
- * ------------------------------------------------------------
- *
- * Revisão manual.
- *
- * ------------------------------------------------------------
- * MENOS DE 45
- * ------------------------------------------------------------
- *
- * Rejeitada.
- */
 export function classificar(avaliacao: Avaliacao): "approved" | "manual_review" | "rejeitado" {
+  /*
+   * Conflitos sempre exigem revisão.
+   */
+
   if (avaliacao.conflito) {
     return "manual_review";
   }
 
-  /**
-   * EAN confirmado possui prioridade.
+  /*
+   * EAN confirmado tem aprovação prioritária.
    */
+
   if (avaliacao.eanConfirmado && avaliacao.confianca >= PESOS.ean) {
     return "approved";
   }
@@ -565,39 +467,97 @@ export function classificar(avaliacao: Avaliacao): "approved" | "manual_review" 
 
 /* ============================================================
    ORDENAÇÃO DE CANDIDATOS
-   ============================================================
- *
- * Esta função pode ser utilizada no painel administrativo.
- *
- * A ordem será:
+   ============================================================ */
+
+/**
+ * Ordenação final:
  *
  * 1. EAN confirmado
- * 2. Maior confiança
- * 3. Sem conflito
+ * 2. Sem conflito
+ * 3. Maior confiança
+ * 4. Prioridade da fonte
+ *
+ * Isso impede que uma imagem do Google, por exemplo,
+ * fique acima de uma imagem com EAN confirmado apenas
+ * porque o Google possui maior prioridade como fonte.
  */
-export function ordenarPorRelevancia<T extends Avaliacao>(candidatos: T[]): T[] {
+
+export function ordenarPorRelevancia<
+  T extends Avaliacao & {
+    source?: string;
+  },
+>(candidatos: T[]): T[] {
   return [...candidatos].sort((a, b) => {
-    /**
-     * EAN confirmado primeiro.
-     */
+    /* ================================================
+         1. EAN CONFIRMADO
+         ================================================ */
+
     if (a.eanConfirmado !== b.eanConfirmado) {
       return a.eanConfirmado ? -1 : 1;
     }
 
-    /**
-     * Depois maior confiança.
-     */
-    if (b.confianca !== a.confianca) {
-      return b.confianca - a.confianca;
-    }
+    /* ================================================
+         2. SEM CONFLITO
+         ================================================ */
 
-    /**
-     * Sem conflito antes.
-     */
     if (a.conflito !== b.conflito) {
       return a.conflito ? 1 : -1;
     }
 
+    /* ================================================
+         3. CONFIANÇA
+         ================================================ */
+
+    if (b.confianca !== a.confianca) {
+      return b.confianca - a.confianca;
+    }
+
+    /* ================================================
+         4. FONTE
+         ================================================ */
+
+    const prioridadeA = prioridadeFonte(a.source);
+
+    const prioridadeB = prioridadeFonte(b.source);
+
+    if (prioridadeB !== prioridadeA) {
+      return prioridadeB - prioridadeA;
+    }
+
     return 0;
   });
+}
+
+/* ============================================================
+   AVALIAR E ORDENAR
+   ============================================================ */
+
+/**
+ * Função auxiliar para os providers.
+ *
+ * Avalia todos os candidatos e devolve os resultados
+ * já organizados pela relevância.
+ */
+
+export function avaliarEOrdenarCandidatos(produto: ProdutoRef, candidatos: Candidato[]): CandidatoAvaliado[] {
+  const avaliados: CandidatoAvaliado[] = candidatos.map((candidato) => {
+    const avaliacao = avaliarCandidato(produto, candidato);
+
+    return {
+      ...candidato,
+      ...avaliacao,
+
+      /*
+       * Relevância auxiliar utilizada para depuração
+       * e futuras ordenações.
+       */
+      relevancia:
+        avaliacao.confianca +
+        (avaliacao.eanConfirmado ? 1000 : 0) +
+        (!avaliacao.conflito ? 100 : 0) +
+        prioridadeFonte(candidato.source) / 100,
+    };
+  });
+
+  return ordenarPorRelevancia(avaliados);
 }
