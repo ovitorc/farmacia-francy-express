@@ -314,135 +314,27 @@ function ordenarCandidatos<
  * - retorna até 20 imagens.
  */
 async function candidatosPara(produto: any, termoManual?: string) {
-  const { providersAtivos } = await import("@/lib/images/providers.server");
-
-  const ean = (produto.codigo_barras ?? "").replace(/\D/g, "");
-
-  const encontrados: Array<
-    Candidato & {
-      confianca: number;
-      conflito: boolean;
-      motivos: string[];
-    }
-  > = [];
-
-  const providers = providersAtivos();
-
-  /**
-   * ==========================================================
-   * PRIMEIRA ETAPA
-   *
-   * BUSCA PELO CÓDIGO DE BARRAS / EAN
-   * ==========================================================
-   */
-
-  if (ean) {
-    for (const provider of providers) {
-      if (!provider.buscarPorEan) {
-        continue;
-      }
-
-      try {
-        const brutos = await provider.buscarPorEan(ean);
-
-        for (const c of brutos) {
-          const av = avaliarCandidato(produto, c);
-
-          encontrados.push({
-            ...c,
-
-            /**
-             * Mantém a confiança
-             * calculada pelo matching.
-             *
-             * Fontes que não possuem licença
-             * automaticamente segura continuam
-             * disponíveis para revisão manual.
-             */
-            confianca: provider.licencaSegura ? av.confianca : Math.min(av.confianca, 70),
-
-            conflito: av.conflito,
-
-            motivos: av.motivos,
-          });
-        }
-      } catch {
-        /**
-         * Uma fonte com erro não pode impedir
-         * a busca nas outras.
-         */
-      }
-    }
-  }
-
-  /**
-   * ==========================================================
-   * SEGUNDA ETAPA
-   *
-   * BUSCA POR NOME + FABRICANTE
-   * ==========================================================
-   *
-   * Mesmo quando existe EAN, também procuramos
-   * pelo nome para aumentar as chances de encontrar
-   * uma imagem correta.
-   */
-  for (const provider of providers) {
-    if (!provider.buscarPorNome) {
-      continue;
-    }
-
+  const { buscarAte20Imagens } = await import("@/lib/images/providers.server");
+  const produtoBusca = termoManual?.trim() ? { ...produto, nome: termoManual.trim() } : produto;
+  const brutos = await buscarAte20Imagens({
+    nome: produtoBusca.nome,
+    fabricante: produtoBusca.fabricante,
+    codigo_barras: produtoBusca.codigo_barras,
+    descricao: produtoBusca.descricao ?? produtoBusca.descricao_produto ?? null,
+  });
+  const encontrados: Array<Candidato & { confianca: number; conflito: boolean; motivos: string[] }> = [];
+  for (const candidato of brutos) {
     try {
-      const brutos = await provider.buscarPorNome({
-        nome: termoManual || produto.nome,
-
-        fabricante: produto.fabricante,
-
-        codigo_barras: produto.codigo_barras,
+      const av = avaliarCandidato(produto, candidato);
+      encontrados.push({
+        ...candidato,
+        confianca: Math.min(av.confianca, 70),
+        conflito: av.conflito,
+        motivos: av.motivos,
       });
-
-      for (const c of brutos) {
-        const av = avaliarCandidato(produto, c);
-
-        encontrados.push({
-          ...c,
-
-          confianca: provider.licencaSegura ? av.confianca : Math.min(av.confianca, 70),
-
-          conflito: av.conflito,
-
-          motivos: av.motivos,
-        });
-      }
-    } catch {
-      /**
-       * Continua procurando nas outras fontes.
-       */
-    }
+    } catch {}
   }
-
-  /**
-   * ==========================================================
-   * REMOVE DUPLICADOS
-   * ==========================================================
-   */
-
-  const semDuplicados = removerCandidatosDuplicados(encontrados);
-
-  /**
-   * ==========================================================
-   * CLASSIFICA TODOS OS RESULTADOS
-   * ==========================================================
-   */
-
-  const ordenados = ordenarCandidatos(semDuplicados);
-
-  /**
-   * ==========================================================
-   * RETORNA ATÉ 20 IMAGENS
-   * ==========================================================
-   */
-
-  return ordenados.slice(0, MAX_CANDIDATOS_POR_PRODUTO);
+  return ordenarCandidatos(removerCandidatosDuplicados(encontrados)).slice(0, MAX_CANDIDATOS_POR_PRODUTO);
 }
 
 export const buscarCandidatos = createServerFn({
