@@ -2,16 +2,28 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { avaliarCandidato, classificar, type Candidato } from "@/lib/images/matching";
+import {
+  avaliarCandidato,
+  classificar,
+  type Candidato,
+} from "@/lib/images/matching";
 
-async function assertAdmin(context: { supabase: any; userId: string }) {
-  const { data, error } = await context.supabase.rpc("has_role", {
-    _user_id: context.userId,
-    _role: "admin",
-  });
+async function assertAdmin(context: {
+  supabase: any;
+  userId: string;
+}) {
+  const { data, error } = await context.supabase.rpc(
+    "has_role",
+    {
+      _user_id: context.userId,
+      _role: "admin",
+    },
+  );
 
   if (error || !data) {
-    throw new Error("Acesso restrito a administradores.");
+    throw new Error(
+      "Acesso restrito a administradores.",
+    );
   }
 }
 
@@ -19,24 +31,16 @@ const CAMPOS =
   "id, codigo, nome, fabricante, codigo_barras, categoria_slug, imagem, image_status, image_source, image_source_url, image_confidence, image_last_synced_at, image_width, image_height, image_format, image_error, image_candidato_url, image_license";
 
 /* ============================================================
-   CONFIGURAÇÕES DA BUSCA DE IMAGENS
+   CONFIGURAÇÕES
    ============================================================ */
 
 /**
- * Quantidade máxima de imagens candidatas retornadas
- * para cada produto.
+ * Máximo de imagens exibidas para cada produto.
  */
 const MAX_CANDIDATOS_POR_PRODUTO = 20;
 
 /**
- * Quantidade máxima de produtos processados em cada
- * execução de sincronização.
- *
- * Antes:
- * máximo 30, padrão 10.
- *
- * Agora:
- * máximo 100, padrão 20.
+ * Quantidade padrão de produtos processados em lote.
  */
 const TAMANHO_PADRAO_LOTE = 20;
 
@@ -51,47 +55,105 @@ export const estatisticasImagens = createServerFn({
   .handler(async ({ context }) => {
     await assertAdmin(context);
 
-    const contar = async (aplicar: (q: any) => any) => {
+    const contar = async (
+      aplicar: (q: any) => any,
+    ) => {
       const { count } = await aplicar(
-        context.supabase.from("produtos").select("id", {
-          count: "exact",
-          head: true,
-        }),
+        context.supabase
+          .from("produtos")
+          .select(
+            "id",
+            {
+              count: "exact",
+              head: true,
+            },
+          ),
       );
 
       return count ?? 0;
     };
 
-    const [total, comImagem, revisao, naoEncontrados, erros, comEan] = await Promise.all([
+    const [
+      total,
+      comImagem,
+      revisao,
+      naoEncontrados,
+      erros,
+      comEan,
+    ] = await Promise.all([
       contar((q: any) => q),
 
-      contar((q: any) => q.not("imagem", "is", null)),
+      contar((q: any) =>
+        q.not(
+          "imagem",
+          "is",
+          null,
+        ),
+      ),
 
-      contar((q: any) => q.eq("image_status", "manual_review")),
+      contar((q: any) =>
+        q.eq(
+          "image_status",
+          "manual_review",
+        ),
+      ),
 
-      contar((q: any) => q.eq("image_status", "not_found")),
+      contar((q: any) =>
+        q.eq(
+          "image_status",
+          "not_found",
+        ),
+      ),
 
-      contar((q: any) => q.eq("image_status", "error")),
+      contar((q: any) =>
+        q.eq(
+          "image_status",
+          "error",
+        ),
+      ),
 
-      contar((q: any) => q.not("codigo_barras", "is", null).neq("codigo_barras", "")),
+      contar((q: any) =>
+        q
+          .not(
+            "codigo_barras",
+            "is",
+            null,
+          )
+          .neq(
+            "codigo_barras",
+            "",
+          ),
+      ),
     ]);
 
-    const { data: ultima } = await context.supabase
-      .from("produtos")
-      .select("image_last_synced_at")
-      .not("image_last_synced_at", "is", null)
-      .order("image_last_synced_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+    const { data: ultima } =
+      await context.supabase
+        .from("produtos")
+        .select(
+          "image_last_synced_at",
+        )
+        .not(
+          "image_last_synced_at",
+          "is",
+          null,
+        )
+        .order(
+          "image_last_synced_at",
+          {
+            ascending: false,
+          },
+        )
+        .limit(1)
+        .maybeSingle();
 
     return {
       total,
 
       comImagem,
 
-      semImagem: total - comImagem,
+      semImagem:
+        total -
+        comImagem,
 
       revisao,
 
@@ -101,387 +163,728 @@ export const estatisticasImagens = createServerFn({
 
       comEan,
 
-      cobertura: total ? (comImagem / total) * 100 : 0,
+      cobertura:
+        total
+          ? (
+              comImagem /
+              total
+            ) *
+            100
+          : 0,
 
-      ultimaSincronizacao: ultima?.image_last_synced_at ?? null,
+      ultimaSincronizacao:
+        ultima?.image_last_synced_at ??
+        null,
     };
   });
 
 /* ============================================================
-   LISTAGEM COM FILTROS
+   FILTROS
    ============================================================ */
 
-const filtroSchema = z.object({
-  filtro: z
-    .enum(["todos", "sem_imagem", "com_imagem", "manual_review", "not_found", "error", "approved"])
-    .default("sem_imagem"),
+const filtroSchema =
+  z.object({
+    filtro: z
+      .enum([
+        "todos",
+        "sem_imagem",
+        "com_imagem",
+        "manual_review",
+        "not_found",
+        "error",
+        "approved",
+      ])
+      .default(
+        "sem_imagem",
+      ),
 
-  busca: z.string().default(""),
+    busca:
+      z.string().default(
+        "",
+      ),
 
-  comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
+    comEan: z
+      .enum([
+        "qualquer",
+        "sim",
+        "nao",
+      ])
+      .default(
+        "qualquer",
+      ),
 
-  fabricante: z.string().default(""),
+    fabricante:
+      z.string().default(
+        "",
+      ),
 
-  categoria: z.string().default(""),
+    categoria:
+      z.string().default(
+        "",
+      ),
 
-  pagina: z.number().int().min(1).default(1),
+    pagina: z
+      .number()
+      .int()
+      .min(1)
+      .default(1),
 
-  porPagina: z.number().int().min(1).max(100).default(24),
-});
+    porPagina: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(24),
+  });
 
-function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
-  if (f.filtro === "sem_imagem") {
-    query = query.is("imagem", null);
-  } else if (f.filtro === "com_imagem") {
-    query = query.not("imagem", "is", null);
-  } else if (f.filtro !== "todos") {
-    query = query.eq("image_status", f.filtro);
+function aplicarFiltros(
+  query: any,
+  f: z.infer<
+    typeof filtroSchema
+  >,
+) {
+  if (
+    f.filtro ===
+    "sem_imagem"
+  ) {
+    query = query.is(
+      "imagem",
+      null,
+    );
+  } else if (
+    f.filtro ===
+    "com_imagem"
+  ) {
+    query = query.not(
+      "imagem",
+      "is",
+      null,
+    );
+  } else if (
+    f.filtro !==
+    "todos"
+  ) {
+    query = query.eq(
+      "image_status",
+      f.filtro,
+    );
   }
 
-  if (f.comEan === "sim") {
-    query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
+  if (
+    f.comEan ===
+    "sim"
+  ) {
+    query = query
+      .not(
+        "codigo_barras",
+        "is",
+        null,
+      )
+      .neq(
+        "codigo_barras",
+        "",
+      );
   }
 
-  if (f.comEan === "nao") {
-    query = query.or("codigo_barras.is.null,codigo_barras.eq.");
+  if (
+    f.comEan ===
+    "nao"
+  ) {
+    query = query.or(
+      "codigo_barras.is.null,codigo_barras.eq.",
+    );
   }
 
-  if (f.fabricante) {
-    query = query.ilike("fabricante", `%${f.fabricante}%`);
+  if (
+    f.fabricante
+  ) {
+    query = query.ilike(
+      "fabricante",
+      `%${f.fabricante}%`,
+    );
   }
 
-  if (f.categoria) {
-    query = query.eq("categoria_slug", f.categoria);
+  if (
+    f.categoria
+  ) {
+    query = query.eq(
+      "categoria_slug",
+      f.categoria,
+    );
   }
 
-  if (f.busca) {
-    const termo = f.busca.replace(/[%,]/g, " ").trim();
+  if (
+    f.busca
+  ) {
+    const termo =
+      f.busca
+        .replace(
+          /[%,]/g,
+          " ",
+        )
+        .trim();
 
-    query = query.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%`);
+    if (
+      termo
+    ) {
+      query = query.or(
+        `nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%`,
+      );
+    }
   }
 
   return query;
 }
 
-export const listarProdutosImagens = createServerFn({
-  method: "GET",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => filtroSchema.parse(input))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-
-    const inicio = (data.pagina - 1) * data.porPagina;
-
-    let query = context.supabase.from("produtos").select(CAMPOS, {
-      count: "exact",
-    });
-
-    query = aplicarFiltros(query, data);
-
-    const {
-      data: linhas,
-      count,
-      error,
-    } = await query
-      .order("nome", {
-        ascending: true,
-      })
-      .range(inicio, inicio + data.porPagina - 1);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return {
-      itens: linhas ?? [],
-      total: count ?? 0,
-    };
-  });
-
 /* ============================================================
-   UTILITÁRIOS DE CANDIDATOS
+   LISTAGEM DE PRODUTOS
    ============================================================ */
 
-/**
- * Remove imagens duplicadas.
- *
- * Uma mesma imagem pode aparecer em:
- *
- * - Google geral;
- * - Pague Menos;
- * - Drogasil;
- * - Droga Raia;
- * - Farmácia Permanente;
- * - outras fontes.
- */
-function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] {
-  const urls = new Set<string>();
+export const listarProdutosImagens =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        filtroSchema.parse(
+          input,
+        ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-  const resultado: T[] = [];
+        const inicio =
+          (
+            data.pagina -
+            1
+          ) *
+          data.porPagina;
 
-  for (const candidato of candidatos) {
-    const url = candidato.imageUrl?.trim();
+        let query =
+          context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              CAMPOS,
+              {
+                count:
+                  "exact",
+              },
+            );
 
-    if (!url) {
+        query =
+          aplicarFiltros(
+            query,
+            data,
+          );
+
+        const {
+          data: linhas,
+          count,
+          error,
+        } =
+          await query
+            /**
+             * Produtos COM imagem primeiro.
+             */
+            .order(
+              "imagem",
+              {
+                ascending: false,
+                nullsFirst: false,
+              },
+            )
+            /**
+             * Depois maior relevância da imagem.
+             */
+            .order(
+              "image_confidence",
+              {
+                ascending: false,
+                nullsFirst: false,
+              },
+            )
+            /**
+             * Mantém uma ordem estável.
+             */
+            .order(
+              "nome",
+              {
+                ascending: true,
+              },
+            )
+            .range(
+              inicio,
+              inicio +
+                data.porPagina -
+                1,
+            );
+
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
+
+        return {
+          itens:
+            linhas ??
+            [],
+
+          total:
+            count ??
+            0,
+        };
+      },
+    );
+
+/* ============================================================
+   REMOVER DUPLICADOS
+   ============================================================ */
+
+function removerCandidatosDuplicados<
+  T extends Candidato,
+>(
+  candidatos: T[],
+): T[] {
+  const urls =
+    new Set<
+      string
+    >();
+
+  const resultado:
+    T[] =
+    [];
+
+  for (
+    const candidato
+    of candidatos
+  ) {
+    const url =
+      candidato.imageUrl?.trim();
+
+    if (
+      !url
+    ) {
       continue;
     }
 
-    const chave = url.toLowerCase().split("?")[0];
+    const chave =
+      url
+        .toLowerCase()
+        .split(
+          "?",
+        )[0];
 
-    if (urls.has(chave)) {
+    if (
+      urls.has(
+        chave,
+      )
+    ) {
       continue;
     }
 
-    urls.add(chave);
+    urls.add(
+      chave,
+    );
 
-    resultado.push(candidato);
+    resultado.push(
+      candidato,
+    );
   }
 
   return resultado;
 }
 
-/**
- * Ordena os candidatos.
- *
- * Prioridade:
- *
- * 1. Maior confiança
- * 2. Sem conflito
- * 3. Produto encontrado por EAN
- * 4. Fonte específica
- */
-function ordenarCandidatos<
-  T extends Candidato & {
+/* ============================================================
+   ORDENAÇÃO DOS CANDIDATOS
+   ============================================================ */
+
+type CandidatoAvaliado =
+  Candidato & {
     confianca: number;
+
     conflito: boolean;
+
     motivos: string[];
-  },
->(candidatos: T[]): T[] {
-  return [...candidatos].sort((a, b) => {
-    /**
-     * Primeiro:
-     * maior confiança.
-     */
-    if (b.confianca !== a.confianca) {
-      return b.confianca - a.confianca;
-    }
 
-    /**
-     * Segundo:
-     * candidatos sem conflito.
-     */
-    if (a.conflito !== b.conflito) {
-      return a.conflito ? 1 : -1;
-    }
+    eanConfirmado?: boolean;
+  };
 
-    /**
-     * Terceiro:
-     * candidatos encontrados usando EAN.
-     */
-    const aTemEan = Boolean(a.ean);
+function ordenarCandidatos(
+  candidatos: CandidatoAvaliado[],
+): CandidatoAvaliado[] {
+  return [
+    ...candidatos,
+  ].sort(
+    (
+      a,
+      b,
+    ) => {
+      /**
+       * 1. EAN confirmado sempre primeiro.
+       */
+      const aEan =
+        Boolean(
+          a.eanConfirmado,
+        );
 
-    const bTemEan = Boolean(b.ean);
+      const bEan =
+        Boolean(
+          b.eanConfirmado,
+        );
 
-    if (aTemEan !== bTemEan) {
-      return aTemEan ? -1 : 1;
-    }
+      if (
+        aEan !==
+        bEan
+      ) {
+        return aEan
+          ? -1
+          : 1;
+      }
 
-    return 0;
-  });
+      /**
+       * 2. Maior confiança.
+       */
+      if (
+        b.confianca !==
+        a.confianca
+      ) {
+        return (
+          b.confianca -
+          a.confianca
+        );
+      }
+
+      /**
+       * 3. Sem conflito.
+       */
+      if (
+        a.conflito !==
+        b.conflito
+      ) {
+        return a.conflito
+          ? 1
+          : -1;
+      }
+
+      /**
+       * 4. Candidato que possui EAN informado.
+       */
+      const aTemEan =
+        Boolean(
+          a.ean,
+        );
+
+      const bTemEan =
+        Boolean(
+          b.ean,
+        );
+
+      if (
+        aTemEan !==
+        bTemEan
+      ) {
+        return aTemEan
+          ? -1
+          : 1;
+      }
+
+      return 0;
+    },
+  );
 }
 
 /* ============================================================
-   BUSCA DE CANDIDATOS PARA UM PRODUTO
+   BUSCA DE CANDIDATOS
    ============================================================ */
 
-/**
- * IMPORTANTE
- *
- * A versão anterior interrompia a busca assim que encontrava
- * um candidato com confiança maior ou igual a 75.
- *
- * Isso fazia o sistema parar antes de consultar outras fontes.
- *
- * Agora:
- *
- * - consulta todas as fontes disponíveis;
- * - prioriza EAN;
- * - depois nome;
- * - reúne os resultados;
- * - remove duplicados;
- * - classifica todos;
- * - retorna até 20 imagens.
- */
-async function candidatosPara(produto: any, termoManual?: string) {
-  const { providersAtivos } = await import("@/lib/images/providers.server");
+async function candidatosPara(
+  produto: any,
+  termoManual?: string,
+) {
+  const {
+    providersAtivos,
+  } =
+    await import(
+      "@/lib/images/providers.server"
+    );
 
-  const ean = (produto.codigo_barras ?? "").replace(/\D/g, "");
+  const ean =
+    (
+      produto.codigo_barras ??
+      ""
+    ).replace(
+      /\D/g,
+      "",
+    );
 
-  const encontrados: Array<
-    Candidato & {
-      confianca: number;
-      conflito: boolean;
-      motivos: string[];
-    }
-  > = [];
+  const encontrados:
+    CandidatoAvaliado[] =
+    [];
 
-  const providers = providersAtivos();
+  const providers =
+    providersAtivos();
 
-  /**
-   * ==========================================================
-   * PRIMEIRA ETAPA
-   *
-   * BUSCA PELO CÓDIGO DE BARRAS / EAN
-   * ==========================================================
-   */
+  /* ==========================================================
+     ETAPA 1
+     CÓDIGO DE BARRAS
+     ========================================================== */
 
-  if (ean) {
-    for (const provider of providers) {
-      if (!provider.buscarPorEan) {
+  if (
+    ean
+  ) {
+    for (
+      const provider
+      of providers
+    ) {
+      if (
+        !provider.buscarPorEan
+      ) {
         continue;
       }
 
       try {
-        const brutos = await provider.buscarPorEan(ean);
+        const brutos =
+          await provider.buscarPorEan(
+            ean,
+          );
 
-        for (const c of brutos) {
-          const av = avaliarCandidato(produto, c);
+        for (
+          const candidato
+          of brutos
+        ) {
+          const avaliacao =
+            avaliarCandidato(
+              produto,
+              candidato,
+            );
 
           encontrados.push({
-            ...c,
+            ...candidato,
 
             /**
-             * Mantém a confiança
-             * calculada pelo matching.
+             * NÃO LIMITAMOS MAIS
+             * Google e farmácias a 70.
              *
-             * Fontes que não possuem licença
-             * automaticamente segura continuam
-             * disponíveis para revisão manual.
+             * Se o EAN for confirmado,
+             * a imagem merece prioridade máxima.
              */
-            confianca: provider.licencaSegura ? av.confianca : Math.min(av.confianca, 70),
+            confianca:
+              avaliacao.confianca,
 
-            conflito: av.conflito,
+            conflito:
+              avaliacao.conflito,
 
-            motivos: av.motivos,
+            motivos:
+              avaliacao.motivos,
+
+            eanConfirmado:
+              avaliacao.eanConfirmado,
           });
         }
       } catch {
         /**
-         * Uma fonte com erro não pode impedir
-         * a busca nas outras.
+         * Uma fonte falhar não interrompe
+         * a busca nas demais.
          */
       }
     }
   }
 
-  /**
-   * ==========================================================
-   * SEGUNDA ETAPA
-   *
-   * BUSCA POR NOME + FABRICANTE
-   * ==========================================================
-   *
-   * Mesmo quando existe EAN, também procuramos
-   * pelo nome para aumentar as chances de encontrar
-   * uma imagem correta.
-   */
-  for (const provider of providers) {
-    if (!provider.buscarPorNome) {
+  /* ==========================================================
+     ETAPA 2
+     NOME DO PRODUTO
+     ========================================================== */
+
+  for (
+    const provider
+    of providers
+  ) {
+    if (
+      !provider.buscarPorNome
+    ) {
       continue;
     }
 
     try {
-      const brutos = await provider.buscarPorNome({
-        nome: termoManual || produto.nome,
+      const brutos =
+        await provider.buscarPorNome(
+          {
+            nome:
+              termoManual ||
+              produto.nome,
 
-        fabricante: produto.fabricante,
+            fabricante:
+              produto.fabricante,
 
-        codigo_barras: produto.codigo_barras,
-      });
+            codigo_barras:
+              produto.codigo_barras,
+          },
+        );
 
-      for (const c of brutos) {
-        const av = avaliarCandidato(produto, c);
+      for (
+        const candidato
+        of brutos
+      ) {
+        const avaliacao =
+          avaliarCandidato(
+            produto,
+            candidato,
+          );
 
         encontrados.push({
-          ...c,
+          ...candidato,
 
-          confianca: provider.licencaSegura ? av.confianca : Math.min(av.confianca, 70),
+          confianca:
+            avaliacao.confianca,
 
-          conflito: av.conflito,
+          conflito:
+            avaliacao.conflito,
 
-          motivos: av.motivos,
+          motivos:
+            avaliacao.motivos,
+
+          eanConfirmado:
+            avaliacao.eanConfirmado,
         });
       }
     } catch {
       /**
-       * Continua procurando nas outras fontes.
+       * Continua para a próxima fonte.
        */
     }
   }
 
-  /**
-   * ==========================================================
-   * REMOVE DUPLICADOS
-   * ==========================================================
-   */
+  /* ==========================================================
+     REMOVE DUPLICADOS
+     ========================================================== */
 
-  const semDuplicados = removerCandidatosDuplicados(encontrados);
+  const semDuplicados =
+    removerCandidatosDuplicados(
+      encontrados,
+    );
 
-  /**
-   * ==========================================================
-   * CLASSIFICA TODOS OS RESULTADOS
-   * ==========================================================
-   */
+  /* ==========================================================
+     ORDENA POR RELEVÂNCIA
+     ========================================================== */
 
-  const ordenados = ordenarCandidatos(semDuplicados);
+  const ordenados =
+    ordenarCandidatos(
+      semDuplicados,
+    );
 
-  /**
-   * ==========================================================
-   * RETORNA ATÉ 20 IMAGENS
-   * ==========================================================
-   */
+  /* ==========================================================
+     RETORNA NO MÁXIMO 20
+     ========================================================== */
 
-  return ordenados.slice(0, MAX_CANDIDATOS_POR_PRODUTO);
+  return ordenados.slice(
+    0,
+    MAX_CANDIDATOS_POR_PRODUTO,
+  );
 }
 
-export const buscarCandidatos = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        produtoId: z.string().uuid(),
+/* ============================================================
+   BUSCAR CANDIDATOS
+   ============================================================ */
 
-        termo: z.string().optional(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+export const buscarCandidatos =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            produtoId:
+              z
+                .string()
+                .uuid(),
 
-    const { data: produtoRaw, error } = await context.supabase
-      .from("produtos")
-      .select(CAMPOS)
-      .eq("id", data.produtoId)
-      .single();
+            termo:
+              z
+                .string()
+                .optional(),
+          })
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-    if (error) {
-      throw new Error(error.message);
-    }
+        const {
+          data: produtoRaw,
+          error,
+        } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              CAMPOS,
+            )
+            .eq(
+              "id",
+              data.produtoId,
+            )
+            .single();
 
-    const produto = produtoRaw as any;
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
 
-    return {
-      produto,
+        const produto =
+          produtoRaw as any;
 
-      candidatos: await candidatosPara(produto, data.termo),
-    };
-  });
+        const candidatos =
+          await candidatosPara(
+            produto,
+            data.termo,
+          );
+
+        return {
+          produto,
+
+          candidatos,
+
+          total:
+            candidatos.length,
+        };
+      },
+    );
 
 /* ============================================================
-   APLICAR UMA IMAGEM
+   APLICAR IMAGEM
    ============================================================ */
 
 async function aplicar(
@@ -489,623 +892,1249 @@ async function aplicar(
   produto: any,
   candidato: any,
   confianca: number,
-  status: "approved" | "manual_review",
+  status:
+    | "approved"
+    | "manual_review",
 ) {
-  const { baixarImagem, guardarImagem } = await import("@/lib/images/pipeline.server");
+  const {
+    baixarImagem,
+    guardarImagem,
+  } =
+    await import(
+      "@/lib/images/pipeline.server"
+    );
 
-  const imagem = await baixarImagem(candidato.imageUrl);
+  const imagem =
+    await baixarImagem(
+      candidato.imageUrl,
+    );
 
-  const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
+  const chave =
+    (
+      produto.codigo_barras ||
+      ""
+    ).replace(
+      /\D/g,
+      "",
+    ) ||
+    produto.id;
 
-  /**
-   * Idempotência:
-   *
-   * mesma imagem já associada
-   * → não envia novamente.
-   */
-  if (produto.image_hash === imagem.hash && produto.imagem) {
+  if (
+    produto.image_hash ===
+      imagem.hash &&
+    produto.imagem
+  ) {
     return produto.imagem as string;
   }
 
-  const { url } = await guardarImagem(chave, imagem);
+  const { url } =
+    await guardarImagem(
+      chave,
+      imagem,
+    );
 
-  const { error } = await context.supabase
-    .from("produtos")
-    .update({
-      imagem: url,
+  const { error } =
+    await context.supabase
+      .from(
+        "produtos",
+      )
+      .update({
+        imagem: url,
 
-      image_status: status,
+        image_status:
+          status,
 
-      image_source: candidato.source,
+        image_source:
+          candidato.source,
 
-      image_source_url: candidato.sourceUrl ?? candidato.imageUrl,
+        image_source_url:
+          candidato.sourceUrl ??
+          candidato.imageUrl,
 
-      image_confidence: confianca,
+        image_confidence:
+          confianca,
 
-      image_last_synced_at: new Date().toISOString(),
+        image_last_synced_at:
+          new Date().toISOString(),
 
-      image_hash: imagem.hash,
+        image_hash:
+          imagem.hash,
 
-      image_width: imagem.largura,
+        image_width:
+          imagem.largura,
 
-      image_height: imagem.altura,
+        image_height:
+          imagem.altura,
 
-      image_format: imagem.extensao,
+        image_format:
+          imagem.extensao,
 
-      image_error: null,
+        image_error:
+          null,
 
-      image_candidato_url: null,
+        image_candidato_url:
+          null,
 
-      image_license: candidato.licenca ?? null,
-    })
-    .eq("id", produto.id);
+        image_license:
+          candidato.licenca ??
+          null,
+      })
+      .eq(
+        "id",
+        produto.id,
+      );
 
-  if (error) {
-    throw new Error(error.message);
+  if (
+    error
+  ) {
+    throw new Error(
+      error.message,
+    );
   }
 
   return url;
 }
 
-async function registrarLog(context: any, log: Record<string, unknown>) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+/* ============================================================
+   LOG
+   ============================================================ */
 
-  await supabaseAdmin.from("imagem_sync_logs").insert(log as any);
+async function registrarLog(
+  context: any,
+  log: Record<
+    string,
+    unknown
+  >,
+) {
+  const {
+    supabaseAdmin,
+  } =
+    await import(
+      "@/integrations/supabase/client.server"
+    );
+
+  await supabaseAdmin
+    .from(
+      "imagem_sync_logs",
+    )
+    .insert(
+      log as any,
+    );
 }
 
-export const aplicarCandidato = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        produtoId: z.string().uuid(),
+/* ============================================================
+   APLICAR CANDIDATO MANUALMENTE
+   ============================================================ */
 
-        imageUrl: z.string().url(),
+export const aplicarCandidato =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            produtoId:
+              z
+                .string()
+                .uuid(),
 
-        source: z.string().default("manual"),
+            imageUrl:
+              z
+                .string()
+                .url(),
 
-        sourceUrl: z.string().optional(),
+            source:
+              z
+                .string()
+                .default(
+                  "manual",
+                ),
 
-        licenca: z.string().optional(),
+            sourceUrl:
+              z
+                .string()
+                .optional(),
 
-        confianca: z.number().min(0).max(100).default(100),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+            licenca:
+              z
+                .string()
+                .optional(),
 
-    const { data: produtoRaw, error } = await context.supabase
-      .from("produtos")
-      .select(CAMPOS + ", image_hash")
-      .eq("id", data.produtoId)
-      .single();
+            confianca:
+              z
+                .number()
+                .min(0)
+                .max(100)
+                .default(100),
+          })
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-    if (error) {
-      throw new Error(error.message);
-    }
+        const {
+          data: produtoRaw,
+          error,
+        } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              CAMPOS +
+                ", image_hash",
+            )
+            .eq(
+              "id",
+              data.produtoId,
+            )
+            .single();
 
-    const produto = produtoRaw as any;
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
 
-    const url = await aplicar(context, produto, data, data.confianca, "approved");
+        const produto =
+          produtoRaw as any;
 
-    await registrarLog(context, {
-      produto_id: produto.id,
+        const url =
+          await aplicar(
+            context,
+            produto,
+            data,
+            data.confianca,
+            "approved",
+          );
 
-      ean: produto.codigo_barras,
+        await registrarLog(
+          context,
+          {
+            produto_id:
+              produto.id,
 
-      status: "approved",
+            ean:
+              produto.codigo_barras,
 
-      source: data.source,
+            status:
+              "approved",
 
-      image_url: url,
+            source:
+              data.source,
 
-      confidence: data.confianca,
-    });
+            image_url:
+              url,
 
-    return {
-      url,
-    };
-  });
+            confidence:
+              data.confianca,
+          },
+        );
+
+        return {
+          url,
+        };
+      },
+    );
 
 /* ============================================================
    SINCRONIZAÇÃO EM LOTE
    ============================================================ */
 
-export const sincronizarLote = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        escopo: z.enum(["sem_imagem", "todos", "revisao"]).default("sem_imagem"),
-
-        /**
-         * Agora:
-         *
-         * padrão = 20
-         * máximo = 100
-         */
-        tamanho: z.number().int().min(1).max(100).default(TAMANHO_PADRAO_LOTE),
-
-        forcar: z.boolean().default(false),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-
-    let query = context.supabase.from("produtos").select(CAMPOS + ", image_hash");
-
-    if (data.escopo === "sem_imagem") {
-      query = query.is("imagem", null);
-    }
-
-    if (data.escopo === "revisao") {
-      query = query.eq("image_status", "manual_review");
-    }
-
-    if (!data.forcar) {
-      query = query.neq("image_status", "not_found").neq("image_status", "error");
-    }
-
-    const { data: produtosRaw, error } = await query
-      .order("image_last_synced_at", {
-        ascending: true,
-
-        nullsFirst: true,
-      })
-      .limit(data.tamanho);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const resultado = {
-      processados: 0,
-
-      aprovados: 0,
-
-      revisao: 0,
-
-      naoEncontrados: 0,
-
-      erros: 0,
-
-      detalhes: [] as Array<{
-        nome: string;
-        status: string;
-        fonte?: string;
-        confianca?: number;
-      }>,
-    };
-
-    const produtos = (produtosRaw ?? []) as any[];
-
-    for (const produto of produtos) {
-      const inicio = new Date().toISOString();
-
-      resultado.processados++;
-
-      try {
-        /**
-         * Agora recebe até 20 candidatos.
-         */
-        const candidatos = await candidatosPara(produto);
-
-        const melhor = candidatos[0];
-
-        if (!melhor) {
-          await context.supabase
-            .from("produtos")
-            .update({
-              image_status: "not_found",
-
-              image_last_synced_at: new Date().toISOString(),
-
-              image_error: null,
-            })
-            .eq("id", produto.id);
-
-          resultado.naoEncontrados++;
-
-          resultado.detalhes.push({
-            nome: produto.nome,
-
-            status: "não encontrada",
-          });
-
-          await registrarLog(context, {
-            produto_id: produto.id,
-
-            ean: produto.codigo_barras,
-
-            status: "not_found",
-
-            started_at: inicio,
-          });
-
-          continue;
-        }
-
-        const decisao = classificar({
-          confianca: melhor.confianca,
-
-          conflito: melhor.conflito,
-
-          motivos: melhor.motivos,
-        });
-
-        if (decisao === "approved") {
-          await aplicar(context, produto, melhor, melhor.confianca, "approved");
-
-          resultado.aprovados++;
-
-          resultado.detalhes.push({
-            nome: produto.nome,
-
-            status: "aprovada",
-
-            fonte: melhor.source,
-
-            confianca: melhor.confianca,
-          });
-
-          await registrarLog(context, {
-            produto_id: produto.id,
-
-            ean: produto.codigo_barras,
-
-            status: "approved",
-
-            source: melhor.source,
-
-            confidence: melhor.confianca,
-
-            started_at: inicio,
-          });
-        } else if (decisao === "manual_review") {
-          await context.supabase
-            .from("produtos")
-            .update({
-              image_status: "manual_review",
-
-              image_candidato_url: melhor.imageUrl,
-
-              image_source: melhor.source,
-
-              image_source_url: melhor.sourceUrl ?? melhor.imageUrl,
-
-              image_confidence: melhor.confianca,
-
-              image_license: melhor.licenca ?? null,
-
-              image_last_synced_at: new Date().toISOString(),
-            })
-            .eq("id", produto.id);
-
-          resultado.revisao++;
-
-          resultado.detalhes.push({
-            nome: produto.nome,
-
-            status: "revisão manual",
-
-            fonte: melhor.source,
-
-            confianca: melhor.confianca,
-          });
-
-          await registrarLog(context, {
-            produto_id: produto.id,
-
-            ean: produto.codigo_barras,
-
-            status: "manual_review",
-
-            source: melhor.source,
-
-            confidence: melhor.confianca,
-
-            started_at: inicio,
-          });
-        } else {
-          await context.supabase
-            .from("produtos")
-            .update({
-              image_status: "not_found",
-
-              image_last_synced_at: new Date().toISOString(),
-            })
-            .eq("id", produto.id);
-
-          resultado.naoEncontrados++;
-
-          resultado.detalhes.push({
-            nome: produto.nome,
-
-            status: "descartada (baixa confiança)",
-          });
-        }
-      } catch (e) {
-        const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
-
-        await context.supabase
-          .from("produtos")
-          .update({
-            image_status: "error",
-
-            image_error: mensagem,
-
-            image_last_synced_at: new Date().toISOString(),
+export const sincronizarLote =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            escopo: z
+              .enum([
+                "sem_imagem",
+                "todos",
+                "revisao",
+              ])
+              .default(
+                "sem_imagem",
+              ),
+
+            tamanho: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .default(
+                TAMANHO_PADRAO_LOTE,
+              ),
+
+            forcar:
+              z
+                .boolean()
+                .default(
+                  false,
+                ),
           })
-          .eq("id", produto.id);
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-        resultado.erros++;
+        let query =
+          context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              CAMPOS +
+                ", image_hash",
+            );
 
-        resultado.detalhes.push({
-          nome: produto.nome,
+        if (
+          data.escopo ===
+          "sem_imagem"
+        ) {
+          query =
+            query.is(
+              "imagem",
+              null,
+            );
+        }
 
-          status: `erro: ${mensagem}`,
-        });
+        if (
+          data.escopo ===
+          "revisao"
+        ) {
+          query =
+            query.eq(
+              "image_status",
+              "manual_review",
+            );
+        }
 
-        await registrarLog(context, {
-          produto_id: produto.id,
+        if (
+          !data.forcar
+        ) {
+          query =
+            query
+              .neq(
+                "image_status",
+                "not_found",
+              )
+              .neq(
+                "image_status",
+                "error",
+              );
+        }
 
-          ean: produto.codigo_barras,
+        const {
+          data: produtosRaw,
+          error,
+        } =
+          await query
+            .order(
+              "image_last_synced_at",
+              {
+                ascending: true,
 
-          status: "error",
+                nullsFirst: true,
+              },
+            )
+            .limit(
+              data.tamanho,
+            );
 
-          error: mensagem,
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
 
-          started_at: inicio,
-        });
-      }
-    }
+        const resultado = {
+          processados:
+            0,
 
-    return {
-      ...resultado,
+          aprovados:
+            0,
 
-      fim: produtos.length < data.tamanho,
-    };
-  });
+          revisao:
+            0,
 
-/* ============================================================
-   REVISÃO MANUAL
-   ============================================================ */
+          naoEncontrados:
+            0,
 
-export const aprovarCandidatoPendente = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        produtoId: z.string().uuid(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+          erros:
+            0,
 
-    const { data: produtoRaw, error } = await context.supabase
-      .from("produtos")
-      .select(CAMPOS + ", image_hash")
-      .eq("id", data.produtoId)
-      .single();
+          detalhes:
+            [] as Array<{
+              nome: string;
 
-    if (error) {
-      throw new Error(error.message);
-    }
+              status: string;
 
-    const produto = produtoRaw as any;
+              fonte?: string;
 
-    if (!produto.image_candidato_url) {
-      throw new Error("Não há imagem candidata para este produto.");
-    }
+              confianca?: number;
+            }>,
+        };
 
-    const url = await aplicar(
-      context,
-      produto,
-      {
-        imageUrl: produto.image_candidato_url,
+        const produtos =
+          (
+            produtosRaw ??
+            []
+          ) as any[];
 
-        source: produto.image_source ?? "manual",
+        for (
+          const produto
+          of produtos
+        ) {
+          const inicio =
+            new Date().toISOString();
 
-        sourceUrl: produto.image_source_url ?? undefined,
+          resultado.processados++;
 
-        licenca: produto.image_license ?? undefined,
+          try {
+            const candidatos =
+              await candidatosPara(
+                produto,
+              );
+
+            const melhor =
+              candidatos[0];
+
+            if (
+              !melhor
+            ) {
+              await context.supabase
+                .from(
+                  "produtos",
+                )
+                .update({
+                  image_status:
+                    "not_found",
+
+                  image_last_synced_at:
+                    new Date().toISOString(),
+
+                  image_error:
+                    null,
+                })
+                .eq(
+                  "id",
+                  produto.id,
+                );
+
+              resultado.naoEncontrados++;
+
+              resultado.detalhes.push(
+                {
+                  nome:
+                    produto.nome,
+
+                  status:
+                    "não encontrada",
+                },
+              );
+
+              await registrarLog(
+                context,
+                {
+                  produto_id:
+                    produto.id,
+
+                  ean:
+                    produto.codigo_barras,
+
+                  status:
+                    "not_found",
+
+                  started_at:
+                    inicio,
+                },
+              );
+
+              continue;
+            }
+
+            const decisao =
+              classificar({
+                confianca:
+                  melhor.confianca,
+
+                conflito:
+                  melhor.conflito,
+
+                motivos:
+                  melhor.motivos,
+
+                eanConfirmado:
+                  melhor.eanConfirmado ??
+                  false,
+              });
+
+            if (
+              decisao ===
+              "approved"
+            ) {
+              await aplicar(
+                context,
+                produto,
+                melhor,
+                melhor.confianca,
+                "approved",
+              );
+
+              resultado.aprovados++;
+
+              resultado.detalhes.push(
+                {
+                  nome:
+                    produto.nome,
+
+                  status:
+                    "aprovada",
+
+                  fonte:
+                    melhor.source,
+
+                  confianca:
+                    melhor.confianca,
+                },
+              );
+
+              await registrarLog(
+                context,
+                {
+                  produto_id:
+                    produto.id,
+
+                  ean:
+                    produto.codigo_barras,
+
+                  status:
+                    "approved",
+
+                  source:
+                    melhor.source,
+
+                  confidence:
+                    melhor.confianca,
+
+                  started_at:
+                    inicio,
+                },
+              );
+            } else if (
+              decisao ===
+              "manual_review"
+            ) {
+              await context.supabase
+                .from(
+                  "produtos",
+                )
+                .update({
+                  image_status:
+                    "manual_review",
+
+                  image_candidato_url:
+                    melhor.imageUrl,
+
+                  image_source:
+                    melhor.source,
+
+                  image_source_url:
+                    melhor.sourceUrl ??
+                    melhor.imageUrl,
+
+                  image_confidence:
+                    melhor.confianca,
+
+                  image_license:
+                    melhor.licenca ??
+                    null,
+
+                  image_last_synced_at:
+                    new Date().toISOString(),
+                })
+                .eq(
+                  "id",
+                  produto.id,
+                );
+
+              resultado.revisao++;
+
+              resultado.detalhes.push(
+                {
+                  nome:
+                    produto.nome,
+
+                  status:
+                    "revisão manual",
+
+                  fonte:
+                    melhor.source,
+
+                  confianca:
+                    melhor.confianca,
+                },
+              );
+
+              await registrarLog(
+                context,
+                {
+                  produto_id:
+                    produto.id,
+
+                  ean:
+                    produto.codigo_barras,
+
+                  status:
+                    "manual_review",
+
+                  source:
+                    melhor.source,
+
+                  confidence:
+                    melhor.confianca,
+
+                  started_at:
+                    inicio,
+                },
+              );
+            } else {
+              await context.supabase
+                .from(
+                  "produtos",
+                )
+                .update({
+                  image_status:
+                    "not_found",
+
+                  image_last_synced_at:
+                    new Date().toISOString(),
+                })
+                .eq(
+                  "id",
+                  produto.id,
+                );
+
+              resultado.naoEncontrados++;
+
+              resultado.detalhes.push(
+                {
+                  nome:
+                    produto.nome,
+
+                  status:
+                    "descartada (baixa confiança)",
+                },
+              );
+            }
+          } catch (
+            erro,
+          ) {
+            const mensagem =
+              erro instanceof Error
+                ? erro.message
+                : "Erro desconhecido";
+
+            await context.supabase
+              .from(
+                "produtos",
+              )
+              .update({
+                image_status:
+                  "error",
+
+                image_error:
+                  mensagem,
+
+                image_last_synced_at:
+                  new Date().toISOString(),
+              })
+              .eq(
+                "id",
+                produto.id,
+              );
+
+            resultado.erros++;
+
+            resultado.detalhes.push(
+              {
+                nome:
+                  produto.nome,
+
+                status:
+                  `erro: ${mensagem}`,
+              },
+            );
+
+            await registrarLog(
+              context,
+              {
+                produto_id:
+                  produto.id,
+
+                ean:
+                  produto.codigo_barras,
+
+                status:
+                  "error",
+
+                error:
+                  mensagem,
+
+                started_at:
+                  inicio,
+              },
+            );
+          }
+        }
+
+        return {
+          ...resultado,
+
+          fim:
+            produtos.length <
+            data.tamanho,
+        };
       },
-
-      produto.image_confidence ?? 100,
-
-      "approved",
     );
 
-    return {
-      url,
-    };
-  });
-
-export const rejeitarImagem = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        produtoId: z.string().uuid(),
-
-        removerAtual: z.boolean().default(false),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-
-    const campos: Record<string, unknown> = {
-      image_candidato_url: null,
-
-      image_status: "not_found",
-
-      image_last_synced_at: new Date().toISOString(),
-    };
-
-    if (data.removerAtual) {
-      campos["imagem"] = null;
-
-      campos["image_hash"] = null;
-
-      campos["image_source"] = null;
-
-      campos["image_source_url"] = null;
-
-      campos["image_confidence"] = null;
-    }
-
-    const { error } = await context.supabase
-      .from("produtos")
-      .update(campos as any)
-      .eq("id", data.produtoId);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return {
-      ok: true,
-    };
-  });
-
 /* ============================================================
-   UPLOAD MANUAL / EM MASSA POR EAN
+   APROVAR CANDIDATO PENDENTE
    ============================================================ */
 
-export const enviarImagemProduto = createServerFn({
-  method: "POST",
-})
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        produtoId: z.string().uuid().optional(),
+export const aprovarCandidatoPendente =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            produtoId:
+              z
+                .string()
+                .uuid(),
+          })
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-        nomeArquivo: z.string().min(1),
+        const {
+          data: produtoRaw,
+          error,
+        } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              CAMPOS +
+                ", image_hash",
+            )
+            .eq(
+              "id",
+              data.produtoId,
+            )
+            .single();
 
-        tipo: z.string().min(1),
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
 
-        conteudoBase64: z.string().min(1),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+        const produto =
+          produtoRaw as any;
 
-    const { guardarImagem } = await import("@/lib/images/pipeline.server");
+        if (
+          !produto.image_candidato_url
+        ) {
+          throw new Error(
+            "Não há imagem candidata para este produto.",
+          );
+        }
 
-    const bytes = Uint8Array.from(atob(data.conteudoBase64), (c) => c.charCodeAt(0));
+        const url =
+          await aplicar(
+            context,
+            produto,
+            {
+              imageUrl:
+                produto.image_candidato_url,
 
-    let produtoId = data.produtoId;
+              source:
+                produto.image_source ??
+                "manual",
 
-    const eanArquivo = data.nomeArquivo.replace(/\.[^.]+$/, "").replace(/\D/g, "");
+              sourceUrl:
+                produto.image_source_url ??
+                undefined,
 
-    if (!produtoId) {
-      if (eanArquivo.length < 8) {
-        throw new Error("Nome do arquivo não contém um EAN válido.");
-      }
+              licenca:
+                produto.image_license ??
+                undefined,
+            },
 
-      const { data: achados, error } = await context.supabase
-        .from("produtos")
-        .select("id")
-        .eq("codigo_barras", eanArquivo)
-        .limit(2);
+            produto.image_confidence ??
+              100,
 
-      if (error) {
-        throw new Error(error.message);
-      }
+            "approved",
+          );
 
-      if (!achados?.length) {
-        throw new Error(`Nenhum produto com o EAN ${eanArquivo}.`);
-      }
+        return {
+          url,
+        };
+      },
+    );
 
-      if (achados.length > 1) {
-        throw new Error(`Mais de um produto com o EAN ${eanArquivo}.`);
-      }
+/* ============================================================
+   REJEITAR IMAGEM
+   ============================================================ */
 
-      produtoId = achados[0]!.id as string;
-    }
+export const rejeitarImagem =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            produtoId:
+              z
+                .string()
+                .uuid(),
 
-    const { data: produtoRaw2, error: erroProduto } = await context.supabase
-      .from("produtos")
-      .select("id, codigo_barras")
-      .eq("id", produtoId)
-      .single();
+            removerAtual:
+              z
+                .boolean()
+                .default(
+                  false,
+                ),
+          })
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-    if (erroProduto) {
-      throw new Error(erroProduto.message);
-    }
+        const campos:
+          Record<
+            string,
+            unknown
+          > = {
+            image_candidato_url:
+              null,
 
-    const produto = produtoRaw2 as any;
+            image_status:
+              "not_found",
 
-    const extensao = (data.nomeArquivo.split(".").pop() ?? "jpg").toLowerCase();
+            image_last_synced_at:
+              new Date().toISOString(),
+          };
 
-    const hashBuffer = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
+        if (
+          data.removerAtual
+        ) {
+          campos.imagem =
+            null;
 
-    const hash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+          campos.image_hash =
+            null;
 
-    const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
+          campos.image_source =
+            null;
 
-    const { url } = await guardarImagem(chave, {
-      bytes,
+          campos.image_source_url =
+            null;
 
-      mime: data.tipo,
+          campos.image_confidence =
+            null;
+        }
 
-      extensao,
+        const { error } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .update(
+              campos as any,
+            )
+            .eq(
+              "id",
+              data.produtoId,
+            );
 
-      largura: null,
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
 
-      altura: null,
+        return {
+          ok: true,
+        };
+      },
+    );
 
-      hash,
-    });
+/* ============================================================
+   UPLOAD MANUAL
+   ============================================================ */
 
-    const { error } = await context.supabase
-      .from("produtos")
-      .update({
-        imagem: url,
+export const enviarImagemProduto =
+  createServerFn({
+    method: "POST",
+  })
+    .middleware([
+      requireSupabaseAuth,
+    ])
+    .inputValidator(
+      (
+        input: unknown,
+      ) =>
+        z
+          .object({
+            produtoId:
+              z
+                .string()
+                .uuid()
+                .optional(),
 
-        image_status: "approved",
+            nomeArquivo:
+              z
+                .string()
+                .min(1),
 
-        image_source: "manual",
+            tipo:
+              z
+                .string()
+                .min(1),
 
-        image_source_url: null,
+            conteudoBase64:
+              z
+                .string()
+                .min(1),
+          })
+          .parse(
+            input,
+          ),
+    )
+    .handler(
+      async ({
+        data,
+        context,
+      }) => {
+        await assertAdmin(
+          context,
+        );
 
-        image_confidence: 100,
+        const {
+          guardarImagem,
+        } =
+          await import(
+            "@/lib/images/pipeline.server"
+          );
 
-        image_hash: hash,
+        const bytes =
+          Uint8Array.from(
+            atob(
+              data.conteudoBase64,
+            ),
+            (
+              caractere,
+            ) =>
+              caractere.charCodeAt(
+                0,
+              ),
+          );
 
-        image_format: extensao,
+        let produtoId =
+          data.produtoId;
 
-        image_error: null,
+        const eanArquivo =
+          data.nomeArquivo
+            .replace(
+              /\.[^.]+$/,
+              "",
+            )
+            .replace(
+              /\D/g,
+              "",
+            );
 
-        image_candidato_url: null,
+        if (
+          !produtoId
+        ) {
+          if (
+            eanArquivo.length <
+            8
+          ) {
+            throw new Error(
+              "Nome do arquivo não contém um EAN válido.",
+            );
+          }
 
-        image_last_synced_at: new Date().toISOString(),
-      })
-      .eq("id", produto.id);
+          const {
+            data: achados,
+            error,
+          } =
+            await context.supabase
+              .from(
+                "produtos",
+              )
+              .select(
+                "id",
+              )
+              .eq(
+                "codigo_barras",
+                eanArquivo,
+              )
+              .limit(2);
 
-    if (error) {
-      throw new Error(error.message);
-    }
+          if (
+            error
+          ) {
+            throw new Error(
+              error.message,
+            );
+          }
 
-    return {
-      url,
+          if (
+            !achados?.length
+          ) {
+            throw new Error(
+              `Nenhum produto com o EAN ${eanArquivo}.`,
+            );
+          }
 
-      produtoId: produto.id as string,
-    };
-  });
+          if (
+            achados.length >
+            1
+          ) {
+            throw new Error(
+              `Mais de um produto com o EAN ${eanArquivo}.`,
+            );
+          }
+
+          produtoId =
+            achados[0]!.id as string;
+        }
+
+        const {
+          data: produtoRaw,
+          error: erroProduto,
+        } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .select(
+              "id, codigo_barras",
+            )
+            .eq(
+              "id",
+              produtoId,
+            )
+            .single();
+
+        if (
+          erroProduto
+        ) {
+          throw new Error(
+            erroProduto.message,
+          );
+        }
+
+        const produto =
+          produtoRaw as any;
+
+        const extensao =
+          (
+            data.nomeArquivo
+              .split(
+                ".",
+              )
+              .pop() ??
+            "jpg"
+          ).toLowerCase();
+
+        const hashBuffer =
+          await crypto.subtle.digest(
+            "SHA-256",
+            bytes as unknown as ArrayBuffer,
+          );
+
+        const hash =
+          Array.from(
+            new Uint8Array(
+              hashBuffer,
+            ),
+          )
+            .map(
+              (
+                byte,
+              ) =>
+                byte
+                  .toString(
+                    16,
+                  )
+                  .padStart(
+                    2,
+                    "0",
+                  ),
+            )
+            .join(
+              "",
+            );
+
+        const chave =
+          (
+            produto.codigo_barras ||
+            ""
+          ).replace(
+            /\D/g,
+            "",
+          ) ||
+          produto.id;
+
+        const { url } =
+          await guardarImagem(
+            chave,
+            {
+              bytes,
+
+              mime:
+                data.tipo,
+
+              extensao,
+
+              largura:
+                null,
+
+              altura:
+                null,
+
+              hash,
+            },
+          );
+
+        const { error } =
+          await context.supabase
+            .from(
+              "produtos",
+            )
+            .update({
+              imagem:
+                url,
+
+              image_status:
+                "approved",
+
+              image_source:
+                "manual",
+
+              image_source_url:
+                null,
+
+              image_confidence:
+                100,
+
+              image_hash:
+                hash,
+
+              image_format:
+                extensao,
+
+              image_error:
+                null,
+
+              image_candidato_url:
+                null,
+
+              image_last_synced_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              produto.id,
+            );
+
+        if (
+          error
+        ) {
+          throw new Error(
+            error.message,
+          );
+        }
+
+        return {
+          url,
+
+          produtoId:
+            produto.id as string,
+        };
+      },
+    );
