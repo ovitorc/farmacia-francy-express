@@ -5,12 +5,9 @@ import { useCatalogo } from "@/lib/catalog-context";
 
 const VELOCIDADE_AUTO = 40;
 
-// Tempo (ms) de espera antes de retomar a animação
-// depois que o usuário termina a interação.
-const ESPERA_RETOMADA = 1000;
-
-// Suavização da transição de velocidade (segundos).
-const TRANSICAO_VELOCIDADE = 0.6;
+// Quanto tempo aproximadamente leva para voltar
+// à velocidade automática depois de soltar.
+const TRANSICAO_VELOCIDADE = 1.2;
 
 export function RasgaPreco() {
   const { rasgaPreco: itens } = useCatalogo();
@@ -21,46 +18,29 @@ export function RasgaPreco() {
   const largura = useRef(0);
 
   const arrastando = useRef(false);
-  const interagindo = useRef(false);
 
   const inicioX = useRef(0);
   const inicioOffset = useRef(0);
 
+  // Velocidade atual da faixa.
   const velocidadeAtual = useRef(VELOCIDADE_AUTO);
+
+  // Velocidade que queremos atingir.
   const velocidadeAlvo = useRef(VELOCIDADE_AUTO);
 
   const moveu = useRef(false);
-
-  const timerRetomada = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelarRetomada = useCallback(() => {
-    if (timerRetomada.current) {
-      clearTimeout(timerRetomada.current);
-      timerRetomada.current = null;
-    }
-  }, []);
-
-  const pausar = useCallback(() => {
-    cancelarRetomada();
-    interagindo.current = true;
-    velocidadeAlvo.current = 0;
-  }, [cancelarRetomada]);
-
-  const agendarRetomada = useCallback(() => {
-    cancelarRetomada();
-
-    timerRetomada.current = setTimeout(() => {
-      timerRetomada.current = null;
-      interagindo.current = false;
-      velocidadeAlvo.current = VELOCIDADE_AUTO;
-    }, ESPERA_RETOMADA);
-  }, [cancelarRetomada]);
 
   const aplicar = useCallback(() => {
     const larguraCopia = largura.current;
 
     if (larguraCopia > 0) {
+      /*
+       * Mantém o deslocamento dentro da primeira cópia.
+       * Quando chega ao final, volta para o começo
+       * sem o usuário perceber.
+       */
       offset.current = ((offset.current % larguraCopia) + larguraCopia) % larguraCopia;
+
       offset.current -= larguraCopia;
     }
 
@@ -69,7 +49,9 @@ export function RasgaPreco() {
     }
   }, []);
 
-  /* Mede a largura de uma cópia da lista. */
+  /*
+   * Mede a largura da primeira cópia dos produtos.
+   */
   useEffect(() => {
     const elemento = trilhaRef.current;
 
@@ -83,12 +65,15 @@ export function RasgaPreco() {
     medir();
 
     const observer = new ResizeObserver(medir);
+
     observer.observe(elemento);
 
     return () => observer.disconnect();
   }, [aplicar, itens.length]);
 
-  /* Motor da animação. */
+  /*
+   * MOTOR PRINCIPAL DA ANIMAÇÃO
+   */
   useEffect(() => {
     if (itens.length === 0) return;
 
@@ -96,6 +81,7 @@ export function RasgaPreco() {
       typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let frame = 0;
+
     let anterior = performance.now();
 
     const corrigirTempo = () => {
@@ -105,20 +91,38 @@ export function RasgaPreco() {
     document.addEventListener("visibilitychange", corrigirTempo);
 
     const animar = (agora: number) => {
+      /*
+       * Limita o delta para evitar um salto enorme
+       * quando a aba fica em segundo plano.
+       */
       const deltaTempo = Math.min((agora - anterior) / 1000, 0.05);
+
       anterior = agora;
 
       if (!reduzirMovimento) {
+        /*
+         * Transição suave entre a velocidade atual
+         * e a velocidade desejada.
+         */
         const diferenca = velocidadeAlvo.current - velocidadeAtual.current;
 
         velocidadeAtual.current += diferenca * Math.min(1, deltaTempo / TRANSICAO_VELOCIDADE);
 
+        /*
+         * Evita ficar infinitamente próximo de um valor
+         * sem nunca chegar nele.
+         */
         if (Math.abs(diferenca) < 0.05) {
           velocidadeAtual.current = velocidadeAlvo.current;
         }
 
-        if (!arrastando.current && velocidadeAtual.current !== 0) {
+        /*
+         * Quando o usuário NÃO está arrastando,
+         * a faixa continua andando.
+         */
+        if (!arrastando.current) {
           offset.current -= velocidadeAtual.current * deltaTempo;
+
           aplicar();
         }
       }
@@ -130,45 +134,52 @@ export function RasgaPreco() {
 
     return () => {
       cancelAnimationFrame(frame);
+
       document.removeEventListener("visibilitychange", corrigirTempo);
     };
   }, [aplicar, itens.length]);
-
-  /* Limpeza de timers ao desmontar. */
-  useEffect(() => cancelarRetomada, [cancelarRetomada]);
 
   if (itens.length === 0) {
     return null;
   }
 
+  /*
+   * DUPLICAÇÃO SOMENTE PARA CRIAR O LOOP INFINITO.
+   *
+   * Se o administrador cadastrar:
+   *
+   * 10 produtos -> 20 elementos visuais
+   * 20 produtos -> 40 elementos visuais
+   * 50 produtos -> 100 elementos visuais
+   *
+   * Portanto, não existe limite de 10 produtos.
+   */
   const trilha = [...itens, ...itens];
 
   /*
-   * Captura o início da interação ANTES de qualquer
-   * elemento filho (botões e links) tratar o evento.
-   * Assim a animação pausa sempre, mas o arraste só
-   * começa fora de botões/links.
+   * COMEÇOU A ARRASTAR
    */
-  const onPointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
-    pausar();
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    arrastando.current = true;
 
     moveu.current = false;
 
-    const alvo = e.target as HTMLElement | null;
-    const interativo = alvo?.closest("button, a, input, textarea, select");
-
-    if (interativo) {
-      arrastando.current = false;
-      return;
-    }
-
-    arrastando.current = true;
     inicioX.current = e.clientX;
+
     inicioOffset.current = offset.current;
+
+    /*
+     * Enquanto arrasta, a velocidade automática
+     * vai suavemente para zero.
+     */
+    velocidadeAlvo.current = 0;
 
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
+  /*
+   * DURANTE O ARRASTO
+   */
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!arrastando.current) return;
 
@@ -178,21 +189,37 @@ export function RasgaPreco() {
       moveu.current = true;
     }
 
+    /*
+     * O produto acompanha exatamente
+     * o movimento do mouse.
+     */
     offset.current = inicioOffset.current + delta;
 
     aplicar();
   };
 
+  /*
+   * SOLTOU O MOUSE / DEDO
+   */
   const finalizar = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (arrastando.current) {
-      arrastando.current = false;
+    if (!arrastando.current) return;
 
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
+    arrastando.current = false;
+
+    /*
+     * NÃO paramos a animação instantaneamente.
+     *
+     * Ela vai gradualmente de:
+     *
+     * 0 → 10 → 20 → 30 → 40
+     *
+     * até voltar à velocidade normal.
+     */
+    velocidadeAlvo.current = VELOCIDADE_AUTO;
+
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-
-    agendarRetomada();
   };
 
   return (
@@ -211,12 +238,18 @@ export function RasgaPreco() {
 
       <div
         className="relative select-none overflow-hidden px-6"
-        style={{ touchAction: "pan-y" }}
-        onPointerDownCapture={onPointerDownCapture}
+        style={{
+          touchAction: "pan-y",
+        }}
+        onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
         onClickCapture={(e) => {
+          /*
+           * Se o usuário arrastou a faixa,
+           * não abre o produto.
+           */
           if (moveu.current) {
             e.preventDefault();
             e.stopPropagation();
@@ -228,7 +261,9 @@ export function RasgaPreco() {
         <div
           ref={trilhaRef}
           className="flex w-max cursor-grab active:cursor-grabbing"
-          style={{ willChange: "transform" }}
+          style={{
+            willChange: "transform",
+          }}
         >
           {trilha.map((p, i) => (
             <div key={`${p.id}-${i}`} className="w-44 shrink-0 pr-4 sm:w-52">

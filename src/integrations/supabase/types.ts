@@ -129,7 +129,6 @@ export type Database = {
           id: number
           nome: string | null
           preco: number | null
-          preco_promocional: number | null
           unidade: string | null
         }
         Insert: {
@@ -142,7 +141,6 @@ export type Database = {
           id?: number
           nome?: string | null
           preco?: number | null
-          preco_promocional?: number | null
           unidade?: string | null
         }
         Update: {
@@ -155,7 +153,6 @@ export type Database = {
           id?: number
           nome?: string | null
           preco?: number | null
-          preco_promocional?: number | null
           unidade?: string | null
         }
         Relationships: []
