@@ -31,6 +31,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import { ImportarEstoque } from "@/components/ImportarEstoque";
+
+
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
@@ -784,9 +787,12 @@ function AdminPage() {
         </div>
 
         <div className="flex gap-2">
+          <ImportarEstoque onConcluido={() => void queryClient.invalidateQueries()} />
+
           <Button variant="outline" asChild>
             <Link to="/imagens">Imagens dos produtos</Link>
           </Button>
+
 
           <Button variant="outline" onClick={sair}>
             Sair
