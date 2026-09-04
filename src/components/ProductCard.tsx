@@ -89,18 +89,20 @@ export function ProductCard({ produto }: { produto: Produto }) {
           <Button
             type="button"
             size="sm"
-            className="w-full gap-2"
+            className="h-10 w-full min-w-0 gap-1.5 px-2 text-xs sm:text-sm"
             onPointerDown={(e) => {
               /*
-               * Impede o pointerdown de subir para o carrossel.
+               * Impede o pointerdown de iniciar um arraste do carrossel.
                */
               e.stopPropagation();
             }}
             onClick={adicionarAoCarrinho}
           >
-            <ShoppingCart className="size-4" />
-            Adicionar ao carrinho
+            <ShoppingCart className="size-4 shrink-0" />
+            <span className="truncate sm:hidden">Adicionar</span>
+            <span className="hidden truncate sm:inline">Adicionar ao carrinho</span>
           </Button>
+
 
           <Button
             asChild

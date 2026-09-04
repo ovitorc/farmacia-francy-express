@@ -120,7 +120,7 @@ async function lerPlanilha(arquivo: File): Promise<{
     throw new Error("Nenhum produto foi encontrado na planilha.");
   }
 
-  const cabecalhos = Object.keys(dados[0]);
+  const cabecalhos = Object.keys(dados[0] ?? {});
 
   const mapa: Partial<Record<keyof typeof CAMPOS, string>> = {};
 

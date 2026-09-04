@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BuscaRouteImport } from './routes/busca'
 import { Route as CarrinhoRouteImport } from './routes/carrinho'
 import { Route as FarmaciaPopularRouteImport } from './routes/farmacia-popular'
+import { Route as TrabalheConoscoRouteImport } from './routes/trabalhe-conosco'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedImagensRouteImport } from './routes/_authenticated/imagens'
 import { Route as CategoriaSlugRouteImport } from './routes/categoria.$slug'
@@ -50,6 +51,11 @@ const FarmaciaPopularRoute = FarmaciaPopularRouteImport.update({
   path: '/farmacia-popular',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrabalheConoscoRoute = TrabalheConoscoRouteImport.update({
+  id: '/trabalhe-conosco',
+  path: '/trabalhe-conosco',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/busca': typeof BuscaRoute
   '/carrinho': typeof CarrinhoRoute
   '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/busca': typeof BuscaRoute
   '/carrinho': typeof CarrinhoRoute
   '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/busca': typeof BuscaRoute
   '/carrinho': typeof CarrinhoRoute
   '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/carrinho'
     | '/farmacia-popular'
+    | '/trabalhe-conosco'
     | '/admin'
     | '/imagens'
     | '/categoria/$slug'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/carrinho'
     | '/farmacia-popular'
+    | '/trabalhe-conosco'
     | '/admin'
     | '/imagens'
     | '/categoria/$slug'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/carrinho'
     | '/farmacia-popular'
+    | '/trabalhe-conosco'
     | '/_authenticated/admin'
     | '/_authenticated/imagens'
     | '/categoria/$slug'
@@ -161,6 +173,7 @@ export interface RootRouteChildren {
   BuscaRoute: typeof BuscaRoute
   CarrinhoRoute: typeof CarrinhoRoute
   FarmaciaPopularRoute: typeof FarmaciaPopularRoute
+  TrabalheConoscoRoute: typeof TrabalheConoscoRoute
   CategoriaSlugRoute: typeof CategoriaSlugRoute
   ProdutoIdRoute: typeof ProdutoIdRoute
   ApiPublicImgSplatRoute: typeof ApiPublicImgSplatRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/farmacia-popular'
       fullPath: '/farmacia-popular'
       preLoaderRoute: typeof FarmaciaPopularRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trabalhe-conosco': {
+      id: '/trabalhe-conosco'
+      path: '/trabalhe-conosco'
+      fullPath: '/trabalhe-conosco'
+      preLoaderRoute: typeof TrabalheConoscoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -268,6 +288,7 @@ const rootRouteChildren: RootRouteChildren = {
   BuscaRoute: BuscaRoute,
   CarrinhoRoute: CarrinhoRoute,
   FarmaciaPopularRoute: FarmaciaPopularRoute,
+  TrabalheConoscoRoute: TrabalheConoscoRoute,
   CategoriaSlugRoute: CategoriaSlugRoute,
   ProdutoIdRoute: ProdutoIdRoute,
   ApiPublicImgSplatRoute: ApiPublicImgSplatRoute,
