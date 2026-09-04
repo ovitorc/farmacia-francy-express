@@ -67,10 +67,20 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
           <Link
             to="/farmacia-popular"
             onClick={fechar}
-            className="mb-3 flex items-center gap-3 rounded-lg border border-brand-red/30 bg-brand-red/5 px-3 py-3 text-sm font-semibold text-brand-red"
+            className="mb-2 flex items-center gap-3 rounded-lg border border-brand-red/30 bg-brand-red/5 px-3 py-3 text-sm font-semibold text-brand-red"
           >
             FARMÁCIA POPULAR
           </Link>
+
+          {/* TRABALHE CONOSCO */}
+          <Link
+            to="/trabalhe-conosco"
+            onClick={fechar}
+            className="mb-3 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm font-semibold text-primary"
+          >
+            TRABALHE CONOSCO
+          </Link>
+
 
           {/* CATEGORIAS */}
           {categorias.map((c) => {
@@ -348,6 +358,14 @@ export function SiteHeader() {
               </Link>
             ))}
 
+            {/* TRABALHE CONOSCO */}
+            <Link
+              to="/trabalhe-conosco"
+              className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-1 font-semibold transition-opacity hover:opacity-100"
+            >
+              Trabalhe Conosco
+            </Link>
+
             {/* FARMÁCIA POPULAR - SOMENTE TEXTO */}
             <Link
               to="/farmacia-popular"
@@ -355,6 +373,7 @@ export function SiteHeader() {
             >
               Farmácia Popular
             </Link>
+
           </div>
         </div>
       </header>
