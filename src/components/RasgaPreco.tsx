@@ -146,8 +146,11 @@ export function RasgaPreco() {
   /*
    * Captura o início da interação ANTES de qualquer
    * elemento filho (botões e links) tratar o evento.
-   * Assim a animação pausa sempre, mas o arraste só
-   * começa fora de botões/links.
+   * O arraste funciona em qualquer parte do card —
+   * inclusive sobre imagens e links (que têm draggable=false
+   * e o clique é suprimido quando há arraste real).
+   * Apenas botões ficam fora do arraste, para garantir
+   * o clique em "Adicionar".
    */
   const onPointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
     pausar();
@@ -155,9 +158,9 @@ export function RasgaPreco() {
     moveu.current = false;
 
     const alvo = e.target as HTMLElement | null;
-    const interativo = alvo?.closest("button, a, input, textarea, select");
+    const botao = alvo?.closest("button, input, textarea, select");
 
-    if (interativo) {
+    if (botao) {
       arrastando.current = false;
       return;
     }
