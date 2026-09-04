@@ -18,10 +18,10 @@ export type Produto = {
 
   nome: string;
 
-  /** slug da categoria */
+  /** Slug da categoria */
   categoria: string;
 
-  /** slug da subcategoria */
+  /** Slug da subcategoria */
   subcategoria: string;
 
   descricao: string;
@@ -53,14 +53,17 @@ export type Catalogo = {
 };
 
 /* ============================================================
-   CATEGORIAS REMOVIDAS DO SITE
+   CATEGORIAS QUE NÃO DEVEM APARECER NO SITE
    ============================================================ */
 
-/**
- * Qualquer categoria que represente produtos para animais
- * não será exibida no catálogo.
- */
-export const CATEGORIAS_REMOVIDAS = ["pet", "pets", "produto-para-animais", "produtos-para-animais", "animais"];
+export const CATEGORIAS_REMOVIDAS = [
+  "pet",
+  "pets",
+  "produto-para-animais",
+  "produtos-para-animais",
+  "produtos-para-pet",
+  "animais",
+];
 
 /* ============================================================
    UTILITÁRIOS
@@ -83,31 +86,46 @@ export const formatarPreco = (valor: number) =>
   });
 
 /* ============================================================
-   DETECTAR IMAGEM VÁLIDA
+   IDENTIFICAÇÃO DE IMAGEM
    ============================================================ */
 
-/**
- * Um produto é considerado como tendo imagem apenas quando
- * existe uma URL ou caminho válido.
- */
 export function produtoTemImagem(produto: Produto): boolean {
-  const imagem = produto.imagem?.trim();
+  if (!produto.imagem) {
+    return false;
+  }
+
+  const imagem = produto.imagem.trim();
 
   if (!imagem) {
     return false;
   }
 
-  /**
-   * Evita considerar textos vazios ou valores inválidos
-   * como imagem.
-   */
-  const imagemNormalizada = imagem.toLowerCase();
+  const valor = imagem.toLowerCase();
 
-  if (imagemNormalizada === "null" || imagemNormalizada === "undefined" || imagemNormalizada === "sem-imagem") {
+  if (valor === "null" || valor === "undefined" || valor === "sem imagem" || valor === "sem-imagem") {
     return false;
   }
 
   return true;
+}
+
+/* ============================================================
+   VERIFICAR CATEGORIA REMOVIDA
+   ============================================================ */
+
+export function categoriaFoiRemovida(slug: string): boolean {
+  const categoria = slugify(slug);
+
+  if (CATEGORIAS_REMOVIDAS.includes(categoria)) {
+    return true;
+  }
+
+  /*
+   * Proteção adicional caso o banco utilize um nome diferente
+   * para a categoria de produtos para animais.
+   */
+
+  return categoria.includes("pet") || categoria.includes("animal");
 }
 
 /* ============================================================
@@ -120,24 +138,29 @@ export function produtoTemImagem(produto: Produto): boolean {
  * 1. Produto disponível
  * 2. Produto com imagem
  * 3. Produto em oferta
- * 4. Nome
+ * 4. Produto com preço promocional
+ * 5. Ordem original
  *
- * O objetivo principal é garantir que produtos com imagens
- * apareçam antes dos produtos sem imagens.
+ * IMPORTANTE:
+ *
+ * Não organizamos alfabeticamente.
+ *
+ * Produtos que possuem imagem sempre recebem prioridade.
  */
+
 export function ordenarProdutosPorRelevancia(produtos: Produto[]): Produto[] {
   return [...produtos].sort((a, b) => {
-    /* ========================================================
-       DISPONIBILIDADE
-       ======================================================== */
+    /*
+     * DISPONIBILIDADE
+     */
 
     if (a.disponivel !== b.disponivel) {
       return Number(b.disponivel) - Number(a.disponivel);
     }
 
-    /* ========================================================
-       IMAGEM
-       ======================================================== */
+    /*
+     * IMAGEM
+     */
 
     const aTemImagem = produtoTemImagem(a);
     const bTemImagem = produtoTemImagem(b);
@@ -146,22 +169,59 @@ export function ordenarProdutosPorRelevancia(produtos: Produto[]): Produto[] {
       return Number(bTemImagem) - Number(aTemImagem);
     }
 
-    /* ========================================================
-       OFERTA
-       ======================================================== */
+    /*
+     * OFERTA
+     */
 
     if (a.oferta !== b.oferta) {
       return Number(b.oferta) - Number(a.oferta);
     }
 
-    /* ========================================================
-       NOME
-       ======================================================== */
+    /*
+     * PREÇO PROMOCIONAL
+     */
 
-    return a.nome.localeCompare(b.nome, "pt-BR", {
-      sensitivity: "base",
-    });
+    const aTemPromocao = a.precoPromocional !== undefined && a.precoPromocional < a.preco;
+
+    const bTemPromocao = b.precoPromocional !== undefined && b.precoPromocional < b.preco;
+
+    if (aTemPromocao !== bTemPromocao) {
+      return Number(bTemPromocao) - Number(aTemPromocao);
+    }
+
+    /*
+     * Mantém a ordem original do banco quando
+     * todos os critérios forem iguais.
+     */
+
+    return 0;
   });
+}
+
+/* ============================================================
+   DADOS DE RELEVÂNCIA DA CATEGORIA
+   ============================================================ */
+
+export type RelevanciaCategoria = {
+  quantidadeProdutos: number;
+  quantidadeComImagem: number;
+  percentualComImagem: number;
+};
+
+export function calcularRelevanciaCategoria(categoriaSlug: string, produtos: Produto[]): RelevanciaCategoria {
+  const produtosDaCategoria = produtos.filter((produto) => produto.categoria === categoriaSlug);
+
+  const quantidadeProdutos = produtosDaCategoria.length;
+
+  const quantidadeComImagem = produtosDaCategoria.filter(produtoTemImagem).length;
+
+  const percentualComImagem = quantidadeProdutos > 0 ? quantidadeComImagem / quantidadeProdutos : 0;
+
+  return {
+    quantidadeProdutos,
+    quantidadeComImagem,
+    percentualComImagem,
+  };
 }
 
 /* ============================================================
@@ -169,58 +229,53 @@ export function ordenarProdutosPorRelevancia(produtos: Produto[]): Produto[] {
    ============================================================ */
 
 /**
- * A categoria mais relevante será aquela que possui:
+ * PRIORIDADE DAS CATEGORIAS:
  *
- * 1. Maior quantidade de produtos COM IMAGEM
- * 2. Maior porcentagem de produtos COM IMAGEM
+ * 1. Maior quantidade absoluta de produtos COM IMAGEM
+ * 2. Maior percentual de produtos COM IMAGEM
  * 3. Maior quantidade total de produtos
  *
- * NÃO utiliza ordem alfabética.
+ * NÃO EXISTE ORDENAÇÃO ALFABÉTICA.
  */
+
 export function ordenarCategoriasPorRelevancia(categorias: Categoria[], produtos: Produto[]): Categoria[] {
-  return [...categorias].sort((a, b) => {
-    const produtosA = produtos.filter((produto) => produto.categoria === a.slug);
+  return [...categorias]
+    .filter((categoria) => !categoriaFoiRemovida(categoria.slug))
+    .sort((a, b) => {
+      const relevanciaA = calcularRelevanciaCategoria(a.slug, produtos);
 
-    const produtosB = produtos.filter((produto) => produto.categoria === b.slug);
+      const relevanciaB = calcularRelevanciaCategoria(b.slug, produtos);
 
-    /* ========================================================
-       QUANTIDADE DE PRODUTOS COM IMAGEM
-       ======================================================== */
+      /*
+       * QUANTIDADE COM IMAGEM
+       */
 
-    const imagensA = produtosA.filter(produtoTemImagem).length;
+      if (relevanciaA.quantidadeComImagem !== relevanciaB.quantidadeComImagem) {
+        return relevanciaB.quantidadeComImagem - relevanciaA.quantidadeComImagem;
+      }
 
-    const imagensB = produtosB.filter(produtoTemImagem).length;
+      /*
+       * PORCENTAGEM COM IMAGEM
+       */
 
-    if (imagensA !== imagensB) {
-      return imagensB - imagensA;
-    }
+      if (relevanciaA.percentualComImagem !== relevanciaB.percentualComImagem) {
+        return relevanciaB.percentualComImagem - relevanciaA.percentualComImagem;
+      }
 
-    /* ========================================================
-       PORCENTAGEM DE PRODUTOS COM IMAGEM
-       ======================================================== */
+      /*
+       * QUANTIDADE TOTAL DE PRODUTOS
+       */
 
-    const percentualA = produtosA.length > 0 ? imagensA / produtosA.length : 0;
+      if (relevanciaA.quantidadeProdutos !== relevanciaB.quantidadeProdutos) {
+        return relevanciaB.quantidadeProdutos - relevanciaA.quantidadeProdutos;
+      }
 
-    const percentualB = produtosB.length > 0 ? imagensB / produtosB.length : 0;
+      /*
+       * Mantém a ordem original.
+       */
 
-    if (percentualA !== percentualB) {
-      return percentualB - percentualA;
-    }
-
-    /* ========================================================
-       QUANTIDADE TOTAL DE PRODUTOS
-       ======================================================== */
-
-    if (produtosA.length !== produtosB.length) {
-      return produtosB.length - produtosA.length;
-    }
-
-    /**
-     * Mantém a ordem original cadastrada no banco em caso
-     * de empate completo.
-     */
-    return 0;
-  });
+      return 0;
+    });
 }
 
 /* ============================================================
@@ -245,9 +300,17 @@ export function ordenarSubcategoriasPorRelevancia(
 
     const imagensB = produtosB.filter(produtoTemImagem).length;
 
+    /*
+     * QUANTIDADE DE PRODUTOS COM IMAGEM
+     */
+
     if (imagensA !== imagensB) {
       return imagensB - imagensA;
     }
+
+    /*
+     * PERCENTUAL DE PRODUTOS COM IMAGEM
+     */
 
     const percentualA = produtosA.length > 0 ? imagensA / produtosA.length : 0;
 
@@ -257,21 +320,42 @@ export function ordenarSubcategoriasPorRelevancia(
       return percentualB - percentualA;
     }
 
+    /*
+     * QUANTIDADE TOTAL
+     */
+
     if (produtosA.length !== produtosB.length) {
       return produtosB.length - produtosA.length;
     }
+
+    /*
+     * Mantém a ordem original.
+     */
 
     return 0;
   });
 }
 
 /* ============================================================
+   FILTRAR PRODUTOS PET
+   ============================================================ */
+
+export function removerProdutosDeCategoriasRemovidas(produtos: Produto[]): Produto[] {
+  return produtos.filter((produto) => !categoriaFoiRemovida(produto.categoria));
+}
+
+/* ============================================================
    LOCALIZAR CATEGORIA
    ============================================================ */
 
-export const acharCategoria = (categorias: Categoria[], slug: string) => categorias.find((c) => c.slug === slug);
+export const acharCategoria = (categorias: Categoria[], slug: string) =>
+  categorias.find((categoria) => categoria.slug === slug);
 
-export const acharProduto = (produtos: Produto[], id: string) => produtos.find((p) => p.id === id);
+/* ============================================================
+   LOCALIZAR PRODUTO
+   ============================================================ */
+
+export const acharProduto = (produtos: Produto[], id: string) => produtos.find((produto) => produto.id === id);
 
 /* ============================================================
    BUSCA LOCAL
@@ -284,12 +368,25 @@ export function filtrarBusca(catalogo: Catalogo, termo: string): Produto[] {
     return [];
   }
 
-  const resultados = catalogo.produtos.filter((p) => {
-    const c = acharCategoria(catalogo.categorias, p.categoria);
+  const resultados = catalogo.produtos.filter((produto) => {
+    /*
+     * Nunca retorna produtos de categorias removidas.
+     */
 
-    const sub = c?.subcategorias.find((x) => x.slug === p.subcategoria);
+    if (categoriaFoiRemovida(produto.categoria)) {
+      return false;
+    }
 
-    const alvo = slugify(`${p.nome} ${p.codigo} ${c?.nome ?? ""} ${sub?.nome ?? ""}`);
+    const categoria = acharCategoria(catalogo.categorias, produto.categoria);
+
+    const subcategoria = categoria?.subcategorias.find((sub) => sub.slug === produto.subcategoria);
+
+    const alvo = slugify(
+      `${produto.nome}
+           ${produto.codigo}
+           ${categoria?.nome ?? ""}
+           ${subcategoria?.nome ?? ""}`,
+    );
 
     return q.split("-").every((parte) => alvo.includes(parte));
   });
