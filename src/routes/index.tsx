@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+
 import { createFileRoute, Link } from "@tanstack/react-router";
+
 import { useQuery } from "@tanstack/react-query";
-import { MessageCircle, Truck, ShieldCheck, Clock } from "lucide-react";
+
+import { Truck, ShieldCheck, Clock } from "lucide-react";
 
 import { ProductCard } from "@/components/ProductCard";
+
 import { RasgaPreco } from "@/components/RasgaPreco";
-import { WHATSAPP_URL, type Produto } from "@/lib/catalog";
+
+import { ordenarProdutosPorRelevancia, produtoTemImagem, type Produto } from "@/lib/catalog";
+
 import { useCatalogo } from "@/lib/catalog-context";
+
 import { listarBannersPublicos } from "@/lib/admin.functions";
+
+/* ============================================================
+   ROTA
+   ============================================================ */
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -17,19 +28,23 @@ export const Route = createFileRoute("/")({
       },
       {
         name: "description",
+
         content:
           "Medicamentos, higiene, perfumaria e cuidados diários com preço justo na Farmácias Francy. Monte seu pedido online e finalize pelo WhatsApp.",
       },
       {
         property: "og:title",
+
         content: "Farmácias Francy | Credibilidade popular",
       },
       {
         property: "og:description",
+
         content: "Farmácia Francy, credibilidade popular. Pedido online e atendimento pelo WhatsApp.",
       },
     ],
   }),
+
   component: Index,
 });
 
@@ -40,17 +55,25 @@ export const Route = createFileRoute("/")({
 const beneficios = [
   {
     icone: Truck,
+
     titulo: "Entrega no bairro",
+
     texto: "Combine a entrega pelo WhatsApp",
   },
+
   {
     icone: ShieldCheck,
+
     titulo: "Produtos registrados",
+
     texto: "Farmacêutica responsável presente",
   },
+
   {
     icone: Clock,
+
     titulo: "Domingo a domingo",
+
     texto: "Atendimento humano e rápido",
   },
 ];
@@ -61,10 +84,15 @@ const beneficios = [
 
 type Banner = {
   id: string;
+
   titulo: string;
+
   imagem: string;
+
   imagem_mobile: string | null;
+
   ativo: boolean;
+
   ordem: number;
 };
 
@@ -83,14 +111,13 @@ function BannerCarousel() {
     isError,
   } = useQuery({
     queryKey: ["banners"],
+
     queryFn: () => listarBannersPublicos(),
   });
 
-  /* ============================================================
-     FUNÇÃO EXCLUSIVA PARA POSICIONAR O CARROSSEL MOBILE
-
-     O DESKTOP NÃO UTILIZA ESTA FUNÇÃO.
-     ============================================================ */
+  /* ==========================================================
+     MOVER PARA BANNER MOBILE
+     ========================================================== */
 
   function moverParaBannerMobile(indice: number, behavior: ScrollBehavior = "smooth") {
     const trilho = trilhoMobile.current;
@@ -105,39 +132,21 @@ function BannerCarousel() {
       return;
     }
 
-    /*
-      Calcula a posição real do banner dentro do trilho.
-
-      Isso é mais preciso do que usar:
-      scrollLeft / largura
-
-      pois os banners possuem:
-      - largura de 88%;
-      - espaço gap-3;
-      - snap-center.
-    */
-
     const posicao = cartao.offsetLeft - (trilho.clientWidth - cartao.clientWidth) / 2;
 
     trilho.scrollTo({
       left: Math.max(0, posicao),
+
       behavior,
     });
   }
 
-  /* ============================================================
-     RESET QUANDO OS BANNERS SÃO CARREGADOS
-
-     Exclusivamente para o carrossel mobile.
-     ============================================================ */
+  /* ==========================================================
+     RESET
+     ========================================================== */
 
   useEffect(() => {
     setBannerAtual(0);
-
-    /*
-      Aguarda o DOM renderizar os banners antes
-      de tentar movimentar o trilho.
-    */
 
     const tempo = setTimeout(() => {
       moverParaBannerMobile(0, "auto");
@@ -148,16 +157,9 @@ function BannerCarousel() {
     };
   }, [banners.length]);
 
-  /* ============================================================
-     CARROSSEL AUTOMÁTICO
-
-     DESKTOP:
-     Continua funcionando através do bannerAtual.
-
-     MOBILE:
-     Além de alterar bannerAtual, movimenta
-     fisicamente o trilho.
-     ============================================================ */
+  /* ==========================================================
+     TROCA AUTOMÁTICA
+     ========================================================== */
 
   useEffect(() => {
     if (banners.length <= 1) {
@@ -167,11 +169,6 @@ function BannerCarousel() {
     const intervalo = setInterval(() => {
       setBannerAtual((atual) => {
         const proximo = (atual + 1) % banners.length;
-
-        /*
-          Esta movimentação só tem efeito
-          no carrossel mobile.
-        */
 
         moverParaBannerMobile(proximo);
 
@@ -184,14 +181,9 @@ function BannerCarousel() {
     };
   }, [banners.length]);
 
-  /* ============================================================
-     ACOMPANHA O SWIPE DO DEDO NO CELULAR
-
-     Detecta qual banner está mais próximo
-     do centro da tela.
-
-     Não interfere no desktop.
-     ============================================================ */
+  /* ==========================================================
+     DETECTAR BANNER MOBILE
+     ========================================================== */
 
   function aoRolarMobile() {
     const trilho = trilhoMobile.current;
@@ -200,7 +192,7 @@ function BannerCarousel() {
       return;
     }
 
-    const centroDoTrilho = trilho.scrollLeft + trilho.clientWidth / 2;
+    const centro = trilho.scrollLeft + trilho.clientWidth / 2;
 
     let indiceMaisProximo = 0;
 
@@ -209,12 +201,13 @@ function BannerCarousel() {
     Array.from(trilho.children).forEach((elemento, indice) => {
       const cartao = elemento as HTMLElement;
 
-      const centroDoCartao = cartao.offsetLeft + cartao.clientWidth / 2;
+      const centroCartao = cartao.offsetLeft + cartao.clientWidth / 2;
 
-      const distancia = Math.abs(centroDoTrilho - centroDoCartao);
+      const distancia = Math.abs(centro - centroCartao);
 
       if (distancia < menorDistancia) {
         menorDistancia = distancia;
+
         indiceMaisProximo = indice;
       }
     });
@@ -222,18 +215,9 @@ function BannerCarousel() {
     setBannerAtual(indiceMaisProximo);
   }
 
-  /* ============================================================
-     IR PARA UM BANNER
-
-     Os indicadores continuam funcionando.
-
-     No MOBILE:
-     move o trilho.
-
-     No DESKTOP:
-     o estado bannerAtual continua alterando
-     a imagem normalmente.
-     ============================================================ */
+  /* ==========================================================
+     IR PARA BANNER
+     ========================================================== */
 
   function irPara(indice: number) {
     setBannerAtual(indice);
@@ -241,9 +225,9 @@ function BannerCarousel() {
     moverParaBannerMobile(indice);
   }
 
-  /* ============================================================
-     LOADING
-     ============================================================ */
+  /* ==========================================================
+     CARREGANDO
+     ========================================================== */
 
   if (isLoading) {
     return (
@@ -255,9 +239,9 @@ function BannerCarousel() {
     );
   }
 
-  /* ============================================================
+  /* ==========================================================
      ERRO
-     ============================================================ */
+     ========================================================== */
 
   if (isError) {
     return (
@@ -271,9 +255,9 @@ function BannerCarousel() {
     );
   }
 
-  /* ============================================================
+  /* ==========================================================
      SEM BANNERS
-     ============================================================ */
+     ========================================================== */
 
   if (banners.length === 0) {
     return (
@@ -289,13 +273,15 @@ function BannerCarousel() {
 
   const lista = banners as Banner[];
 
+  /* ==========================================================
+     RETORNO
+     ========================================================== */
+
   return (
     <div className="relative w-full">
-      {/* ========================================================
+      {/* ======================================================
           MOBILE
-
-          ESTA ÁREA É EXCLUSIVA DO CELULAR.
-          ======================================================== */}
+          ====================================================== */}
 
       <div
         ref={trilhoMobile}
@@ -303,6 +289,7 @@ function BannerCarousel() {
         className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden"
         style={{
           WebkitOverflowScrolling: "touch",
+
           touchAction: "pan-x pan-y",
         }}
       >
@@ -319,12 +306,9 @@ function BannerCarousel() {
         ))}
       </div>
 
-      {/* ========================================================
+      {/* ======================================================
           DESKTOP
-
-          MANTIDO EXATAMENTE NA MESMA ESTRUTURA
-          QUE EXISTIA NO ARQUIVO ORIGINAL.
-          ======================================================== */}
+          ====================================================== */}
 
       <div className="relative hidden w-full overflow-hidden rounded-2xl sm:block">
         <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
@@ -342,8 +326,6 @@ function BannerCarousel() {
 
         {lista.length > 1 && (
           <>
-            {/* BOTÃO ANTERIOR */}
-
             <button
               type="button"
               aria-label="Banner anterior"
@@ -352,8 +334,6 @@ function BannerCarousel() {
             >
               ‹
             </button>
-
-            {/* BOTÃO PRÓXIMO */}
 
             <button
               type="button"
@@ -367,11 +347,9 @@ function BannerCarousel() {
         )}
       </div>
 
-      {/* ========================================================
+      {/* ======================================================
           INDICADORES
-
-          Funciona tanto no mobile quanto no desktop.
-          ======================================================== */}
+          ====================================================== */}
 
       {lista.length > 1 && (
         <div className="mt-3 flex items-center justify-center gap-2 sm:absolute sm:bottom-4 sm:left-1/2 sm:mt-0 sm:-translate-x-1/2 sm:rounded-full sm:bg-black/30 sm:px-3 sm:py-2 sm:backdrop-blur-sm">
@@ -399,13 +377,48 @@ function BannerCarousel() {
    ============================================================ */
 
 function Index() {
-  const { categorias, ofertas: emOferta, rasgaPreco, destaques } = useCatalogo();
+  const { categorias, ofertas: ofertasCatalogo, rasgaPreco, destaques } = useCatalogo();
 
-  const ofertas = emOferta.slice(0, 10);
+  /*
+   * ==========================================================
+   * OFERTAS
+   *
+   * Já chegam ordenadas com produtos com imagem primeiro.
+   * ==========================================================
+   */
 
-  const usados = new Set([...ofertas, ...rasgaPreco].map((p) => p.id));
+  const ofertas = ordenarProdutosPorRelevancia(ofertasCatalogo).slice(0, 10);
 
-  const maisVendidos = destaques.filter((p) => !usados.has(p.id)).slice(0, 10);
+  /*
+   * ==========================================================
+   * PRODUTOS JÁ UTILIZADOS
+   * ==========================================================
+   */
+
+  const usados = new Set([...ofertas, ...rasgaPreco].map((produto) => produto.id));
+
+  /*
+   * ==========================================================
+   * MAIS PROCURADOS
+   *
+   * Remove duplicados e prioriza produtos com imagem.
+   * ==========================================================
+   */
+
+  const maisProcurados = ordenarProdutosPorRelevancia(destaques.filter((produto) => !usados.has(produto.id))).slice(
+    0,
+    10,
+  );
+
+  /*
+   * ==========================================================
+   * QUANTIDADE DE CATEGORIAS
+   *
+   * A ordem já vem calculada por relevância.
+   * ==========================================================
+   */
+
+  const categoriasPrincipais = categorias;
 
   return (
     <div>
@@ -431,16 +444,16 @@ function Index() {
 
       <section className="border-b border-border bg-card">
         <div className="mx-auto grid max-w-7xl gap-4 px-6 py-6 sm:grid-cols-3">
-          {beneficios.map((b) => (
-            <div key={b.titulo} className="flex items-center gap-3">
+          {beneficios.map((beneficio) => (
+            <div key={beneficio.titulo} className="flex items-center gap-3">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
-                <b.icone className="size-5" />
+                <beneficio.icone className="size-5" />
               </span>
 
               <div>
-                <p className="text-sm font-semibold text-primary">{b.titulo}</p>
+                <p className="text-sm font-semibold text-primary">{beneficio.titulo}</p>
 
-                <p className="text-xs text-muted-foreground">{b.texto}</p>
+                <p className="text-xs text-muted-foreground">{beneficio.texto}</p>
               </div>
             </div>
           ))}
@@ -458,21 +471,27 @@ function Index() {
           ====================================================== */}
 
       <section className="mx-auto max-w-7xl px-6 py-8">
-        <h2 className="text-xl font-bold text-primary sm:text-2xl">Categorias</h2>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-bold text-primary sm:text-2xl">Categorias</h2>
+
+          <p className="text-xs text-muted-foreground">
+            Categorias organizadas pela disponibilidade de produtos com imagem.
+          </p>
+        </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-          {categorias.map((c) => (
+          {categoriasPrincipais.map((categoria) => (
             <Link
-              key={c.slug}
+              key={categoria.slug}
               to="/categoria/$slug"
               params={{
-                slug: c.slug,
+                slug: categoria.slug,
               }}
-              className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-4 text-center transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-card"
+              className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card p-4 text-center transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-card"
             >
-              <span className="text-2xl">{c.icone}</span>
+              <span className="text-3xl">{categoria.icone}</span>
 
-              <span className="text-xs font-medium leading-snug">{c.nome}</span>
+              <span className="text-xs font-semibold leading-snug">{categoria.nome}</span>
             </Link>
           ))}
         </div>
@@ -482,13 +501,21 @@ function Index() {
           OFERTAS
           ====================================================== */}
 
-      <Vitrine titulo="Ofertas de encarte" itens={ofertas} />
+      <Vitrine
+        titulo="Ofertas da semana"
+        subtitulo="Produtos com imagem e maior relevância aparecem primeiro."
+        itens={ofertas}
+      />
 
       {/* ======================================================
           MAIS PROCURADOS
           ====================================================== */}
 
-      <Vitrine titulo="Mais procurados" itens={maisVendidos} />
+      <Vitrine
+        titulo="Mais procurados"
+        subtitulo="Os produtos disponíveis com imagem recebem prioridade."
+        itens={maisProcurados}
+      />
     </div>
   );
 }
@@ -497,14 +524,45 @@ function Index() {
    VITRINE
    ============================================================ */
 
-function Vitrine({ titulo, itens }: { titulo: string; itens: Produto[] }) {
+function Vitrine({ titulo, subtitulo, itens }: { titulo: string; subtitulo?: string; itens: Produto[] }) {
+  /*
+   * Segurança adicional.
+   *
+   * Mesmo que os produtos tenham chegado
+   * de outra fonte, são reorganizados aqui.
+   */
+
+  const produtosOrdenados = ordenarProdutosPorRelevancia(itens);
+
+  /*
+   * Separa visualmente a prioridade.
+   */
+
+  const produtosComImagem = produtosOrdenados.filter(produtoTemImagem);
+
+  const produtosSemImagem = produtosOrdenados.filter((produto) => !produtoTemImagem(produto));
+
+  const produtos = [...produtosComImagem, ...produtosSemImagem];
+
+  /*
+   * Não renderiza seção vazia.
+   */
+
+  if (produtos.length === 0) {
+    return null;
+  }
+
   return (
     <section className="mx-auto max-w-7xl px-6 py-8">
-      <h2 className="mb-4 text-xl font-bold text-primary sm:text-2xl">{titulo}</h2>
+      <div className="mb-4">
+        <h2 className="text-xl font-bold text-primary sm:text-2xl">{titulo}</h2>
+
+        {subtitulo && <p className="mt-1 text-xs text-muted-foreground">{subtitulo}</p>}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {itens.map((p) => (
-          <ProductCard key={p.id} produto={p} />
+        {produtos.map((produto) => (
+          <ProductCard key={produto.id} produto={produto} />
         ))}
       </div>
     </section>
