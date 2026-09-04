@@ -482,7 +482,7 @@ function Index() {
           OFERTAS
           ====================================================== */}
 
-      <Vitrine titulo="Ofertas da semana" itens={ofertas} />
+      <Vitrine titulo="Ofertas de encarte" itens={ofertas} />
 
       {/* ======================================================
           MAIS PROCURADOS
