@@ -216,8 +216,6 @@ export function RasgaPreco() {
         onPointerMove={onPointerMove}
         onPointerUp={finalizar}
         onPointerCancel={finalizar}
-        onMouseEnter={pausar}
-        onMouseLeave={agendarRetomada}
         onClickCapture={(e) => {
           if (moveu.current) {
             e.preventDefault();
