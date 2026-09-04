@@ -1,27 +1,37 @@
 /**
  * ============================================================
- * FONTES DE IMAGENS DE PRODUTOS
+ * FONTES DE IMAGENS DE PRODUTOS — FARMÁCIAS FRANCY
  * ============================================================
  *
- * PRIORIDADE DA BUSCA:
+ * PRIORIDADE:
  *
- * 1. Código de barras / EAN
- * 2. Cosmos Bluesoft
- * 3. Open Food Facts
- * 4. Open Beauty Facts
- * 5. Open Products Facts
- * 6. Pague Menos
- * 7. Farmácia Permanente
- * 8. Drogasil
- * 9. Droga Raia
- * 10. Google Images / Busca geral
+ * 1. EAN / CÓDIGO DE BARRAS
  *
- * A busca pode retornar até 20 candidatos por produto.
+ * 2. GOOGLE IMAGES GERAL
+ *    → Principal fonte de procura
  *
- * Para o Google:
+ * 3. GOOGLE COM RESTRIÇÃO PARA:
+ *    → Pague Menos
+ *    → Farmácia Permanente
+ *    → Drogasil
+ *    → Droga Raia
  *
- * - primeira página: resultados 1 a 10
- * - segunda página: resultados 11 a 20
+ * 4. BUSCA POR NOME + FABRICANTE
+ *    → Google geral
+ *    → Sites de farmácia
+ *
+ * 5. BASES DE PRODUTOS COMO COMPLEMENTO:
+ *    → Cosmos Bluesoft
+ *    → Open Food Facts
+ *    → Open Beauty Facts
+ *    → Open Products Facts
+ *
+ * RESULTADO:
+ *
+ * → Remove imagens duplicadas
+ * → Prioriza EAN confirmado
+ * → Prioriza Google e farmácias
+ * → Retorna no máximo 20 imagens
  *
  * ============================================================
  */
@@ -35,6 +45,8 @@ import type { Candidato, ProdutoRef } from "./matching";
 const LIMITE_IMAGENS = 20;
 
 const LIMITE_GOOGLE_POR_BUSCA = 10;
+
+const LIMITE_POR_FONTE = 6;
 
 /* ============================================================
    DOMÍNIOS PRIORITÁRIOS
@@ -92,6 +104,24 @@ function normalizarEan(valor: string | undefined | null): string {
   return (valor ?? "").replace(/\D/g, "");
 }
 
+function normalizarTexto(valor: string | undefined | null): string {
+  return (valor ?? "").trim().replace(/\s+/g, " ");
+}
+
+function chaveImagem(url: string | undefined | null): string {
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    return `${parsed.origin}${parsed.pathname}`.trim().toLowerCase();
+  } catch {
+    return url.trim().toLowerCase().split("?")[0].split("#")[0];
+  }
+}
+
 function removerDuplicados(candidatos: Candidato[]): Candidato[] {
   const urls = new Set<string>();
 
@@ -102,7 +132,7 @@ function removerDuplicados(candidatos: Candidato[]): Candidato[] {
       continue;
     }
 
-    const chave = candidato.imageUrl.trim().toLowerCase().split("?")[0];
+    const chave = chaveImagem(candidato.imageUrl);
 
     if (!chave) {
       continue;
@@ -118,6 +148,16 @@ function removerDuplicados(candidatos: Candidato[]): Candidato[] {
   }
 
   return resultado;
+}
+
+function limitarPorFonte(candidatos: Candidato[], limite: number): Candidato[] {
+  return candidatos.slice(0, limite);
+}
+
+function adicionarCandidatos(destino: Candidato[], candidatos: Candidato[], limitePorFonte = LIMITE_POR_FONTE): void {
+  const novos = limitarPorFonte(removerDuplicados(candidatos), limitePorFonte);
+
+  destino.push(...novos);
 }
 
 async function json(url: string, init?: RequestInit): Promise<any | null> {
@@ -301,18 +341,13 @@ const cosmos: ImageProvider = {
 };
 
 /* ============================================================
-   GOOGLE CUSTOM SEARCH
+   GOOGLE SEARCH
    ============================================================ */
 
 function googleDisponivel(): boolean {
   return Boolean(process.env["GOOGLE_CSE_KEY"] && process.env["GOOGLE_CSE_CX"]);
 }
 
-/**
- * Faz uma busca no Google.
- *
- * O Google retorna no máximo 10 resultados por requisição.
- */
 async function buscarPaginaGoogle(
   termo: string,
   opcoes?: {
@@ -346,6 +381,8 @@ async function buscarPaginaGoogle(
   parametros.set("start", String(opcoes?.start ?? 1));
 
   parametros.set("imgSize", "medium");
+
+  parametros.set("safe", "active");
 
   parametros.set("q", termo);
 
@@ -382,18 +419,7 @@ async function buscarPaginaGoogle(
     .filter(Boolean) as Candidato[];
 }
 
-/**
- * Busca até 20 imagens.
- *
- * Primeira chamada:
- *
- * start = 1
- *
- * Segunda chamada:
- *
- * start = 11
- */
-async function buscarGoogle20(
+async function buscarGoogle(
   termo: string,
   opcoes?: {
     dominio?: string;
@@ -401,13 +427,21 @@ async function buscarGoogle20(
     source?: string;
 
     ean?: string;
+
+    limite?: number;
   },
 ): Promise<Candidato[]> {
+  const limite = Math.min(Math.max(opcoes?.limite ?? LIMITE_POR_FONTE, 1), LIMITE_IMAGENS);
+
   const primeira = await buscarPaginaGoogle(termo, {
     ...opcoes,
 
     start: 1,
   });
+
+  if (primeira.length >= limite) {
+    return removerDuplicados(primeira).slice(0, limite);
+  }
 
   const segunda = await buscarPaginaGoogle(termo, {
     ...opcoes,
@@ -415,7 +449,7 @@ async function buscarGoogle20(
     start: 11,
   });
 
-  return removerDuplicados([...primeira, ...segunda]).slice(0, LIMITE_IMAGENS);
+  return removerDuplicados([...primeira, ...segunda]).slice(0, limite);
 }
 
 /* ============================================================
@@ -429,7 +463,7 @@ function consultasPorEan(ean: string): string[] {
     return [];
   }
 
-  return [codigo, `${codigo} produto`, `${codigo} medicamento`];
+  return [codigo, `${codigo} produto`, `${codigo} medicamento`, `${codigo} farmácia`];
 }
 
 /* ============================================================
@@ -437,14 +471,16 @@ function consultasPorEan(ean: string): string[] {
    ============================================================ */
 
 function consultasPorNome(produto: ProdutoRef): string[] {
-  const nome = (produto.nome ?? "").trim();
+  const nome = normalizarTexto(produto.nome);
 
-  const fabricante = (produto.fabricante ?? "").trim();
+  const fabricante = normalizarTexto(produto.fabricante);
 
   const consultas: string[] = [];
 
   if (nome && fabricante) {
     consultas.push(`${nome} ${fabricante}`);
+
+    consultas.push(`${fabricante} ${nome}`);
   }
 
   if (nome) {
@@ -453,6 +489,8 @@ function consultasPorNome(produto: ProdutoRef): string[] {
     consultas.push(`${nome} produto`);
 
     consultas.push(`${nome} embalagem`);
+
+    consultas.push(`${nome} medicamento`);
   }
 
   return Array.from(new Set(consultas.filter(Boolean)));
@@ -483,26 +521,25 @@ function criarProviderDominio(configuracao: {
 
       const resultados: Candidato[] = [];
 
-      /**
-       * O EAN é sempre a prioridade.
-       */
       for (const consulta of consultas) {
-        const encontrados = await buscarGoogle20(consulta, {
+        const encontrados = await buscarGoogle(consulta, {
           dominio: configuracao.dominio,
 
           source: configuracao.id,
 
           ean,
+
+          limite: LIMITE_POR_FONTE,
         });
 
         resultados.push(...encontrados);
 
-        if (removerDuplicados(resultados).length >= LIMITE_IMAGENS) {
+        if (removerDuplicados(resultados).length >= LIMITE_POR_FONTE) {
           break;
         }
       }
 
-      return removerDuplicados(resultados).slice(0, LIMITE_IMAGENS);
+      return removerDuplicados(resultados).slice(0, LIMITE_POR_FONTE);
     },
 
     buscarPorNome: async (produto) => {
@@ -511,20 +548,22 @@ function criarProviderDominio(configuracao: {
       const resultados: Candidato[] = [];
 
       for (const consulta of consultas) {
-        const encontrados = await buscarGoogle20(consulta, {
+        const encontrados = await buscarGoogle(consulta, {
           dominio: configuracao.dominio,
 
           source: configuracao.id,
+
+          limite: LIMITE_POR_FONTE,
         });
 
         resultados.push(...encontrados);
 
-        if (removerDuplicados(resultados).length >= LIMITE_IMAGENS) {
+        if (removerDuplicados(resultados).length >= LIMITE_POR_FONTE) {
           break;
         }
       }
 
-      return removerDuplicados(resultados).slice(0, LIMITE_IMAGENS);
+      return removerDuplicados(resultados).slice(0, LIMITE_POR_FONTE);
     },
   };
 }
@@ -578,7 +617,7 @@ const drogaRaia = criarProviderDominio({
 });
 
 /* ============================================================
-   GOOGLE GERAL
+   GOOGLE IMAGES
    ============================================================ */
 
 const googleImages: ImageProvider = {
@@ -595,15 +634,13 @@ const googleImages: ImageProvider = {
 
     const resultados: Candidato[] = [];
 
-    /**
-     * Pesquisa pelo código de barras
-     * antes de qualquer outro parâmetro.
-     */
     for (const consulta of consultas) {
-      const encontrados = await buscarGoogle20(consulta, {
+      const encontrados = await buscarGoogle(consulta, {
         source: "google_images",
 
         ean,
+
+        limite: LIMITE_IMAGENS,
       });
 
       resultados.push(...encontrados);
@@ -622,8 +659,10 @@ const googleImages: ImageProvider = {
     const resultados: Candidato[] = [];
 
     for (const consulta of consultas) {
-      const encontrados = await buscarGoogle20(consulta, {
+      const encontrados = await buscarGoogle(consulta, {
         source: "google_images",
+
+        limite: LIMITE_IMAGENS,
       });
 
       resultados.push(...encontrados);
@@ -638,44 +677,22 @@ const googleImages: ImageProvider = {
 };
 
 /* ============================================================
+   PROVIDERS DE FARMÁCIA
+   ============================================================ */
+
+const PROVIDERS_FARMACIAS: ImageProvider[] = [pagueMenos, farmaciaPermanente, drogasil, drogaRaia];
+
+/* ============================================================
+   PROVIDERS COMPLEMENTARES
+   ============================================================ */
+
+const PROVIDERS_COMPLEMENTARES: ImageProvider[] = [cosmos, openFoodFacts, openBeautyFacts, openProductsFacts];
+
+/* ============================================================
    PROVIDERS
-   ============================================================
- *
- * A ORDEM DEFINE A PRIORIDADE.
- *
- * PRIMEIRO:
- *
- * Fontes específicas e confiáveis.
- *
- * DEPOIS:
- *
- * Sites brasileiros de farmácia.
- *
- * POR ÚLTIMO:
- *
- * Google Images geral.
- * ============================================================
- */
+   ============================================================ */
 
-export const PROVIDERS: ImageProvider[] = [
-  cosmos,
-
-  openFoodFacts,
-
-  openBeautyFacts,
-
-  openProductsFacts,
-
-  pagueMenos,
-
-  farmaciaPermanente,
-
-  drogasil,
-
-  drogaRaia,
-
-  googleImages,
-];
+export const PROVIDERS: ImageProvider[] = [googleImages, ...PROVIDERS_FARMACIAS, ...PROVIDERS_COMPLEMENTARES];
 
 /* ============================================================
    PROVIDERS ATIVOS
@@ -686,20 +703,48 @@ export function providersAtivos(): ImageProvider[] {
 }
 
 /* ============================================================
+   EXECUTAR BUSCA COM SEGURANÇA
+   ============================================================ */
+
+async function buscarComSeguranca(callback: () => Promise<Candidato[]>): Promise<Candidato[]> {
+  try {
+    return await callback();
+  } catch {
+    return [];
+  }
+}
+
+/* ============================================================
    BUSCA UNIFICADA
    ============================================================
  *
- * Pode ser utilizada por outras partes do sistema.
+ * ORDEM REAL:
  *
- * Busca primeiro:
+ * ETAPA 1
+ * → EAN no Google Images
  *
- * EAN
+ * ETAPA 2
+ * → EAN nos sites:
+ *   Pague Menos
+ *   Farmácia Permanente
+ *   Drogasil
+ *   Droga Raia
  *
- * Depois:
+ * ETAPA 3
+ * → EAN nas bases complementares
  *
- * nome e fabricante.
+ * ETAPA 4
+ * → Nome + fabricante no Google Images
  *
- * O resultado final nunca ultrapassa 20 imagens.
+ * ETAPA 5
+ * → Nome + fabricante nos sites de farmácia
+ *
+ * ETAPA 6
+ * → Bases complementares
+ *
+ * FINAL
+ * → Até 20 imagens únicas
+ *
  * ============================================================
  */
 
@@ -712,55 +757,87 @@ export async function buscarAte20Imagens(
 
   const ean = normalizarEan(produto.codigo_barras);
 
-  const providers = providersAtivos();
+  /* ==========================================================
+     ETAPA 1 — GOOGLE IMAGES POR EAN
+     ========================================================== */
+
+  if (ean && googleImages.disponivel() && googleImages.buscarPorEan) {
+    const encontrados = await buscarComSeguranca(() => googleImages.buscarPorEan!(ean));
+
+    adicionarCandidatos(resultados, encontrados, 8);
+  }
 
   /* ==========================================================
-     ETAPA 1 — EAN
+     ETAPA 2 — SITES DE FARMÁCIA POR EAN
      ========================================================== */
 
   if (ean) {
-    for (const provider of providers) {
-      if (!provider.buscarPorEan) {
+    for (const provider of PROVIDERS_FARMACIAS) {
+      if (!provider.disponivel() || !provider.buscarPorEan) {
         continue;
       }
 
-      try {
-        const encontrados = await provider.buscarPorEan(ean);
+      const encontrados = await buscarComSeguranca(() => provider.buscarPorEan!(ean));
 
-        resultados.push(...encontrados);
-      } catch {
-        /**
-         * Se uma fonte falhar,
-         * as outras continuam funcionando.
-         */
+      adicionarCandidatos(resultados, encontrados, 4);
+    }
+  }
+
+  /* ==========================================================
+     ETAPA 3 — BASES POR EAN
+     ========================================================== */
+
+  if (ean) {
+    for (const provider of PROVIDERS_COMPLEMENTARES) {
+      if (!provider.disponivel() || !provider.buscarPorEan) {
+        continue;
+      }
+
+      const encontrados = await buscarComSeguranca(() => provider.buscarPorEan!(ean));
+
+      adicionarCandidatos(resultados, encontrados, 2);
+    }
+  }
+
+  /* ==========================================================
+     ETAPA 4 — GOOGLE POR NOME
+     ========================================================== */
+
+  if (
+    googleImages.disponivel() &&
+    googleImages.buscarPorNome &&
+    removerDuplicados(resultados).length < LIMITE_IMAGENS
+  ) {
+    const encontrados = await buscarComSeguranca(() => googleImages.buscarPorNome!(produto));
+
+    adicionarCandidatos(resultados, encontrados, 8);
+  }
+
+  /* ==========================================================
+     ETAPA 5 — FARMÁCIAS POR NOME
+     ========================================================== */
+
+  if (removerDuplicados(resultados).length < LIMITE_IMAGENS) {
+    for (const provider of PROVIDERS_FARMACIAS) {
+      if (!provider.disponivel() || !provider.buscarPorNome) {
+        continue;
+      }
+
+      const encontrados = await buscarComSeguranca(() => provider.buscarPorNome!(produto));
+
+      adicionarCandidatos(resultados, encontrados, 4);
+
+      if (removerDuplicados(resultados).length >= LIMITE_IMAGENS) {
+        break;
       }
     }
   }
 
   /* ==========================================================
-     ETAPA 2 — NOME
+     ETAPA 6 — ORGANIZAÇÃO FINAL
      ========================================================== */
 
-  for (const provider of providers) {
-    if (!provider.buscarPorNome) {
-      continue;
-    }
+  const unicos = removerDuplicados(resultados);
 
-    try {
-      const encontrados = await provider.buscarPorNome(produto);
-
-      resultados.push(...encontrados);
-    } catch {
-      /**
-       * Continua procurando
-       * nas outras fontes.
-       */
-    }
-  }
-
-  /* ==========================================================
-     RESULTADO FINAL
-     ========================================================== */
-
-  return removerDuplicados(resultados).slice(0, LIMITE_IMAGENS);
+  return unicos.slice(0, LIMITE_IMAGENS);
 }
