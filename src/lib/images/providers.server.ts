@@ -200,7 +200,8 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     licencaSegura: false,
     buscarPorEan: async (ean) => {
       const r: Candidato[] = [];
-      for (const q of consultasEan(ean)) {
+      const consultas = googleDisponivel() ? consultasEan(ean) : consultasEan(ean).slice(0, 1);
+      for (const q of consultas) {
         r.push(...(await buscarNoSite(q, site, normalizarEan(ean))));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
@@ -208,12 +209,14 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     },
     buscarPorNome: async (produto) => {
       const r: Candidato[] = [];
-      for (const q of consultasProduto(produto)) {
+      const consultas = googleDisponivel() ? consultasProduto(produto) : consultasProduto(produto).slice(0, 1);
+      for (const q of consultas) {
         r.push(...(await buscarNoSite(q, site)));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
     },
+
   };
 }
 
