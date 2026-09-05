@@ -84,12 +84,21 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
       const sourceUrl: string | undefined = item?.url;
       if (!sourceUrl || !sourceUrl.toLowerCase().includes(site.dominio.replace("www.", ""))) continue;
       const html: string = item?.html ?? item?.rawHtml ?? "";
+      const meta = item?.metadata ?? {};
       const imagens = new Set<string>();
+      for (const chave of ["og:image", "ogImage", "twitter:image", "image"]) {
+        const v = meta[chave];
+        if (typeof v === "string") imagens.add(v);
+        else if (Array.isArray(v)) for (const x of v) if (typeof x === "string") imagens.add(x);
+      }
       for (const m of html.matchAll(
         /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
       ))
         imagens.add(m[1]);
       for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) imagens.add(m[1]);
+      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g))
+        imagens.add(m[1]);
+
       for (const imageUrl of imagens) {
         if (!/^https?:\/\//i.test(imageUrl)) continue;
         encontrados.push({
