@@ -8,306 +8,278 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as AuthenticatedRouteRouteImport } from "./routes/_authenticated/route";
-import { Route as AuthRouteImport } from "./routes/auth";
-import { Route as BuscaRouteImport } from "./routes/busca";
-import { Route as CarrinhoRouteImport } from "./routes/carrinho";
-import { Route as FarmaciaPopularRouteImport } from "./routes/farmacia-popular";
-import { Route as TrabalheConoscoRouteImport } from "./routes/trabalhe-conosco";
-import { Route as AuthenticatedAdminRouteImport } from "./routes/_authenticated/admin";
-import { Route as AuthenticatedImagensRouteImport } from "./routes/_authenticated/imagens";
-import { Route as CategoriaSlugRouteImport } from "./routes/categoria.$slug";
-import { Route as ProdutoIdRouteImport } from "./routes/produto.$id";
-import { Route as ApiPublicImgSplatRouteImport } from "./routes/api/public/img.$";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as BuscaRouteImport } from './routes/busca'
+import { Route as CarrinhoRouteImport } from './routes/carrinho'
+import { Route as FarmaciaPopularRouteImport } from './routes/farmacia-popular'
+import { Route as TrabalheConoscoRouteImport } from './routes/trabalhe-conosco'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedImagensRouteImport } from './routes/_authenticated/imagens'
+import { Route as CategoriaSlugRouteImport } from './routes/categoria.$slug'
+import { Route as ProdutoIdRouteImport } from './routes/produto.$id'
+import { Route as ApiPublicImgSplatRouteImport } from './routes/api/public/img.$'
 
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
-  id: "/_authenticated",
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const AuthRoute = AuthRouteImport.update({
-  id: "/auth",
-  path: "/auth",
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const BuscaRoute = BuscaRouteImport.update({
-  id: "/busca",
-  path: "/busca",
+  id: '/busca',
+  path: '/busca',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const CarrinhoRoute = CarrinhoRouteImport.update({
-  id: "/carrinho",
-  path: "/carrinho",
+  id: '/carrinho',
+  path: '/carrinho',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const FarmaciaPopularRoute = FarmaciaPopularRouteImport.update({
-  id: "/farmacia-popular",
-  path: "/farmacia-popular",
+  id: '/farmacia-popular',
+  path: '/farmacia-popular',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const TrabalheConoscoRoute = TrabalheConoscoRouteImport.update({
-  id: "/trabalhe-conosco",
-  path: "/trabalhe-conosco",
+  id: '/trabalhe-conosco',
+  path: '/trabalhe-conosco',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: "/admin",
-  path: "/admin",
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-
+} as any)
 const AuthenticatedImagensRoute = AuthenticatedImagensRouteImport.update({
-  id: "/imagens",
-  path: "/imagens",
+  id: '/imagens',
+  path: '/imagens',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-
+} as any)
 const CategoriaSlugRoute = CategoriaSlugRouteImport.update({
-  id: "/categoria/$slug",
-  path: "/categoria/$slug",
+  id: '/categoria/$slug',
+  path: '/categoria/$slug',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const ProdutoIdRoute = ProdutoIdRouteImport.update({
-  id: "/produto/$id",
-  path: "/produto/$id",
+  id: '/produto/$id',
+  path: '/produto/$id',
   getParentRoute: () => rootRouteImport,
-} as any);
-
+} as any)
 const ApiPublicImgSplatRoute = ApiPublicImgSplatRouteImport.update({
-  id: "/api/public/img/$",
-  path: "/api/public/img/$",
+  id: '/api/public/img/$',
+  path: '/api/public/img/$',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/auth": typeof AuthRoute;
-  "/busca": typeof BuscaRoute;
-  "/carrinho": typeof CarrinhoRoute;
-  "/farmacia-popular": typeof FarmaciaPopularRoute;
-  "/trabalhe-conosco": typeof TrabalheConoscoRoute;
-  "/admin": typeof AuthenticatedAdminRoute;
-  "/imagens": typeof AuthenticatedImagensRoute;
-  "/categoria/$slug": typeof CategoriaSlugRoute;
-  "/produto/$id": typeof ProdutoIdRoute;
-  "/api/public/img/$": typeof ApiPublicImgSplatRoute;
+  '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/busca': typeof BuscaRoute
+  '/carrinho': typeof CarrinhoRoute
+  '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/imagens': typeof AuthenticatedImagensRoute
+  '/categoria/$slug': typeof CategoriaSlugRoute
+  '/produto/$id': typeof ProdutoIdRoute
+  '/api/public/img/$': typeof ApiPublicImgSplatRoute
 }
-
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/auth": typeof AuthRoute;
-  "/busca": typeof BuscaRoute;
-  "/carrinho": typeof CarrinhoRoute;
-  "/farmacia-popular": typeof FarmaciaPopularRoute;
-  "/trabalhe-conosco": typeof TrabalheConoscoRoute;
-  "/admin": typeof AuthenticatedAdminRoute;
-  "/imagens": typeof AuthenticatedImagensRoute;
-  "/categoria/$slug": typeof CategoriaSlugRoute;
-  "/produto/$id": typeof ProdutoIdRoute;
-  "/api/public/img/$": typeof ApiPublicImgSplatRoute;
+  '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/busca': typeof BuscaRoute
+  '/carrinho': typeof CarrinhoRoute
+  '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/imagens': typeof AuthenticatedImagensRoute
+  '/categoria/$slug': typeof CategoriaSlugRoute
+  '/produto/$id': typeof ProdutoIdRoute
+  '/api/public/img/$': typeof ApiPublicImgSplatRoute
 }
-
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/_authenticated": typeof AuthenticatedRouteRouteWithChildren;
-  "/auth": typeof AuthRoute;
-  "/busca": typeof BuscaRoute;
-  "/carrinho": typeof CarrinhoRoute;
-  "/farmacia-popular": typeof FarmaciaPopularRoute;
-  "/trabalhe-conosco": typeof TrabalheConoscoRoute;
-  "/_authenticated/admin": typeof AuthenticatedAdminRoute;
-  "/_authenticated/imagens": typeof AuthenticatedImagensRoute;
-  "/categoria/$slug": typeof CategoriaSlugRoute;
-  "/produto/$id": typeof ProdutoIdRoute;
-  "/api/public/img/$": typeof ApiPublicImgSplatRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/busca': typeof BuscaRoute
+  '/carrinho': typeof CarrinhoRoute
+  '/farmacia-popular': typeof FarmaciaPopularRoute
+  '/trabalhe-conosco': typeof TrabalheConoscoRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/imagens': typeof AuthenticatedImagensRoute
+  '/categoria/$slug': typeof CategoriaSlugRoute
+  '/produto/$id': typeof ProdutoIdRoute
+  '/api/public/img/$': typeof ApiPublicImgSplatRoute
 }
-
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | "/"
-    | "/auth"
-    | "/busca"
-    | "/carrinho"
-    | "/farmacia-popular"
-    | "/trabalhe-conosco"
-    | "/admin"
-    | "/imagens"
-    | "/categoria/$slug"
-    | "/produto/$id"
-    | "/api/public/img/$";
-
-  fileRoutesByTo: FileRoutesByTo;
-
+    | '/'
+    | '/auth'
+    | '/busca'
+    | '/carrinho'
+    | '/farmacia-popular'
+    | '/trabalhe-conosco'
+    | '/admin'
+    | '/imagens'
+    | '/categoria/$slug'
+    | '/produto/$id'
+    | '/api/public/img/$'
+  fileRoutesByTo: FileRoutesByTo
   to:
-    | "/"
-    | "/auth"
-    | "/busca"
-    | "/carrinho"
-    | "/farmacia-popular"
-    | "/trabalhe-conosco"
-    | "/admin"
-    | "/imagens"
-    | "/categoria/$slug"
-    | "/produto/$id"
-    | "/api/public/img/$";
-
+    | '/'
+    | '/auth'
+    | '/busca'
+    | '/carrinho'
+    | '/farmacia-popular'
+    | '/trabalhe-conosco'
+    | '/admin'
+    | '/imagens'
+    | '/categoria/$slug'
+    | '/produto/$id'
+    | '/api/public/img/$'
   id:
-    | "__root__"
-    | "/"
-    | "/_authenticated"
-    | "/auth"
-    | "/busca"
-    | "/carrinho"
-    | "/farmacia-popular"
-    | "/trabalhe-conosco"
-    | "/_authenticated/admin"
-    | "/_authenticated/imagens"
-    | "/categoria/$slug"
-    | "/produto/$id"
-    | "/api/public/img/$";
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/busca'
+    | '/carrinho'
+    | '/farmacia-popular'
+    | '/trabalhe-conosco'
+    | '/_authenticated/admin'
+    | '/_authenticated/imagens'
+    | '/categoria/$slug'
+    | '/produto/$id'
+    | '/api/public/img/$'
+  fileRoutesById: FileRoutesById
 }
-
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren;
-  AuthRoute: typeof AuthRoute;
-  BuscaRoute: typeof BuscaRoute;
-  CarrinhoRoute: typeof CarrinhoRoute;
-  FarmaciaPopularRoute: typeof FarmaciaPopularRoute;
-  TrabalheConoscoRoute: typeof TrabalheConoscoRoute;
-  CategoriaSlugRoute: typeof CategoriaSlugRoute;
-  ProdutoIdRoute: typeof ProdutoIdRoute;
-  ApiPublicImgSplatRoute: typeof ApiPublicImgSplatRoute;
+  IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  BuscaRoute: typeof BuscaRoute
+  CarrinhoRoute: typeof CarrinhoRoute
+  FarmaciaPopularRoute: typeof FarmaciaPopularRoute
+  TrabalheConoscoRoute: typeof TrabalheConoscoRoute
+  CategoriaSlugRoute: typeof CategoriaSlugRoute
+  ProdutoIdRoute: typeof ProdutoIdRoute
+  ApiPublicImgSplatRoute: typeof ApiPublicImgSplatRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/_authenticated": {
-      id: "/_authenticated";
-      path: "";
-      fullPath: "/";
-      preLoaderRoute: typeof AuthenticatedRouteRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/auth": {
-      id: "/auth";
-      path: "/auth";
-      fullPath: "/auth";
-      preLoaderRoute: typeof AuthRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/busca": {
-      id: "/busca";
-      path: "/busca";
-      fullPath: "/busca";
-      preLoaderRoute: typeof BuscaRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/carrinho": {
-      id: "/carrinho";
-      path: "/carrinho";
-      fullPath: "/carrinho";
-      preLoaderRoute: typeof CarrinhoRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/farmacia-popular": {
-      id: "/farmacia-popular";
-      path: "/farmacia-popular";
-      fullPath: "/farmacia-popular";
-      preLoaderRoute: typeof FarmaciaPopularRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/trabalhe-conosco": {
-      id: "/trabalhe-conosco";
-      path: "/trabalhe-conosco";
-      fullPath: "/trabalhe-conosco";
-      preLoaderRoute: typeof TrabalheConoscoRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/_authenticated/admin": {
-      id: "/_authenticated/admin";
-      path: "/admin";
-      fullPath: "/admin";
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
-
-    "/_authenticated/imagens": {
-      id: "/_authenticated/imagens";
-      path: "/imagens";
-      fullPath: "/imagens";
-      preLoaderRoute: typeof AuthenticatedImagensRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
-
-    "/categoria/$slug": {
-      id: "/categoria/$slug";
-      path: "/categoria/$slug";
-      fullPath: "/categoria/$slug";
-      preLoaderRoute: typeof CategoriaSlugRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/produto/$id": {
-      id: "/produto/$id";
-      path: "/produto/$id";
-      fullPath: "/produto/$id";
-      preLoaderRoute: typeof ProdutoIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-
-    "/api/public/img/$": {
-      id: "/api/public/img/$";
-      path: "/api/public/img/$";
-      fullPath: "/api/public/img/$";
-      preLoaderRoute: typeof ApiPublicImgSplatRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/busca': {
+      id: '/busca'
+      path: '/busca'
+      fullPath: '/busca'
+      preLoaderRoute: typeof BuscaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/carrinho': {
+      id: '/carrinho'
+      path: '/carrinho'
+      fullPath: '/carrinho'
+      preLoaderRoute: typeof CarrinhoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/farmacia-popular': {
+      id: '/farmacia-popular'
+      path: '/farmacia-popular'
+      fullPath: '/farmacia-popular'
+      preLoaderRoute: typeof FarmaciaPopularRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trabalhe-conosco': {
+      id: '/trabalhe-conosco'
+      path: '/trabalhe-conosco'
+      fullPath: '/trabalhe-conosco'
+      preLoaderRoute: typeof TrabalheConoscoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/imagens': {
+      id: '/_authenticated/imagens'
+      path: '/imagens'
+      fullPath: '/imagens'
+      preLoaderRoute: typeof AuthenticatedImagensRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/categoria/$slug': {
+      id: '/categoria/$slug'
+      path: '/categoria/$slug'
+      fullPath: '/categoria/$slug'
+      preLoaderRoute: typeof CategoriaSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/produto/$id': {
+      id: '/produto/$id'
+      path: '/produto/$id'
+      fullPath: '/produto/$id'
+      preLoaderRoute: typeof ProdutoIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/img/$': {
+      id: '/api/public/img/$'
+      path: '/api/public/img/$'
+      fullPath: '/api/public/img/$'
+      preLoaderRoute: typeof ApiPublicImgSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute;
-  AuthenticatedImagensRoute: typeof AuthenticatedImagensRoute;
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedImagensRoute: typeof AuthenticatedImagensRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedImagensRoute: AuthenticatedImagensRoute,
-};
+}
 
-const AuthenticatedRouteRouteWithChildren = AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren);
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -320,17 +292,7 @@ const rootRouteChildren: RootRouteChildren = {
   CategoriaSlugRoute: CategoriaSlugRoute,
   ProdutoIdRoute: ProdutoIdRoute,
   ApiPublicImgSplatRoute: ApiPublicImgSplatRoute,
-};
-
-export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>();
-
-import type { getRouter } from "./router.tsx";
-import type { startInstance } from "./start.ts";
-
-declare module "@tanstack/react-start" {
-  interface Register {
-    ssr: true;
-    router: Awaited<ReturnType<typeof getRouter>>;
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>;
-  }
 }
+export const routeTree = rootRouteImport
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>()
