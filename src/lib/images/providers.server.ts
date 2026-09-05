@@ -63,33 +63,51 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
 
   const encontrados: Candidato[] = [];
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        query: `${limpar(termo)} site:${site.dominio}`,
-        limit: 5,
-        lang: "pt",
-        country: "br",
-        scrapeOptions: { formats: ["html"] },
-      }),
-    });
+    const pedir = () =>
+      fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          query: `${limpar(termo)} site:${site.dominio}`,
+          limit: 3,
+          lang: "pt",
+          country: "br",
+          scrapeOptions: { formats: ["html"] },
+        }),
+      });
+
+    let r = await pedir();
+    if (r.status === 429) {
+      // Limite de consultas por minuto: aguarda e tenta uma única vez.
+      await new Promise((res) => setTimeout(res, 12000));
+      r = await pedir();
+    }
     if (!r.ok) {
       console.error(`[imagens] Firecrawl ${site.id} falhou [${r.status}]: ${await r.text()}`);
       return [];
     }
+
     const d = await r.json();
     const itens = Array.isArray(d?.data) ? d.data : Array.isArray(d?.data?.web) ? d.data.web : [];
     for (const item of itens) {
       const sourceUrl: string | undefined = item?.url;
       if (!sourceUrl || !sourceUrl.toLowerCase().includes(site.dominio.replace("www.", ""))) continue;
       const html: string = item?.html ?? item?.rawHtml ?? "";
+      const meta = item?.metadata ?? {};
       const imagens = new Set<string>();
+      for (const chave of ["og:image", "ogImage", "twitter:image", "image"]) {
+        const v = meta[chave];
+        if (typeof v === "string") imagens.add(v);
+        else if (Array.isArray(v)) for (const x of v) if (typeof x === "string") imagens.add(x);
+      }
       for (const m of html.matchAll(
         /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
       ))
         imagens.add(m[1]);
       for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) imagens.add(m[1]);
+      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g))
+        imagens.add(m[1]);
+
       for (const imageUrl of imagens) {
         if (!/^https?:\/\//i.test(imageUrl)) continue;
         encontrados.push({
@@ -182,7 +200,8 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     licencaSegura: false,
     buscarPorEan: async (ean) => {
       const r: Candidato[] = [];
-      for (const q of consultasEan(ean)) {
+      const consultas = googleDisponivel() ? consultasEan(ean) : consultasEan(ean).slice(0, 1);
+      for (const q of consultas) {
         r.push(...(await buscarNoSite(q, site, normalizarEan(ean))));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
@@ -190,12 +209,14 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     },
     buscarPorNome: async (produto) => {
       const r: Candidato[] = [];
-      for (const q of consultasProduto(produto)) {
+      const consultas = googleDisponivel() ? consultasProduto(produto) : consultasProduto(produto).slice(0, 1);
+      for (const q of consultas) {
         r.push(...(await buscarNoSite(q, site)));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
     },
+
   };
 }
 
@@ -211,17 +232,21 @@ export async function buscarAte20Imagens(
   const resultado: Candidato[] = [];
   const providers = providersAtivos();
   const ean = normalizarEan(produto.codigo_barras);
+  // Ordem de prioridade: Pague Menos -> Farmácia Permanente -> Droga Raia.
   if (ean)
     for (const p of providers) {
       try {
         resultado.push(...(await p.buscarPorEan(ean)));
       } catch {}
+      if (removerDuplicados(resultado).length > 0) break;
     }
   if (removerDuplicados(resultado).length === 0)
     for (const p of providers) {
       try {
         resultado.push(...(await p.buscarPorNome(produto)));
       } catch {}
+      if (removerDuplicados(resultado).length > 0) break;
     }
   return removerDuplicados(resultado).slice(0, LIMITE_IMAGENS);
+
 }
