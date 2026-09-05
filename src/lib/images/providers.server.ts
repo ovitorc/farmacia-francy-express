@@ -232,17 +232,21 @@ export async function buscarAte20Imagens(
   const resultado: Candidato[] = [];
   const providers = providersAtivos();
   const ean = normalizarEan(produto.codigo_barras);
+  // Ordem de prioridade: Pague Menos -> Farmácia Permanente -> Droga Raia.
   if (ean)
     for (const p of providers) {
       try {
         resultado.push(...(await p.buscarPorEan(ean)));
       } catch {}
+      if (removerDuplicados(resultado).length > 0) break;
     }
   if (removerDuplicados(resultado).length === 0)
     for (const p of providers) {
       try {
         resultado.push(...(await p.buscarPorNome(produto)));
       } catch {}
+      if (removerDuplicados(resultado).length > 0) break;
     }
   return removerDuplicados(resultado).slice(0, LIMITE_IMAGENS);
+
 }
