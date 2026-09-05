@@ -1,778 +1,954 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 
-import {
-  estatisticasImagens,
-  listarProdutosImagens,
-  listarFiltrosImagens,
-  buscarCandidatos,
-  aplicarCandidato,
-  sincronizarLote,
-  aprovarCandidatoPendente,
-  rejeitarImagem,
-  enviarImagemProduto,
-} from "@/lib/images.functions";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { avaliarCandidato, classificar, type Candidato } from "@/lib/images/matching";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+async function assertAdmin(context: { supabase: any; userId: string }) {
+  const { data, error } = await context.supabase.rpc("has_role", {
+    _user_id: context.userId,
+    _role: "admin",
+  });
 
-export const Route = createFileRoute("/_authenticated/imagens")({
-  head: () => ({
-    meta: [
-      { title: "Imagens dos produtos | Farmácias Francy" },
-      {
-        name: "description",
-        content: "Busca e curadoria das imagens do catálogo.",
-      },
-      { name: "robots", content: "noindex" },
-    ],
-  }),
-  component: ImagensPage,
+  if (error || !data) {
+    throw new Error("Acesso restrito a administradores.");
+  }
+}
+
+const CAMPOS =
+  "id, codigo, nome, fabricante, codigo_barras, categoria_slug, subcategoria_slug, descricao, imagem, image_status, image_source, image_source_url, image_confidence, image_last_synced_at, image_width, image_height, image_format, image_error, image_candidato_url, image_license";
+
+const TAMANHO_PADRAO_LOTE = 20;
+const TAMANHO_MAXIMO_LOTE = 10000;
+const MAX_CANDIDATOS_POR_PRODUTO = 20;
+
+export const estatisticasImagens = createServerFn({
+  method: "GET",
+})
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+
+    const contar = async (aplicar: (q: any) => any) => {
+      const { count } = await aplicar(
+        context.supabase.from("produtos").select("id", {
+          count: "exact",
+          head: true,
+        }),
+      );
+
+      return count ?? 0;
+    };
+
+    const [total, comImagem, revisao, naoEncontrados, erros, comEan] = await Promise.all([
+      contar((q: any) => q),
+
+      contar((q: any) => q.not("imagem", "is", null)),
+
+      contar((q: any) => q.eq("image_status", "manual_review")),
+
+      contar((q: any) => q.eq("image_status", "not_found")),
+
+      contar((q: any) => q.eq("image_status", "error")),
+
+      contar((q: any) => q.not("codigo_barras", "is", null).neq("codigo_barras", "")),
+    ]);
+
+    const { data: ultima } = await context.supabase
+      .from("produtos")
+      .select("image_last_synced_at")
+      .not("image_last_synced_at", "is", null)
+      .order("image_last_synced_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    return {
+      total,
+      comImagem,
+      semImagem: total - comImagem,
+      revisao,
+      naoEncontrados,
+      erros,
+      comEan,
+      cobertura: total ? (comImagem / total) * 100 : 0,
+      ultimaSincronizacao: ultima?.image_last_synced_at ?? null,
+    };
+  });
+
+const filtroSchema = z.object({
+  filtro: z
+    .enum(["todos", "sem_imagem", "com_imagem", "manual_review", "not_found", "error", "approved"])
+    .default("sem_imagem"),
+
+  busca: z.string().default(""),
+
+  comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
+
+  fabricante: z.string().default(""),
+
+  categoria: z.string().default(""),
+
+  subcategoria: z.string().default(""),
+
+  pagina: z.number().int().min(1).default(1),
+
+  porPagina: z.number().int().min(1).max(100).default(24),
 });
 
-type Filtro = "todos" | "sem_imagem" | "com_imagem" | "manual_review" | "not_found" | "error" | "approved";
+function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
+  if (f.filtro === "sem_imagem") {
+    query = query.is("imagem", null);
+  } else if (f.filtro === "com_imagem") {
+    query = query.not("imagem", "is", null);
+  } else if (f.filtro !== "todos") {
+    query = query.eq("image_status", f.filtro);
+  }
 
-function ImagensPage() {
-  const qc = useQueryClient();
+  if (f.comEan === "sim") {
+    query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
+  }
 
-  const fnEstatisticas = useServerFn(estatisticasImagens);
-  const fnListar = useServerFn(listarProdutosImagens);
-  const fnFiltros = useServerFn(listarFiltrosImagens);
-  const fnCandidatos = useServerFn(buscarCandidatos);
-  const fnAplicar = useServerFn(aplicarCandidato);
-  const fnLote = useServerFn(sincronizarLote);
-  const fnAprovar = useServerFn(aprovarCandidatoPendente);
-  const fnRejeitar = useServerFn(rejeitarImagem);
-  const fnEnviar = useServerFn(enviarImagemProduto);
+  if (f.comEan === "nao") {
+    query = query.or("codigo_barras.is.null,codigo_barras.eq.");
+  }
 
-  const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
+  if (f.fabricante.trim()) {
+    query = query.ilike("fabricante", `%${f.fabricante.trim()}%`);
+  }
 
-  const [busca, setBusca] = useState("");
-  const [termoBusca, setTermoBusca] = useState("");
+  if (f.categoria.trim()) {
+    query = query.eq("categoria_slug", f.categoria.trim());
+  }
 
-  const [categoria, setCategoria] = useState("");
-  const [subcategoria, setSubcategoria] = useState("");
+  if (f.subcategoria.trim()) {
+    query = query.eq("subcategoria_slug", f.subcategoria.trim());
+  }
 
-  const [fabricante, setFabricante] = useState("");
-  const [termoFabricante, setTermoFabricante] = useState("");
+  if (f.busca.trim()) {
+    const termo = f.busca.replace(/[%,]/g, " ").trim();
 
-  const [comEan, setComEan] = useState<"qualquer" | "sim" | "nao">("qualquer");
-
-  const [pagina, setPagina] = useState(1);
-
-  const porPagina = 24;
-
-  const [selecionado, setSelecionado] = useState<any | null>(null);
-  const [candidatos, setCandidatos] = useState<any[]>([]);
-  const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
-  const [termoManual, setTermoManual] = useState("");
-
-  const [lote, setLote] = useState<any | null>(null);
-  const [rodandoLote, setRodandoLote] = useState(false);
-
-  const estat = useQuery({
-    queryKey: ["imagens", "estatisticas"],
-    queryFn: () => fnEstatisticas({}),
-  });
-
-  const filtrosDisponiveis = useQuery({
-    queryKey: ["imagens", "filtros-disponiveis"],
-    queryFn: () => fnFiltros({}),
-  });
-
-  const categorias = filtrosDisponiveis.data?.categorias ?? [];
-
-  const todasSubcategorias = filtrosDisponiveis.data?.subcategorias ?? [];
-
-  const subcategorias = useMemo(() => {
-    if (!categoria) {
-      return [];
+    if (termo) {
+      query = query.or(
+        `nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%,fabricante.ilike.%${termo}%`,
+      );
     }
+  }
 
-    return todasSubcategorias.filter((item: any) => item.categoria_slug === categoria);
-  }, [categoria, todasSubcategorias]);
+  return query;
+}
 
-  const lista = useQuery({
-    queryKey: ["imagens", "lista", filtro, termoBusca, categoria, subcategoria, termoFabricante, comEan, pagina],
+export const listarFiltrosImagens = createServerFn({
+  method: "GET",
+})
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
 
-    queryFn: () =>
-      fnListar({
-        data: {
-          filtro,
-          busca: termoBusca,
-          comEan,
-          fabricante: termoFabricante,
-          categoria,
-          subcategoria,
-          pagina,
-          porPagina,
-        },
-      }),
-  });
-
-  const atualizar = () => {
-    void qc.invalidateQueries({
-      queryKey: ["imagens"],
-    });
-  };
-
-  const aplicarFiltros = () => {
-    setTermoBusca(busca);
-    setTermoFabricante(fabricante);
-    setPagina(1);
-  };
-
-  const limparFiltros = () => {
-    setFiltro("sem_imagem");
-
-    setBusca("");
-    setTermoBusca("");
-
-    setCategoria("");
-    setSubcategoria("");
-
-    setFabricante("");
-    setTermoFabricante("");
-
-    setComEan("qualquer");
-
-    setPagina(1);
-  };
-
-  const abrirProduto = async (produto: any) => {
-    setSelecionado(produto);
-    setCandidatos([]);
-    setTermoManual("");
-    setCarregandoCandidatos(true);
-
-    try {
-      const r = await fnCandidatos({
-        data: {
-          produtoId: produto.id,
-        },
-      });
-
-      setCandidatos(r.candidatos ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao buscar imagens.");
-    } finally {
-      setCarregandoCandidatos(false);
-    }
-  };
-
-  const buscarComTermo = async () => {
-    if (!selecionado) return;
-
-    setCarregandoCandidatos(true);
-
-    try {
-      const r = await fnCandidatos({
-        data: {
-          produtoId: selecionado.id,
-          termo: termoManual,
-        },
-      });
-
-      setCandidatos(r.candidatos ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha na busca.");
-    } finally {
-      setCarregandoCandidatos(false);
-    }
-  };
-
-  const aplicarMutation = useMutation({
-    mutationFn: (c: any) =>
-      fnAplicar({
-        data: {
-          produtoId: selecionado.id,
-          imageUrl: c.imageUrl,
-          source: c.source ?? "manual",
-          sourceUrl: c.sourceUrl,
-          licenca: c.licenca,
-          confianca: Math.round(c.confianca ?? 100),
-        },
+    const [categoriasResult, subcategoriasResult] = await Promise.all([
+      context.supabase.from("categorias").select("slug, nome, ordem").order("ordem", {
+        ascending: true,
       }),
 
-    onSuccess: () => {
-      toast.success("Imagem aplicada ao produto.");
+      context.supabase.from("subcategorias").select("slug, nome, categoria_slug, ordem").order("ordem", {
+        ascending: true,
+      }),
+    ]);
 
-      setSelecionado(null);
+    if (categoriasResult.error) {
+      throw new Error(categoriasResult.error.message);
+    }
 
-      atualizar();
-    },
+    if (subcategoriasResult.error) {
+      throw new Error(subcategoriasResult.error.message);
+    }
 
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao aplicar imagem."),
+    return {
+      categorias: categoriasResult.data ?? [],
+      subcategorias: subcategoriasResult.data ?? [],
+    };
   });
 
-  const enviarArquivo = async (produtoId: string, file: File) => {
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
+export const listarProdutosImagens = createServerFn({
+  method: "GET",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => filtroSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
 
-      reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    const inicio = (data.pagina - 1) * data.porPagina;
 
-      reader.onerror = reject;
-
-      reader.readAsDataURL(file);
+    let query = context.supabase.from("produtos").select(CAMPOS, {
+      count: "exact",
     });
 
-    try {
-      await fnEnviar({
-        data: {
-          produtoId,
-          nomeArquivo: file.name,
-          tipo: file.type || "image/jpeg",
-          conteudoBase64: base64,
-        },
-      });
+    query = aplicarFiltros(query, data);
 
-      toast.success("Imagem enviada.");
+    const {
+      data: linhas,
+      count,
+      error,
+    } = await query
+      .order("nome", {
+        ascending: true,
+      })
+      .range(inicio, inicio + data.porPagina - 1);
 
-      setSelecionado(null);
-
-      atualizar();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha no envio.");
+    if (error) {
+      throw new Error(error.message);
     }
-  };
 
-  const rodarLote = async (escopo: "sem_imagem" | "revisao" | "todos") => {
-    setRodandoLote(true);
-    setLote(null);
+    return {
+      itens: linhas ?? [],
+      total: count ?? 0,
+    };
+  });
 
+function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] {
+  const urls = new Set<string>();
+
+  const resultado: T[] = [];
+
+  for (const candidato of candidatos) {
+    const url = candidato.imageUrl?.trim();
+
+    if (!url) {
+      continue;
+    }
+
+    const chave = url.toLowerCase().split("?")[0];
+
+    if (urls.has(chave)) {
+      continue;
+    }
+
+    urls.add(chave);
+
+    resultado.push(candidato);
+  }
+
+  return resultado;
+}
+
+function ordenarCandidatos<
+  T extends Candidato & {
+    confianca: number;
+    conflito: boolean;
+    motivos: string[];
+  },
+>(candidatos: T[]): T[] {
+  return [...candidatos].sort((a, b) => {
+    if (b.confianca !== a.confianca) {
+      return b.confianca - a.confianca;
+    }
+
+    if (a.conflito !== b.conflito) {
+      return a.conflito ? 1 : -1;
+    }
+
+    const aTemEan = Boolean(a.ean);
+    const bTemEan = Boolean(b.ean);
+
+    if (aTemEan !== bTemEan) {
+      return aTemEan ? -1 : 1;
+    }
+
+    return 0;
+  });
+}
+
+async function candidatosPara(produto: any, termoManual?: string) {
+  const { buscarAte20Imagens } = await import("@/lib/images/providers.server");
+
+  const produtoBusca = termoManual?.trim()
+    ? {
+        ...produto,
+        nome: termoManual.trim(),
+      }
+    : produto;
+
+  const brutos = await buscarAte20Imagens({
+    nome: produtoBusca.nome,
+    fabricante: produtoBusca.fabricante,
+    codigo_barras: produtoBusca.codigo_barras,
+    descricao: produtoBusca.descricao ?? produtoBusca.descricao_produto ?? null,
+  });
+
+  const encontrados: Array<
+    Candidato & {
+      confianca: number;
+      conflito: boolean;
+      motivos: string[];
+    }
+  > = [];
+
+  for (const candidato of brutos) {
     try {
-      const r = await fnLote({
-        data: {
-          escopo,
+      const av = avaliarCandidato(produto, candidato);
 
-          tamanho: 20,
-
-          forcar: false,
-
-          categoria,
-
-          subcategoria,
-
-          busca: termoBusca,
-
-          fabricante: termoFabricante,
-
-          comEan,
-        },
+      encontrados.push({
+        ...candidato,
+        confianca: Math.min(av.confianca, 70),
+        conflito: av.conflito,
+        motivos: av.motivos,
       });
+    } catch {}
+  }
 
-      setLote(r);
+  return ordenarCandidatos(removerCandidatosDuplicados(encontrados)).slice(0, MAX_CANDIDATOS_POR_PRODUTO);
+}
 
-      if (r.processados === 0) {
-        toast.info("Nenhum produto encontrado com os filtros selecionados.");
-      } else {
-        toast.success(`${r.processados} produto(s) processado(s).`);
+export const buscarCandidatos = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+
+        termo: z.string().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produtoRaw, error } = await context.supabase
+      .from("produtos")
+      .select(CAMPOS)
+      .eq("id", data.produtoId)
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const produto = produtoRaw as any;
+
+    return {
+      produto,
+      candidatos: await candidatosPara(produto, data.termo),
+    };
+  });
+
+async function aplicar(
+  context: any,
+  produto: any,
+  candidato: any,
+  confianca: number,
+  status: "approved" | "manual_review",
+) {
+  const { baixarImagem, guardarImagem } = await import("@/lib/images/pipeline.server");
+
+  const imagem = await baixarImagem(candidato.imageUrl);
+
+  const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
+
+  if (produto.image_hash === imagem.hash && produto.imagem) {
+    return produto.imagem as string;
+  }
+
+  const { url } = await guardarImagem(chave, imagem);
+
+  const { error } = await context.supabase
+    .from("produtos")
+    .update({
+      imagem: url,
+
+      image_status: status,
+
+      image_source: candidato.source ?? null,
+
+      image_source_url: candidato.sourceUrl ?? candidato.imageUrl ?? null,
+
+      image_confidence: confianca,
+
+      image_last_synced_at: new Date().toISOString(),
+
+      image_hash: imagem.hash,
+
+      image_width: imagem.largura,
+
+      image_height: imagem.altura,
+
+      image_format: imagem.extensao,
+
+      image_error: null,
+
+      image_candidato_url: null,
+
+      image_license: candidato.licenca ?? null,
+    })
+    .eq("id", produto.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return url;
+}
+
+async function registrarLog(context: any, log: Record<string, unknown>) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  await supabaseAdmin.from("imagem_sync_logs").insert(log as any);
+}
+
+export const aplicarCandidato = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+
+        imageUrl: z.string().url(),
+
+        source: z.string().default("manual"),
+
+        sourceUrl: z.string().optional(),
+
+        licenca: z.string().optional(),
+
+        confianca: z.number().min(0).max(100).default(100),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produtoRaw, error } = await context.supabase
+      .from("produtos")
+      .select(CAMPOS + ", image_hash")
+      .eq("id", data.produtoId)
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const produto = produtoRaw as any;
+
+    const url = await aplicar(context, produto, data, data.confianca, "approved");
+
+    await registrarLog(context, {
+      produto_id: produto.id,
+      ean: produto.codigo_barras,
+      status: "approved",
+      source: data.source,
+      image_url: url,
+      confidence: data.confianca,
+    });
+
+    return { url };
+  });
+
+export const sincronizarLote = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        escopo: z.enum(["sem_imagem", "todos", "revisao"]).default("sem_imagem"),
+
+        tamanho: z.number().int().min(1).max(TAMANHO_MAXIMO_LOTE).default(TAMANHO_PADRAO_LOTE),
+
+        forcar: z.boolean().default(false),
+
+        categoria: z.string().default(""),
+
+        subcategoria: z.string().default(""),
+
+        busca: z.string().default(""),
+
+        fabricante: z.string().default(""),
+
+        comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    let query = context.supabase.from("produtos").select(CAMPOS + ", image_hash");
+
+    if (data.escopo === "sem_imagem") {
+      query = query.is("imagem", null);
+    }
+
+    if (data.escopo === "revisao") {
+      query = query.eq("image_status", "manual_review");
+    }
+
+    if (!data.forcar) {
+      query = query.neq("image_status", "not_found").neq("image_status", "error");
+    }
+
+    if (data.categoria.trim()) {
+      query = query.eq("categoria_slug", data.categoria.trim());
+    }
+
+    if (data.subcategoria.trim()) {
+      query = query.eq("subcategoria_slug", data.subcategoria.trim());
+    }
+
+    if (data.fabricante.trim()) {
+      query = query.ilike("fabricante", `%${data.fabricante.trim()}%`);
+    }
+
+    if (data.comEan === "sim") {
+      query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
+    }
+
+    if (data.comEan === "nao") {
+      query = query.or("codigo_barras.is.null,codigo_barras.eq.");
+    }
+
+    if (data.busca.trim()) {
+      const termo = data.busca.replace(/[%,]/g, " ").trim();
+
+      if (termo) {
+        query = query.or(
+          `nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%,fabricante.ilike.%${termo}%`,
+        );
+      }
+    }
+
+    const { data: produtosRaw, error } = await query
+      .order("image_last_synced_at", {
+        ascending: true,
+        nullsFirst: true,
+      })
+      .limit(data.tamanho);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const resultado = {
+      solicitados: data.tamanho,
+
+      processados: 0,
+
+      aprovados: 0,
+
+      revisao: 0,
+
+      naoEncontrados: 0,
+
+      erros: 0,
+
+      detalhes: [] as Array<{
+        nome: string;
+        status: string;
+        fonte?: string;
+        confianca?: number;
+      }>,
+    };
+
+    const produtos = (produtosRaw ?? []) as any[];
+
+    for (const produto of produtos) {
+      const inicio = new Date().toISOString();
+
+      resultado.processados++;
+
+      try {
+        const candidatos = await candidatosPara(produto);
+
+        const melhor = candidatos[0];
+
+        if (!melhor) {
+          await context.supabase
+            .from("produtos")
+            .update({
+              image_status: "not_found",
+
+              image_last_synced_at: new Date().toISOString(),
+
+              image_error: null,
+            })
+            .eq("id", produto.id);
+
+          resultado.naoEncontrados++;
+
+          resultado.detalhes.push({
+            nome: produto.nome,
+            status: "não encontrada",
+          });
+
+          await registrarLog(context, {
+            produto_id: produto.id,
+
+            ean: produto.codigo_barras,
+
+            status: "not_found",
+
+            started_at: inicio,
+          });
+
+          continue;
+        }
+
+        const decisao = classificar({
+          confianca: melhor.confianca,
+
+          conflito: melhor.conflito,
+
+          motivos: melhor.motivos,
+        });
+
+        if (decisao === "approved") {
+          await aplicar(context, produto, melhor, melhor.confianca, "approved");
+
+          resultado.aprovados++;
+
+          resultado.detalhes.push({
+            nome: produto.nome,
+
+            status: "aprovada",
+
+            fonte: melhor.source,
+
+            confianca: melhor.confianca,
+          });
+
+          await registrarLog(context, {
+            produto_id: produto.id,
+
+            ean: produto.codigo_barras,
+
+            status: "approved",
+
+            source: melhor.source,
+
+            confidence: melhor.confianca,
+
+            started_at: inicio,
+          });
+        } else if (decisao === "manual_review") {
+          await context.supabase
+            .from("produtos")
+            .update({
+              image_status: "manual_review",
+
+              image_candidato_url: melhor.imageUrl,
+
+              image_source: melhor.source,
+
+              image_source_url: melhor.sourceUrl ?? melhor.imageUrl,
+
+              image_confidence: melhor.confianca,
+
+              image_license: melhor.licenca ?? null,
+
+              image_last_synced_at: new Date().toISOString(),
+            })
+            .eq("id", produto.id);
+
+          resultado.revisao++;
+
+          resultado.detalhes.push({
+            nome: produto.nome,
+
+            status: "revisão manual",
+
+            fonte: melhor.source,
+
+            confianca: melhor.confianca,
+          });
+
+          await registrarLog(context, {
+            produto_id: produto.id,
+
+            ean: produto.codigo_barras,
+
+            status: "manual_review",
+
+            source: melhor.source,
+
+            confidence: melhor.confianca,
+
+            started_at: inicio,
+          });
+        } else {
+          await context.supabase
+            .from("produtos")
+            .update({
+              image_status: "not_found",
+
+              image_last_synced_at: new Date().toISOString(),
+            })
+            .eq("id", produto.id);
+
+          resultado.naoEncontrados++;
+
+          resultado.detalhes.push({
+            nome: produto.nome,
+
+            status: "descartada (baixa confiança)",
+          });
+        }
+      } catch (e) {
+        const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
+
+        await context.supabase
+          .from("produtos")
+          .update({
+            image_status: "error",
+
+            image_error: mensagem,
+
+            image_last_synced_at: new Date().toISOString(),
+          })
+          .eq("id", produto.id);
+
+        resultado.erros++;
+
+        resultado.detalhes.push({
+          nome: produto.nome,
+
+          status: `erro: ${mensagem}`,
+        });
+
+        await registrarLog(context, {
+          produto_id: produto.id,
+
+          ean: produto.codigo_barras,
+
+          status: "error",
+
+          error: mensagem,
+
+          started_at: inicio,
+        });
+      }
+    }
+
+    return {
+      ...resultado,
+
+      fim: produtos.length < data.tamanho,
+    };
+  });
+
+export const aprovarCandidatoPendente = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produtoRaw, error } = await context.supabase
+      .from("produtos")
+      .select(CAMPOS + ", image_hash")
+      .eq("id", data.produtoId)
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const produto = produtoRaw as any;
+
+    if (!produto.image_candidato_url) {
+      throw new Error("Não há imagem candidata para este produto.");
+    }
+
+    const url = await aplicar(
+      context,
+      produto,
+      {
+        imageUrl: produto.image_candidato_url,
+
+        source: produto.image_source ?? "manual",
+
+        sourceUrl: produto.image_source_url ?? undefined,
+
+        licenca: produto.image_license ?? undefined,
+      },
+
+      produto.image_confidence ?? 100,
+
+      "approved",
+    );
+
+    return { url };
+  });
+
+export const rejeitarImagem = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+
+        removerAtual: z.boolean().default(false),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const campos: Record<string, unknown> = {
+      image_candidato_url: null,
+
+      image_status: "not_found",
+
+      image_last_synced_at: new Date().toISOString(),
+    };
+
+    if (data.removerAtual) {
+      campos["imagem"] = null;
+
+      campos["image_hash"] = null;
+
+      campos["image_source"] = null;
+
+      campos["image_source_url"] = null;
+
+      campos["image_confidence"] = null;
+    }
+
+    const { error } = await context.supabase
+      .from("produtos")
+      .update(campos as any)
+      .eq("id", data.produtoId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return {
+      ok: true,
+    };
+  });
+
+export const enviarImagemProduto = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid().optional(),
+
+        nomeArquivo: z.string().min(1),
+
+        tipo: z.string().min(1),
+
+        conteudoBase64: z.string().min(1),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { guardarImagem } = await import("@/lib/images/pipeline.server");
+
+    const bytes = Uint8Array.from(atob(data.conteudoBase64), (c) => c.charCodeAt(0));
+
+    let produtoId = data.produtoId;
+
+    const eanArquivo = data.nomeArquivo.replace(/\.[^.]+$/, "").replace(/\D/g, "");
+
+    if (!produtoId) {
+      if (eanArquivo.length < 8) {
+        throw new Error("Nome do arquivo não contém um EAN válido.");
       }
 
-      atualizar();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha na sincronização.");
-    } finally {
-      setRodandoLote(false);
+      const { data: achados, error } = await context.supabase
+        .from("produtos")
+        .select("id")
+        .eq("codigo_barras", eanArquivo)
+        .limit(1);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      produtoId = achados?.[0]?.id;
     }
-  };
-
-  const nomeCategoriaSelecionada = categorias.find((item: any) => item.slug === categoria)?.nome ?? "";
-
-  const nomeSubcategoriaSelecionada = subcategorias.find((item: any) => item.slug === subcategoria)?.nome ?? "";
-
-  const descricaoFiltroLote = [
-    nomeCategoriaSelecionada,
-    nomeSubcategoriaSelecionada,
-    termoBusca ? `Busca: ${termoBusca}` : "",
-    termoFabricante ? `Fabricante: ${termoFabricante}` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const e = estat.data;
 
-  const itens = lista.data?.itens ?? [];
+    if (!produtoId) {
+      throw new Error("Produto não encontrado para esta imagem.");
+    }
 
-  const total = lista.data?.total ?? 0;
+    const extensao =
+      data.tipo === "image/png"
+        ? "png"
+        : data.tipo === "image/webp"
+          ? "webp"
+          : data.tipo === "image/gif"
+            ? "gif"
+            : "jpg";
 
-  const paginas = Math.max(1, Math.ceil(total / porPagina));
+    const imagem = {
+      bytes,
 
-  return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Imagens dos produtos</h1>
+      mime: data.tipo || "image/jpeg",
 
-          <p className="text-sm text-muted-foreground">
-            Selecione uma categoria ou subcategoria e busque imagens somente para aqueles produtos.
-          </p>
-        </div>
-
-        <Button variant="outline" asChild>
-          <Link to="/admin">Voltar ao painel</Link>
-        </Button>
-      </div>
-
-      {/* ======================================================
-          ESTATÍSTICAS
-      ====================================================== */}
-
-      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
-        {[
-          ["Produtos", e?.total],
-          ["Com imagem", e?.comImagem],
-          ["Sem imagem", e?.semImagem],
-          ["Em revisão", e?.revisao],
-          ["Não encontradas", e?.naoEncontrados],
-          ["Cobertura", e ? `${e.cobertura.toFixed(1)}%` : undefined],
-        ].map(([rotulo, valor]) => (
-          <div key={String(rotulo)} className="rounded-xl border bg-card p-4 shadow-sm">
-            <p className="text-xs text-muted-foreground">{rotulo}</p>
-
-            <p className="text-lg font-semibold text-primary">{valor ?? "—"}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ======================================================
-          FILTROS
-      ====================================================== */}
-
-      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-semibold text-primary">Filtros para busca de imagens</h2>
-
-          <p className="mt-1 text-sm text-muted-foreground">
-            Os filtros abaixo são aplicados tanto na lista quanto na busca automática das imagens.
-          </p>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {/* SITUAÇÃO */}
-
-          <div>
-            <Label className="text-xs">Situação da imagem</Label>
-
-            <Select
-              value={filtro}
-              onValueChange={(v) => {
-                setFiltro(v as Filtro);
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="sem_imagem">Sem imagem</SelectItem>
-
-                <SelectItem value="manual_review">Em revisão</SelectItem>
-
-                <SelectItem value="not_found">Não encontradas</SelectItem>
-
-                <SelectItem value="error">Com erro</SelectItem>
-
-                <SelectItem value="com_imagem">Com imagem</SelectItem>
-
-                <SelectItem value="todos">Todos</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* CATEGORIA */}
-
-          <div>
-            <Label className="text-xs">Categoria</Label>
-
-            <Select
-              value={categoria || "__todas__"}
-              onValueChange={(v) => {
-                const novaCategoria = v === "__todas__" ? "" : v;
-
-                setCategoria(novaCategoria);
-
-                setSubcategoria("");
-
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Todas as categorias" />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="__todas__">Todas as categorias</SelectItem>
-
-                {categorias.map((item: any) => (
-                  <SelectItem key={item.slug} value={item.slug}>
-                    {item.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* SUBCATEGORIA */}
-
-          <div>
-            <Label className="text-xs">Subcategoria</Label>
-
-            <Select
-              disabled={!categoria}
-              value={subcategoria || "__todas__"}
-              onValueChange={(v) => {
-                setSubcategoria(v === "__todas__" ? "" : v);
-
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={categoria ? "Todas as subcategorias" : "Selecione uma categoria"} />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="__todas__">Todas as subcategorias</SelectItem>
-
-                {subcategorias.map((item: any) => (
-                  <SelectItem key={item.slug} value={item.slug}>
-                    {item.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* EAN */}
-
-          <div>
-            <Label className="text-xs">Código de barras</Label>
-
-            <Select
-              value={comEan}
-              onValueChange={(v) => {
-                setComEan(v as "qualquer" | "sim" | "nao");
-
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="qualquer">Todos</SelectItem>
-
-                <SelectItem value="sim">Somente com EAN</SelectItem>
-
-                <SelectItem value="nao">Somente sem EAN</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* BUSCA */}
-
-          <div className="lg:col-span-2">
-            <Label className="text-xs">Buscar produto</Label>
-
-            <Input
-              value={busca}
-              placeholder="Ex.: fralda, dipirona, analgésico..."
-              onChange={(ev) => setBusca(ev.target.value)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter") {
-                  aplicarFiltros();
-                }
-              }}
-            />
-          </div>
-
-          {/* FABRICANTE */}
-
-          <div>
-            <Label className="text-xs">Fabricante</Label>
-
-            <Input
-              value={fabricante}
-              placeholder="Ex.: Johnson..."
-              onChange={(ev) => setFabricante(ev.target.value)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter") {
-                  aplicarFiltros();
-                }
-              }}
-            />
-          </div>
-
-          {/* BOTÕES */}
-
-          <div className="flex items-end gap-2">
-            <Button className="flex-1" variant="outline" onClick={aplicarFiltros}>
-              Aplicar filtros
-            </Button>
-
-            <Button variant="ghost" onClick={limparFiltros}>
-              Limpar
-            </Button>
-          </div>
-        </div>
-
-        {descricaoFiltroLote ? (
-          <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-            <span className="font-medium">Filtro selecionado para a busca automática:</span> {descricaoFiltroLote}
-          </div>
-        ) : (
-          <div className="mt-4 rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
-            Nenhuma categoria específica selecionada. A busca automática poderá processar produtos de todo o catálogo.
-          </div>
-        )}
-      </section>
-
-      {/* ======================================================
-          SINCRONIZAÇÃO
-      ====================================================== */}
-
-      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Sincronização automática</h2>
-
-        <p className="text-sm text-muted-foreground">
-          Processa 20 produtos por vez e respeita todos os filtros selecionados acima.
-        </p>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button disabled={rodandoLote} onClick={() => rodarLote("sem_imagem")}>
-            {rodandoLote ? "Processando…" : "Buscar imagens para produtos sem imagem"}
-          </Button>
-
-          <Button variant="outline" disabled={rodandoLote} onClick={() => rodarLote("revisao")}>
-            Reprocessar pendentes de revisão
-          </Button>
-        </div>
-
-        {lote ? (
-          <div className="mt-4 rounded-lg bg-muted/40 p-3 text-sm">
-            <p>
-              Processados: {lote.processados} · Aprovados: {lote.aprovados} · Revisão: {lote.revisao} · Não encontradas:{" "}
-              {lote.naoEncontrados} · Erros: {lote.erros}
-            </p>
-
-            {lote.detalhes?.length > 0 ? (
-              <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {lote.detalhes.map((d: any, i: number) => (
-                  <li key={i}>
-                    {d.nome} — {d.status}
-                    {d.fonte ? ` (${d.fonte}${d.confianca ? `, ${d.confianca}%` : ""})` : ""}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
-
-      {/* ======================================================
-          LISTA
-      ====================================================== */}
-
-      <section className="mt-6">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-semibold text-primary">Produtos encontrados</h2>
-
-            <p className="text-sm text-muted-foreground">{total} produto(s) correspondem aos filtros atuais.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
-          {lista.isLoading ? <p className="text-sm text-muted-foreground">Carregando…</p> : null}
-
-          {!lista.isLoading && itens.length === 0 ? (
-            <p className="col-span-full rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Nenhum produto encontrado com os filtros selecionados.
-            </p>
-          ) : null}
-
-          {itens.map((p: any) => (
-            <div key={p.id} className="flex flex-col rounded-xl border bg-card p-3 shadow-sm">
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
-                {p.imagem || p.image_candidato_url ? (
-                  <img
-                    src={p.imagem ?? p.image_candidato_url}
-                    alt={p.nome}
-                    className="h-full w-full object-contain"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="text-xs text-muted-foreground">sem foto</span>
-                )}
-              </div>
-
-              <p className="mt-2 line-clamp-2 text-xs font-medium">{p.nome}</p>
-
-              <p className="text-[11px] text-muted-foreground">{p.codigo_barras || p.codigo}</p>
-
-              <div className="mt-2 flex flex-col gap-1">
-                <Button size="sm" variant="outline" onClick={() => abrirProduto(p)}>
-                  Buscar imagem
-                </Button>
-
-                {p.image_status === "manual_review" && p.image_candidato_url ? (
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={async () => {
-                        try {
-                          await fnAprovar({
-                            data: {
-                              produtoId: p.id,
-                            },
-                          });
-
-                          toast.success("Imagem aprovada.");
-
-                          atualizar();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Falha.");
-                        }
-                      }}
-                    >
-                      Aprovar
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={async () => {
-                        try {
-                          await fnRejeitar({
-                            data: {
-                              produtoId: p.id,
-                              removerAtual: false,
-                            },
-                          });
-
-                          toast.success("Imagem rejeitada.");
-
-                          atualizar();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Falha.");
-                        }
-                      }}
-                    >
-                      Rejeitar
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ======================================================
-          PAGINAÇÃO
-      ====================================================== */}
-
-      <div className="mt-6 flex items-center justify-center gap-3">
-        <Button variant="outline" disabled={pagina <= 1} onClick={() => setPagina((n) => n - 1)}>
-          Anterior
-        </Button>
-
-        <span className="text-sm text-muted-foreground">
-          Página {pagina} de {paginas} · {total} produtos
-        </span>
-
-        <Button variant="outline" disabled={pagina >= paginas} onClick={() => setPagina((n) => n + 1)}>
-          Próxima
-        </Button>
-      </div>
-
-      {/* ======================================================
-          DIÁLOGO DE IMAGENS
-      ====================================================== */}
-
-      <Dialog open={!!selecionado} onOpenChange={(o) => (o ? null : setSelecionado(null))}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selecionado?.nome}</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[220px] flex-1">
-              <Label className="text-xs">Buscar com outro termo</Label>
-
-              <Input
-                value={termoManual}
-                placeholder="Ex.: dipirona 500mg comprimidos"
-                onChange={(ev) => setTermoManual(ev.target.value)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter") {
-                    void buscarComTermo();
-                  }
-                }}
-              />
-            </div>
-
-            <Button variant="outline" onClick={buscarComTermo} disabled={carregandoCandidatos}>
-              Buscar
-            </Button>
-          </div>
-
-          <div className="mt-2">
-            <Label className="text-xs">Ou envie uma foto do computador</Label>
-
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(ev) => {
-                const file = ev.target.files?.[0];
-
-                if (file && selecionado) {
-                  void enviarArquivo(selecionado.id, file);
-                }
-              }}
-            />
-          </div>
-
-          {carregandoCandidatos ? (
-            <p className="mt-4 text-sm text-muted-foreground">Procurando imagens…</p>
-          ) : candidatos.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">Nenhuma imagem encontrada nas fontes disponíveis.</p>
-          ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {candidatos.map((c, i) => (
-                <div key={i} className="rounded-xl border p-2">
-                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
-                    <img src={c.imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" />
-                  </div>
-
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {c.source} · {Math.round(c.confianca)}%{c.conflito ? " · conflito" : ""}
-                  </p>
-
-                  <Button
-                    size="sm"
-                    className="mt-2 w-full"
-                    disabled={aplicarMutation.isPending}
-                    onClick={() => aplicarMutation.mutate(c)}
-                  >
-                    Usar esta
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+      extensao,
+
+      largura: null,
+
+      altura: null,
+
+      hash: "",
+    };
+
+    const { data: produto, error: produtoError } = await context.supabase
+      .from("produtos")
+      .select("id, codigo_barras")
+      .eq("id", produtoId)
+      .single();
+
+    if (produtoError || !produto) {
+      throw new Error(produtoError?.message ?? "Produto não encontrado.");
+    }
+
+    const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
+
+    const { url } = await guardarImagem(chave, imagem as any);
+
+    const { error } = await context.supabase
+      .from("produtos")
+      .update({
+        imagem: url,
+
+        image_status: "approved",
+
+        image_source: "upload_manual",
+
+        image_source_url: null,
+
+        image_confidence: 100,
+
+        image_last_synced_at: new Date().toISOString(),
+
+        image_error: null,
+
+        image_candidato_url: null,
+      })
+      .eq("id", produtoId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { url };
+  });
