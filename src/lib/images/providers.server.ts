@@ -63,21 +63,30 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
 
   const encontrados: Candidato[] = [];
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        query: `${limpar(termo)} site:${site.dominio}`,
-        limit: 5,
-        lang: "pt",
-        country: "br",
-        scrapeOptions: { formats: ["html"] },
-      }),
-    });
+    const pedir = () =>
+      fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          query: `${limpar(termo)} site:${site.dominio}`,
+          limit: 3,
+          lang: "pt",
+          country: "br",
+          scrapeOptions: { formats: ["html"] },
+        }),
+      });
+
+    let r = await pedir();
+    if (r.status === 429) {
+      // Limite de consultas por minuto: aguarda e tenta uma única vez.
+      await new Promise((res) => setTimeout(res, 12000));
+      r = await pedir();
+    }
     if (!r.ok) {
       console.error(`[imagens] Firecrawl ${site.id} falhou [${r.status}]: ${await r.text()}`);
       return [];
     }
+
     const d = await r.json();
     const itens = Array.isArray(d?.data) ? d.data : Array.isArray(d?.data?.web) ? d.data.web : [];
     for (const item of itens) {
