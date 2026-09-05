@@ -167,15 +167,23 @@ function consultasProduto(p: ProdutoRef & { descricao?: string | null }) {
   return [...new Set(r.filter(Boolean))];
 }
 
+async function buscarNoSite(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
+  const r: Candidato[] = [];
+  if (googleDisponivel()) r.push(...(await buscarGoogle(termo, site, ean)));
+  if (removerDuplicados(r).length === 0 && firecrawlDisponivel())
+    r.push(...(await buscarFirecrawl(termo, site, ean)));
+  return removerDuplicados(r);
+}
+
 function criarProvider(site: (typeof SITES)[number]): ImageProvider {
   return {
     ...site,
-    disponivel: googleDisponivel,
+    disponivel: () => googleDisponivel() || firecrawlDisponivel(),
     licencaSegura: false,
     buscarPorEan: async (ean) => {
       const r: Candidato[] = [];
       for (const q of consultasEan(ean)) {
-        r.push(...(await buscarGoogle(q, site, normalizarEan(ean))));
+        r.push(...(await buscarNoSite(q, site, normalizarEan(ean))));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
@@ -183,13 +191,14 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     buscarPorNome: async (produto) => {
       const r: Candidato[] = [];
       for (const q of consultasProduto(produto)) {
-        r.push(...(await buscarGoogle(q, site)));
+        r.push(...(await buscarNoSite(q, site)));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
     },
   };
 }
+
 
 export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
 export function providersAtivos(): ImageProvider[] {
