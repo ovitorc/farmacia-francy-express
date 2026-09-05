@@ -16,28 +16,14 @@ async function assertAdmin(context: { supabase: any; userId: string }) {
 }
 
 const CAMPOS =
-  "id, codigo, nome, fabricante, codigo_barras, categoria_slug, imagem, image_status, image_source, image_source_url, image_confidence, image_last_synced_at, image_width, image_height, image_format, image_error, image_candidato_url, image_license";
+  "id, codigo, nome, fabricante, codigo_barras, categoria_slug, subcategoria_slug, descricao, imagem, image_status, image_source, image_source_url, image_confidence, image_last_synced_at, image_width, image_height, image_format, image_error, image_candidato_url, image_license";
 
 /* ============================================================
-   CONFIGURAÇÕES DA BUSCA DE IMAGENS
+   CONFIGURAÇÕES
    ============================================================ */
 
-/**
- * Quantidade máxima de imagens candidatas retornadas
- * para cada produto.
- */
 const MAX_CANDIDATOS_POR_PRODUTO = 20;
 
-/**
- * Quantidade máxima de produtos processados em cada
- * execução de sincronização.
- *
- * Antes:
- * máximo 30, padrão 10.
- *
- * Agora:
- * máximo 100, padrão 20.
- */
 const TAMANHO_PADRAO_LOTE = 20;
 
 /* ============================================================
@@ -108,7 +94,7 @@ export const estatisticasImagens = createServerFn({
   });
 
 /* ============================================================
-   LISTAGEM COM FILTROS
+   FILTROS
    ============================================================ */
 
 const filtroSchema = z.object({
@@ -123,6 +109,8 @@ const filtroSchema = z.object({
   fabricante: z.string().default(""),
 
   categoria: z.string().default(""),
+
+  subcategoria: z.string().default(""),
 
   pagina: z.number().int().min(1).default(1),
 
@@ -146,22 +134,68 @@ function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
     query = query.or("codigo_barras.is.null,codigo_barras.eq.");
   }
 
-  if (f.fabricante) {
-    query = query.ilike("fabricante", `%${f.fabricante}%`);
+  if (f.fabricante.trim()) {
+    query = query.ilike("fabricante", `%${f.fabricante.trim()}%`);
   }
 
-  if (f.categoria) {
-    query = query.eq("categoria_slug", f.categoria);
+  if (f.categoria.trim()) {
+    query = query.eq("categoria_slug", f.categoria.trim());
   }
 
-  if (f.busca) {
+  if (f.subcategoria.trim()) {
+    query = query.eq("subcategoria_slug", f.subcategoria.trim());
+  }
+
+  if (f.busca.trim()) {
     const termo = f.busca.replace(/[%,]/g, " ").trim();
 
-    query = query.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%`);
+    if (termo) {
+      query = query.or(
+        `nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%,fabricante.ilike.%${termo}%`,
+      );
+    }
   }
 
   return query;
 }
+
+/* ============================================================
+   CATEGORIAS E SUBCATEGORIAS DO SITE
+   ============================================================ */
+
+export const listarFiltrosImagens = createServerFn({
+  method: "GET",
+})
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+
+    const [categoriasResult, subcategoriasResult] = await Promise.all([
+      context.supabase.from("categorias").select("slug, nome, ordem").order("ordem", { ascending: true }),
+
+      context.supabase
+        .from("subcategorias")
+        .select("slug, nome, categoria_slug, ordem")
+        .order("ordem", { ascending: true }),
+    ]);
+
+    if (categoriasResult.error) {
+      throw new Error(categoriasResult.error.message);
+    }
+
+    if (subcategoriasResult.error) {
+      throw new Error(subcategoriasResult.error.message);
+    }
+
+    return {
+      categorias: categoriasResult.data ?? [],
+      subcategorias: subcategoriasResult.data ?? [],
+    };
+  });
+
+/* ============================================================
+   LISTAGEM DE PRODUTOS
+   ============================================================ */
 
 export const listarProdutosImagens = createServerFn({
   method: "GET",
@@ -200,21 +234,9 @@ export const listarProdutosImagens = createServerFn({
   });
 
 /* ============================================================
-   UTILITÁRIOS DE CANDIDATOS
+   UTILITÁRIOS
    ============================================================ */
 
-/**
- * Remove imagens duplicadas.
- *
- * Uma mesma imagem pode aparecer em:
- *
- * - Google geral;
- * - Pague Menos;
- * - Drogasil;
- * - Droga Raia;
- * - Farmácia Permanente;
- * - outras fontes.
- */
 function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] {
   const urls = new Set<string>();
 
@@ -241,16 +263,6 @@ function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] 
   return resultado;
 }
 
-/**
- * Ordena os candidatos.
- *
- * Prioridade:
- *
- * 1. Maior confiança
- * 2. Sem conflito
- * 3. Produto encontrado por EAN
- * 4. Fonte específica
- */
 function ordenarCandidatos<
   T extends Candidato & {
     confianca: number;
@@ -259,28 +271,15 @@ function ordenarCandidatos<
   },
 >(candidatos: T[]): T[] {
   return [...candidatos].sort((a, b) => {
-    /**
-     * Primeiro:
-     * maior confiança.
-     */
     if (b.confianca !== a.confianca) {
       return b.confianca - a.confianca;
     }
 
-    /**
-     * Segundo:
-     * candidatos sem conflito.
-     */
     if (a.conflito !== b.conflito) {
       return a.conflito ? 1 : -1;
     }
 
-    /**
-     * Terceiro:
-     * candidatos encontrados usando EAN.
-     */
     const aTemEan = Boolean(a.ean);
-
     const bTemEan = Boolean(b.ean);
 
     if (aTemEan !== bTemEan) {
@@ -292,40 +291,38 @@ function ordenarCandidatos<
 }
 
 /* ============================================================
-   BUSCA DE CANDIDATOS PARA UM PRODUTO
+   BUSCA DE CANDIDATOS
    ============================================================ */
 
-/**
- * IMPORTANTE
- *
- * A versão anterior interrompia a busca assim que encontrava
- * um candidato com confiança maior ou igual a 75.
- *
- * Isso fazia o sistema parar antes de consultar outras fontes.
- *
- * Agora:
- *
- * - consulta todas as fontes disponíveis;
- * - prioriza EAN;
- * - depois nome;
- * - reúne os resultados;
- * - remove duplicados;
- * - classifica todos;
- * - retorna até 20 imagens.
- */
 async function candidatosPara(produto: any, termoManual?: string) {
   const { buscarAte20Imagens } = await import("@/lib/images/providers.server");
-  const produtoBusca = termoManual?.trim() ? { ...produto, nome: termoManual.trim() } : produto;
+
+  const produtoBusca = termoManual?.trim()
+    ? {
+        ...produto,
+        nome: termoManual.trim(),
+      }
+    : produto;
+
   const brutos = await buscarAte20Imagens({
     nome: produtoBusca.nome,
     fabricante: produtoBusca.fabricante,
     codigo_barras: produtoBusca.codigo_barras,
     descricao: produtoBusca.descricao ?? produtoBusca.descricao_produto ?? null,
   });
-  const encontrados: Array<Candidato & { confianca: number; conflito: boolean; motivos: string[] }> = [];
+
+  const encontrados: Array<
+    Candidato & {
+      confianca: number;
+      conflito: boolean;
+      motivos: string[];
+    }
+  > = [];
+
   for (const candidato of brutos) {
     try {
       const av = avaliarCandidato(produto, candidato);
+
       encontrados.push({
         ...candidato,
         confianca: Math.min(av.confianca, 70),
@@ -334,6 +331,7 @@ async function candidatosPara(produto: any, termoManual?: string) {
       });
     } catch {}
   }
+
   return ordenarCandidatos(removerCandidatosDuplicados(encontrados)).slice(0, MAX_CANDIDATOS_POR_PRODUTO);
 }
 
@@ -373,7 +371,7 @@ export const buscarCandidatos = createServerFn({
   });
 
 /* ============================================================
-   APLICAR UMA IMAGEM
+   APLICAR IMAGEM
    ============================================================ */
 
 async function aplicar(
@@ -389,12 +387,6 @@ async function aplicar(
 
   const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
 
-  /**
-   * Idempotência:
-   *
-   * mesma imagem já associada
-   * → não envia novamente.
-   */
   if (produto.image_hash === imagem.hash && produto.imagem) {
     return produto.imagem as string;
   }
@@ -408,9 +400,9 @@ async function aplicar(
 
       image_status: status,
 
-      image_source: candidato.source,
+      image_source: candidato.source ?? null,
 
-      image_source_url: candidato.sourceUrl ?? candidato.imageUrl,
+      image_source_url: candidato.sourceUrl ?? candidato.imageUrl ?? null,
 
       image_confidence: confianca,
 
@@ -503,7 +495,7 @@ export const aplicarCandidato = createServerFn({
   });
 
 /* ============================================================
-   SINCRONIZAÇÃO EM LOTE
+   SINCRONIZAÇÃO EM LOTE COM FILTROS
    ============================================================ */
 
 export const sincronizarLote = createServerFn({
@@ -515,15 +507,19 @@ export const sincronizarLote = createServerFn({
       .object({
         escopo: z.enum(["sem_imagem", "todos", "revisao"]).default("sem_imagem"),
 
-        /**
-         * Agora:
-         *
-         * padrão = 20
-         * máximo = 100
-         */
         tamanho: z.number().int().min(1).max(100).default(TAMANHO_PADRAO_LOTE),
 
         forcar: z.boolean().default(false),
+
+        categoria: z.string().default(""),
+
+        subcategoria: z.string().default(""),
+
+        busca: z.string().default(""),
+
+        fabricante: z.string().default(""),
+
+        comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
       })
       .parse(input),
   )
@@ -544,10 +540,39 @@ export const sincronizarLote = createServerFn({
       query = query.neq("image_status", "not_found").neq("image_status", "error");
     }
 
+    if (data.categoria.trim()) {
+      query = query.eq("categoria_slug", data.categoria.trim());
+    }
+
+    if (data.subcategoria.trim()) {
+      query = query.eq("subcategoria_slug", data.subcategoria.trim());
+    }
+
+    if (data.fabricante.trim()) {
+      query = query.ilike("fabricante", `%${data.fabricante.trim()}%`);
+    }
+
+    if (data.comEan === "sim") {
+      query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
+    }
+
+    if (data.comEan === "nao") {
+      query = query.or("codigo_barras.is.null,codigo_barras.eq.");
+    }
+
+    if (data.busca.trim()) {
+      const termo = data.busca.replace(/[%,]/g, " ").trim();
+
+      if (termo) {
+        query = query.or(
+          `nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.ilike.%${termo}%,fabricante.ilike.%${termo}%`,
+        );
+      }
+    }
+
     const { data: produtosRaw, error } = await query
       .order("image_last_synced_at", {
         ascending: true,
-
         nullsFirst: true,
       })
       .limit(data.tamanho);
@@ -583,9 +608,6 @@ export const sincronizarLote = createServerFn({
       resultado.processados++;
 
       try {
-        /**
-         * Agora recebe até 20 candidatos.
-         */
         const candidatos = await candidatosPara(produto);
 
         const melhor = candidatos[0];
@@ -873,7 +895,7 @@ export const rejeitarImagem = createServerFn({
   });
 
 /* ============================================================
-   UPLOAD MANUAL / EM MASSA POR EAN
+   UPLOAD MANUAL
    ============================================================ */
 
 export const enviarImagemProduto = createServerFn({
@@ -913,58 +935,50 @@ export const enviarImagemProduto = createServerFn({
         .from("produtos")
         .select("id")
         .eq("codigo_barras", eanArquivo)
-        .limit(2);
+        .limit(1);
 
       if (error) {
         throw new Error(error.message);
       }
 
-      if (!achados?.length) {
-        throw new Error(`Nenhum produto com o EAN ${eanArquivo}.`);
-      }
-
-      if (achados.length > 1) {
-        throw new Error(`Mais de um produto com o EAN ${eanArquivo}.`);
-      }
-
-      produtoId = achados[0]!.id as string;
+      produtoId = achados?.[0]?.id;
     }
 
-    const { data: produtoRaw2, error: erroProduto } = await context.supabase
+    if (!produtoId) {
+      throw new Error("Produto não encontrado para esta imagem.");
+    }
+
+    const extensao =
+      data.tipo === "image/png"
+        ? "png"
+        : data.tipo === "image/webp"
+          ? "webp"
+          : data.tipo === "image/gif"
+            ? "gif"
+            : "jpg";
+
+    const imagem = {
+      bytes,
+      mime: data.tipo || "image/jpeg",
+      extensao,
+      largura: null,
+      altura: null,
+      hash: "",
+    };
+
+    const { data: produto, error: produtoError } = await context.supabase
       .from("produtos")
       .select("id, codigo_barras")
       .eq("id", produtoId)
       .single();
 
-    if (erroProduto) {
-      throw new Error(erroProduto.message);
+    if (produtoError || !produto) {
+      throw new Error(produtoError?.message ?? "Produto não encontrado.");
     }
-
-    const produto = produtoRaw2 as any;
-
-    const extensao = (data.nomeArquivo.split(".").pop() ?? "jpg").toLowerCase();
-
-    const hashBuffer = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
-
-    const hash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
 
     const chave = (produto.codigo_barras || "").replace(/\D/g, "") || produto.id;
 
-    const { url } = await guardarImagem(chave, {
-      bytes,
-
-      mime: data.tipo,
-
-      extensao,
-
-      largura: null,
-
-      altura: null,
-
-      hash,
-    });
+    const { url } = await guardarImagem(chave, imagem as any);
 
     const { error } = await context.supabase
       .from("produtos")
@@ -973,23 +987,19 @@ export const enviarImagemProduto = createServerFn({
 
         image_status: "approved",
 
-        image_source: "manual",
+        image_source: "upload_manual",
 
         image_source_url: null,
 
         image_confidence: 100,
 
-        image_hash: hash,
-
-        image_format: extensao,
+        image_last_synced_at: new Date().toISOString(),
 
         image_error: null,
 
         image_candidato_url: null,
-
-        image_last_synced_at: new Date().toISOString(),
       })
-      .eq("id", produto.id);
+      .eq("id", produtoId);
 
     if (error) {
       throw new Error(error.message);
@@ -997,7 +1007,5 @@ export const enviarImagemProduto = createServerFn({
 
     return {
       url,
-
-      produtoId: produto.id as string,
     };
   });
