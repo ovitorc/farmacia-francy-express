@@ -18,17 +18,9 @@ async function assertAdmin(context: { supabase: any; userId: string }) {
 const CAMPOS =
   "id, codigo, nome, fabricante, codigo_barras, categoria_slug, subcategoria_slug, descricao, imagem, image_status, image_source, image_source_url, image_confidence, image_last_synced_at, image_width, image_height, image_format, image_error, image_candidato_url, image_license";
 
-/* ============================================================
-   CONFIGURAÇÕES
-   ============================================================ */
-
-const MAX_CANDIDATOS_POR_PRODUTO = 20;
-
 const TAMANHO_PADRAO_LOTE = 20;
-
-/* ============================================================
-   ESTATÍSTICAS
-   ============================================================ */
+const TAMANHO_MAXIMO_LOTE = 10000;
+const MAX_CANDIDATOS_POR_PRODUTO = 20;
 
 export const estatisticasImagens = createServerFn({
   method: "GET",
@@ -74,28 +66,16 @@ export const estatisticasImagens = createServerFn({
 
     return {
       total,
-
       comImagem,
-
       semImagem: total - comImagem,
-
       revisao,
-
       naoEncontrados,
-
       erros,
-
       comEan,
-
       cobertura: total ? (comImagem / total) * 100 : 0,
-
       ultimaSincronizacao: ultima?.image_last_synced_at ?? null,
     };
   });
-
-/* ============================================================
-   FILTROS
-   ============================================================ */
 
 const filtroSchema = z.object({
   filtro: z
@@ -159,10 +139,6 @@ function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
   return query;
 }
 
-/* ============================================================
-   CATEGORIAS E SUBCATEGORIAS DO SITE
-   ============================================================ */
-
 export const listarFiltrosImagens = createServerFn({
   method: "GET",
 })
@@ -171,12 +147,13 @@ export const listarFiltrosImagens = createServerFn({
     await assertAdmin(context);
 
     const [categoriasResult, subcategoriasResult] = await Promise.all([
-      context.supabase.from("categorias").select("slug, nome, ordem").order("ordem", { ascending: true }),
+      context.supabase.from("categorias").select("slug, nome, ordem").order("ordem", {
+        ascending: true,
+      }),
 
-      context.supabase
-        .from("subcategorias")
-        .select("slug, nome, categoria_slug, ordem")
-        .order("ordem", { ascending: true }),
+      context.supabase.from("subcategorias").select("slug, nome, categoria_slug, ordem").order("ordem", {
+        ascending: true,
+      }),
     ]);
 
     if (categoriasResult.error) {
@@ -192,10 +169,6 @@ export const listarFiltrosImagens = createServerFn({
       subcategorias: subcategoriasResult.data ?? [],
     };
   });
-
-/* ============================================================
-   LISTAGEM DE PRODUTOS
-   ============================================================ */
 
 export const listarProdutosImagens = createServerFn({
   method: "GET",
@@ -232,10 +205,6 @@ export const listarProdutosImagens = createServerFn({
       total: count ?? 0,
     };
   });
-
-/* ============================================================
-   UTILITÁRIOS
-   ============================================================ */
 
 function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] {
   const urls = new Set<string>();
@@ -289,10 +258,6 @@ function ordenarCandidatos<
     return 0;
   });
 }
-
-/* ============================================================
-   BUSCA DE CANDIDATOS
-   ============================================================ */
 
 async function candidatosPara(produto: any, termoManual?: string) {
   const { buscarAte20Imagens } = await import("@/lib/images/providers.server");
@@ -365,14 +330,9 @@ export const buscarCandidatos = createServerFn({
 
     return {
       produto,
-
       candidatos: await candidatosPara(produto, data.termo),
     };
   });
-
-/* ============================================================
-   APLICAR IMAGEM
-   ============================================================ */
 
 async function aplicar(
   context: any,
@@ -477,26 +437,15 @@ export const aplicarCandidato = createServerFn({
 
     await registrarLog(context, {
       produto_id: produto.id,
-
       ean: produto.codigo_barras,
-
       status: "approved",
-
       source: data.source,
-
       image_url: url,
-
       confidence: data.confianca,
     });
 
-    return {
-      url,
-    };
+    return { url };
   });
-
-/* ============================================================
-   SINCRONIZAÇÃO EM LOTE COM FILTROS
-   ============================================================ */
 
 export const sincronizarLote = createServerFn({
   method: "POST",
@@ -507,7 +456,7 @@ export const sincronizarLote = createServerFn({
       .object({
         escopo: z.enum(["sem_imagem", "todos", "revisao"]).default("sem_imagem"),
 
-        tamanho: z.number().int().min(1).max(100).default(TAMANHO_PADRAO_LOTE),
+        tamanho: z.number().int().min(1).max(TAMANHO_MAXIMO_LOTE).default(TAMANHO_PADRAO_LOTE),
 
         forcar: z.boolean().default(false),
 
@@ -582,6 +531,8 @@ export const sincronizarLote = createServerFn({
     }
 
     const resultado = {
+      solicitados: data.tamanho,
+
       processados: 0,
 
       aprovados: 0,
@@ -628,7 +579,6 @@ export const sincronizarLote = createServerFn({
 
           resultado.detalhes.push({
             nome: produto.nome,
-
             status: "não encontrada",
           });
 
@@ -787,10 +737,6 @@ export const sincronizarLote = createServerFn({
     };
   });
 
-/* ============================================================
-   REVISÃO MANUAL
-   ============================================================ */
-
 export const aprovarCandidatoPendente = createServerFn({
   method: "POST",
 })
@@ -839,9 +785,7 @@ export const aprovarCandidatoPendente = createServerFn({
       "approved",
     );
 
-    return {
-      url,
-    };
+    return { url };
   });
 
 export const rejeitarImagem = createServerFn({
@@ -893,10 +837,6 @@ export const rejeitarImagem = createServerFn({
       ok: true,
     };
   });
-
-/* ============================================================
-   UPLOAD MANUAL
-   ============================================================ */
 
 export const enviarImagemProduto = createServerFn({
   method: "POST",
@@ -959,10 +899,15 @@ export const enviarImagemProduto = createServerFn({
 
     const imagem = {
       bytes,
+
       mime: data.tipo || "image/jpeg",
+
       extensao,
+
       largura: null,
+
       altura: null,
+
       hash: "",
     };
 
@@ -1005,7 +950,5 @@ export const enviarImagemProduto = createServerFn({
       throw new Error(error.message);
     }
 
-    return {
-      url,
-    };
+    return { url };
   });
