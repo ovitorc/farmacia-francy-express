@@ -38,6 +38,77 @@ function removerDuplicados(c: Candidato[]) {
 function googleDisponivel() {
   return Boolean(process.env["GOOGLE_CSE_KEY"] && process.env["GOOGLE_CSE_CX"]);
 }
+function firecrawlDisponivel() {
+  const k = process.env["FIRECRAWL_API_KEY"];
+  if (!k) return false;
+  return k.startsWith("lovc_") ? Boolean(process.env["LOVABLE_API_KEY"]) : true;
+}
+
+/** Busca páginas de produto nos 3 sites via Firecrawl e extrai a imagem principal do HTML. */
+async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
+  const key = process.env["FIRECRAWL_API_KEY"];
+  if (!key || !limpar(termo)) return [];
+
+  const gateway = key.startsWith("lovc_");
+  const url = gateway
+    ? "https://connector-gateway.lovable.dev/firecrawl/v2/search"
+    : "https://api.firecrawl.dev/v2/search";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (gateway) {
+    headers["Authorization"] = `Bearer ${process.env["LOVABLE_API_KEY"]}`;
+    headers["X-Connection-Api-Key"] = key;
+  } else {
+    headers["Authorization"] = `Bearer ${key}`;
+  }
+
+  const encontrados: Candidato[] = [];
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        query: `${limpar(termo)} site:${site.dominio}`,
+        limit: 5,
+        lang: "pt",
+        country: "br",
+        scrapeOptions: { formats: ["html"] },
+      }),
+    });
+    if (!r.ok) {
+      console.error(`[imagens] Firecrawl ${site.id} falhou [${r.status}]: ${await r.text()}`);
+      return [];
+    }
+    const d = await r.json();
+    const itens = Array.isArray(d?.data) ? d.data : Array.isArray(d?.data?.web) ? d.data.web : [];
+    for (const item of itens) {
+      const sourceUrl: string | undefined = item?.url;
+      if (!sourceUrl || !sourceUrl.toLowerCase().includes(site.dominio.replace("www.", ""))) continue;
+      const html: string = item?.html ?? item?.rawHtml ?? "";
+      const imagens = new Set<string>();
+      for (const m of html.matchAll(
+        /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
+      ))
+        imagens.add(m[1]);
+      for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) imagens.add(m[1]);
+      for (const imageUrl of imagens) {
+        if (!/^https?:\/\//i.test(imageUrl)) continue;
+        encontrados.push({
+          imageUrl,
+          source: site.id,
+          sourceUrl,
+          ean,
+          nome: item?.title || undefined,
+          fabricante: undefined,
+          licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
+        });
+      }
+    }
+  } catch (e) {
+    console.error(`[imagens] Firecrawl ${site.id} erro:`, e);
+  }
+  return removerDuplicados(encontrados).slice(0, LIMITE_IMAGENS);
+}
+
 
 async function buscarGoogle(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
   const key = process.env["GOOGLE_CSE_KEY"],
@@ -96,15 +167,23 @@ function consultasProduto(p: ProdutoRef & { descricao?: string | null }) {
   return [...new Set(r.filter(Boolean))];
 }
 
+async function buscarNoSite(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
+  const r: Candidato[] = [];
+  if (googleDisponivel()) r.push(...(await buscarGoogle(termo, site, ean)));
+  if (removerDuplicados(r).length === 0 && firecrawlDisponivel())
+    r.push(...(await buscarFirecrawl(termo, site, ean)));
+  return removerDuplicados(r);
+}
+
 function criarProvider(site: (typeof SITES)[number]): ImageProvider {
   return {
     ...site,
-    disponivel: googleDisponivel,
+    disponivel: () => googleDisponivel() || firecrawlDisponivel(),
     licencaSegura: false,
     buscarPorEan: async (ean) => {
       const r: Candidato[] = [];
       for (const q of consultasEan(ean)) {
-        r.push(...(await buscarGoogle(q, site, normalizarEan(ean))));
+        r.push(...(await buscarNoSite(q, site, normalizarEan(ean))));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
@@ -112,13 +191,14 @@ function criarProvider(site: (typeof SITES)[number]): ImageProvider {
     buscarPorNome: async (produto) => {
       const r: Candidato[] = [];
       for (const q of consultasProduto(produto)) {
-        r.push(...(await buscarGoogle(q, site)));
+        r.push(...(await buscarNoSite(q, site)));
         if (removerDuplicados(r).length >= LIMITE_IMAGENS) break;
       }
       return removerDuplicados(r).slice(0, LIMITE_IMAGENS);
     },
   };
 }
+
 
 export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
 export function providersAtivos(): ImageProvider[] {
