@@ -19,7 +19,11 @@ import {
   excluirBanner,
   alternarBanner,
   alterarOrdemBanner,
+  listarConfiguracoes,
+  salvarConfiguracao,
 } from "@/lib/admin.functions";
+
+import { CHAVE_INTERVALO_ABSORVENTES } from "@/lib/farmacia-popular.functions";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
