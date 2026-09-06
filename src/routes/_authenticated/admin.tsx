@@ -1569,3 +1569,74 @@ function AdminPage() {
     </div>
   );
 }
+
+/* ======================================================
+   FARMÁCIA POPULAR — INTERVALOS CONFIGURÁVEIS
+   ====================================================== */
+
+function ConfigFarmaciaPopular() {
+  const salvar = useServerFn(salvarConfiguracao);
+
+  const { data: configs = [], refetch } = useQuery({
+    queryKey: ["configuracoes"],
+    queryFn: () => listarConfiguracoes(),
+  });
+
+  const atual = configs.find((c) => c.chave === CHAVE_INTERVALO_ABSORVENTES)?.valor ?? "56";
+
+  const [valor, setValor] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const texto = valor ?? atual;
+
+  async function confirmar() {
+    const dias = Number(texto);
+
+    if (!Number.isInteger(dias) || dias <= 0) {
+      toast.error("Informe um número de dias válido.");
+      return;
+    }
+
+    setSalvando(true);
+
+    try {
+      await salvar({ data: { chave: CHAVE_INTERVALO_ABSORVENTES, valor: String(dias) } });
+      await refetch();
+      setValor(null);
+      toast.success("Intervalo atualizado.");
+    } catch {
+      toast.error("Não foi possível salvar o intervalo.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <section className="mt-8 rounded-2xl border bg-card p-5 shadow-sm">
+      <h2 className="text-xl font-bold text-primary">Farmácia Popular — Dignidade Menstrual</h2>
+
+      <p className="mt-1 text-sm text-muted-foreground">
+        Intervalo em dias entre uma retirada de absorventes e a próxima. Usado no cálculo mostrado ao cliente.
+      </p>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div>
+          <Label htmlFor="intervalo-absorventes">Intervalo (dias)</Label>
+
+          <Input
+            id="intervalo-absorventes"
+            type="number"
+            min={1}
+            className="mt-1 w-32"
+            value={texto}
+            onChange={(e) => setValor(e.target.value)}
+          />
+        </div>
+
+        <Button onClick={confirmar} disabled={salvando}>
+          {salvando ? "Salvando..." : "Salvar intervalo"}
+        </Button>
+      </div>
+    </section>
+  );
+}
