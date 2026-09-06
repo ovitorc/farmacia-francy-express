@@ -554,3 +554,42 @@ export const alterarOrdemBanner = createServerFn({
       ok: true,
     };
   });
+
+/* ============================================================
+   CONFIGURAÇÕES DO SITE
+   ============================================================ */
+
+export const listarConfiguracoes = createServerFn({
+  method: "GET",
+})
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+
+    const { data, error } = await context.supabase.from("configuracoes").select("chave, valor");
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return (data ?? []) as { chave: string; valor: string }[];
+  });
+
+export const salvarConfiguracao = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ chave: z.string().min(1), valor: z.string().min(1) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { error } = await context.supabase
+      .from("configuracoes")
+      .upsert({ chave: data.chave, valor: data.valor }, { onConflict: "chave" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { ok: true };
+  });
