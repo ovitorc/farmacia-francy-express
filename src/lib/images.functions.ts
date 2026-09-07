@@ -469,57 +469,47 @@ export const sincronizarLote = createServerFn({
         fabricante: z.string().default(""),
 
         comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
-
-        /** Modo seleção manual: quando informado, processa apenas estes produtos. */
-        ids: z.array(z.string().uuid()).default([]),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const selecaoManual = data.ids.length > 0;
-
     let query = context.supabase.from("produtos").select(CAMPOS + ", image_hash");
 
-    if (selecaoManual) {
-      query = query.in("id", data.ids);
-    }
-
-    if (!selecaoManual && data.escopo === "sem_imagem") {
+    if (data.escopo === "sem_imagem") {
       query = query.is("imagem", null);
     }
 
-    if (!selecaoManual && data.escopo === "revisao") {
+    if (data.escopo === "revisao") {
       query = query.eq("image_status", "manual_review");
     }
 
-    if (!selecaoManual && !data.forcar) {
+    if (!data.forcar) {
       query = query.neq("image_status", "not_found").neq("image_status", "error");
     }
 
-
-    if (!selecaoManual && data.categoria.trim()) {
+    if (data.categoria.trim()) {
       query = query.eq("categoria_slug", data.categoria.trim());
     }
 
-    if (!selecaoManual && data.subcategoria.trim()) {
+    if (data.subcategoria.trim()) {
       query = query.eq("subcategoria_slug", data.subcategoria.trim());
     }
 
-    if (!selecaoManual && data.fabricante.trim()) {
+    if (data.fabricante.trim()) {
       query = query.ilike("fabricante", `%${data.fabricante.trim()}%`);
     }
 
-    if (!selecaoManual && data.comEan === "sim") {
+    if (data.comEan === "sim") {
       query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
     }
 
-    if (!selecaoManual && data.comEan === "nao") {
+    if (data.comEan === "nao") {
       query = query.or("codigo_barras.is.null,codigo_barras.eq.");
     }
 
-    if (!selecaoManual && data.busca.trim()) {
+    if (data.busca.trim()) {
       const termo = data.busca.replace(/[%,]/g, " ").trim();
 
       if (termo) {
@@ -534,16 +524,14 @@ export const sincronizarLote = createServerFn({
         ascending: true,
         nullsFirst: true,
       })
-      .limit(selecaoManual ? data.ids.length : data.tamanho);
-
+      .limit(data.tamanho);
 
     if (error) {
       throw new Error(error.message);
     }
 
     const resultado = {
-      solicitados: selecaoManual ? data.ids.length : data.tamanho,
-
+      solicitados: data.tamanho,
 
       processados: 0,
 
