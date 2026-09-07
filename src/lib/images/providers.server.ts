@@ -164,7 +164,7 @@ async function buscarGoogle(termo: string, site: (typeof SITES)[number], ean?: s
               imageUrl,
               source: site.id,
               sourceUrl,
-              ean,
+              ...(ean ? { ean } : {}),
               nome: item?.title || undefined,
               fabricante: undefined,
               licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
