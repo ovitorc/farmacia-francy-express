@@ -4,9 +4,11 @@
  * ============================================================
  */
 
-const TAMANHO_MAXIMO = 6 * 1024 * 1024;
-const TAMANHO_MINIMO = 1024;
-const DIMENSAO_MINIMA = 120;
+const TAMANHO_MAXIMO = 10 * 1024 * 1024;
+
+const TAMANHO_MINIMO = 500;
+
+const DIMENSAO_MINIMA = 80;
 
 export type ImagemBaixada = {
   bytes: Uint8Array;
@@ -25,10 +27,44 @@ const MIMES: Record<string, string> = {
   "image/gif": "gif",
 };
 
+function criarHeadersImagem(): HeadersInit {
+  return {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+
+    Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+
+    Referer: "https://www.google.com/",
+  };
+}
+
+async function fetchImagem(url: string): Promise<Response> {
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 20000);
+
+  try {
+    return await fetch(url, {
+      headers: criarHeadersImagem(),
+
+      signal: controller.signal,
+
+      redirect: "follow",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function baixarImagem(url: string): Promise<ImagemBaixada> {
-  const resposta = await fetch(url, {
-    headers: { "user-agent": "FarmaciasFrancy/1.0", accept: "image/*" },
-  });
+  if (!url || !/^https?:\/\//i.test(url)) {
+    throw new Error("URL de imagem inválida");
+  }
+
+  const resposta = await fetchImagem(url);
 
   if (!resposta.ok) {
     throw new Error(`Download falhou (HTTP ${resposta.status})`);
@@ -36,95 +72,223 @@ export async function baixarImagem(url: string): Promise<ImagemBaixada> {
 
   const buffer = new Uint8Array(await resposta.arrayBuffer());
 
-  if (buffer.byteLength < TAMANHO_MINIMO) throw new Error("Arquivo muito pequeno");
-  if (buffer.byteLength > TAMANHO_MAXIMO) throw new Error("Arquivo muito grande");
+  if (buffer.byteLength < TAMANHO_MINIMO) {
+    throw new Error("Arquivo muito pequeno");
+  }
+
+  if (buffer.byteLength > TAMANHO_MAXIMO) {
+    throw new Error("Arquivo muito grande");
+  }
 
   const detectado = detectarFormato(buffer);
-  if (!detectado) throw new Error("Arquivo não é uma imagem válida");
+
+  if (!detectado) {
+    throw new Error("Arquivo não é uma imagem válida");
+  }
 
   const mime = detectado.mime;
-  const extensao = MIMES[mime]!;
 
-  const dim = dimensoes(buffer, extensao);
+  const extensao = MIMES[mime];
 
-  if (dim && (dim.largura < DIMENSAO_MINIMA || dim.altura < DIMENSAO_MINIMA)) {
-    throw new Error(`Imagem pequena demais (${dim.largura}x${dim.altura})`);
+  if (!extensao) {
+    throw new Error("Formato de imagem não suportado");
+  }
+
+  const dimensoesImagem = dimensoes(buffer, extensao);
+
+  if (dimensoesImagem && (dimensoesImagem.largura < DIMENSAO_MINIMA || dimensoesImagem.altura < DIMENSAO_MINIMA)) {
+    throw new Error(`Imagem pequena demais (${dimensoesImagem.largura}x${dimensoesImagem.altura})`);
   }
 
   return {
     bytes: buffer,
+
     mime,
+
     extensao,
-    largura: dim?.largura ?? null,
-    altura: dim?.altura ?? null,
+
+    largura: dimensoesImagem?.largura ?? null,
+
+    altura: dimensoesImagem?.altura ?? null,
+
     hash: await sha256(buffer),
   };
 }
 
-/** Detecção pelos "magic bytes" — impede HTML salvo como .jpg. */
-function detectarFormato(b: Uint8Array): { mime: string } | null {
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { mime: "image/jpeg" };
+/**
+ * ============================================================
+ * DETECÇÃO PELOS MAGIC BYTES
+ * ============================================================
+ */
 
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return { mime: "image/png" };
+function detectarFormato(bytes: Uint8Array): {
+  mime: string;
+} | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return {
+      mime: "image/jpeg",
+    };
+  }
 
-  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return { mime: "image/gif" };
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return {
+      mime: "image/png",
+    };
+  }
 
-  const riff = String.fromCharCode(b[0]!, b[1]!, b[2]!, b[3]!);
-  const webp = String.fromCharCode(b[8]!, b[9]!, b[10]!, b[11]!);
-  if (riff === "RIFF" && webp === "WEBP") return { mime: "image/webp" };
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    return {
+      mime: "image/gif",
+    };
+  }
+
+  if (bytes.length >= 12) {
+    const riff = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+
+    const webp = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+
+    if (riff === "RIFF" && webp === "WEBP") {
+      return {
+        mime: "image/webp",
+      };
+    }
+  }
 
   return null;
 }
 
-function dimensoes(b: Uint8Array, ext: string): { largura: number; altura: number } | null {
-  const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
+/**
+ * ============================================================
+ * DIMENSÕES
+ * ============================================================
+ */
+
+function dimensoes(
+  bytes: Uint8Array,
+  extensao: string,
+): {
+  largura: number;
+  altura: number;
+} | null {
+  if (bytes.byteLength < 10) {
+    return null;
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
   try {
-    if (ext === "png") {
-      return { largura: view.getUint32(16), altura: view.getUint32(20) };
+    /**
+     * PNG
+     */
+    if (extensao === "png" && bytes.byteLength >= 24) {
+      return {
+        largura: view.getUint32(16),
+
+        altura: view.getUint32(20),
+      };
     }
 
-    if (ext === "gif") {
-      return { largura: view.getUint16(6, true), altura: view.getUint16(8, true) };
+    /**
+     * GIF
+     */
+    if (extensao === "gif" && bytes.byteLength >= 10) {
+      return {
+        largura: view.getUint16(6, true),
+
+        altura: view.getUint16(8, true),
+      };
     }
 
-    if (ext === "webp") {
-      const formato = String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!);
+    /**
+     * WEBP
+     */
+    if (extensao === "webp" && bytes.byteLength >= 30) {
+      const formato = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
 
-      if (formato === "VP8X") {
-        const l = 1 + (b[24]! | (b[25]! << 8) | (b[26]! << 16));
-        const a = 1 + (b[27]! | (b[28]! << 8) | (b[29]! << 16));
-        return { largura: l, altura: a };
+      if (formato === "VP8X" && bytes.byteLength >= 30) {
+        const largura = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
+
+        const altura = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+
+        return {
+          largura,
+          altura,
+        };
       }
 
-      if (formato === "VP8L") {
-        const bits = b[21]! | (b[22]! << 8) | (b[23]! << 16) | (b[24]! << 24);
-        return { largura: (bits & 0x3fff) + 1, altura: ((bits >> 14) & 0x3fff) + 1 };
+      if (formato === "VP8L" && bytes.byteLength >= 25) {
+        const bits = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24);
+
+        return {
+          largura: (bits & 0x3fff) + 1,
+
+          altura: ((bits >> 14) & 0x3fff) + 1,
+        };
       }
 
-      if (formato === "VP8 ") {
-        return { largura: view.getUint16(26, true) & 0x3fff, altura: view.getUint16(28, true) & 0x3fff };
-      }
+      if (formato === "VP8 " && bytes.byteLength >= 30) {
+        return {
+          largura: view.getUint16(26, true) & 0x3fff,
 
-      return null;
+          altura: view.getUint16(28, true) & 0x3fff,
+        };
+      }
     }
 
-    if (ext === "jpg") {
-      let i = 2;
+    /**
+     * JPEG
+     */
+    if (extensao === "jpg" && bytes.byteLength >= 4) {
+      let posicao = 2;
 
-      while (i < b.byteLength) {
-        if (b[i] !== 0xff) {
-          i++;
+      while (posicao < bytes.byteLength - 9) {
+        if (bytes[posicao] !== 0xff) {
+          posicao++;
+
           continue;
         }
 
-        const marcador = b[i + 1]!;
-
-        if (marcador >= 0xc0 && marcador <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marcador)) {
-          return { altura: view.getUint16(i + 5), largura: view.getUint16(i + 7) };
+        while (bytes[posicao] === 0xff) {
+          posicao++;
         }
 
-        i += 2 + view.getUint16(i + 2);
+        const marcador = bytes[posicao];
+
+        posicao++;
+
+        /**
+         * Marcadores sem tamanho.
+         */
+        if (marcador === 0xd8 || marcador === 0xd9) {
+          continue;
+        }
+
+        if (posicao + 1 >= bytes.byteLength) {
+          break;
+        }
+
+        const tamanho = (bytes[posicao] << 8) | bytes[posicao + 1];
+
+        if (tamanho < 2) {
+          break;
+        }
+
+        const inicio = posicao + 2;
+
+        if (marcador >= 0xc0 && marcador <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marcador)) {
+          if (inicio + 4 < bytes.byteLength) {
+            const altura = (bytes[inicio + 1] << 8) | bytes[inicio + 2];
+
+            const largura = (bytes[inicio + 3] << 8) | bytes[inicio + 4];
+
+            return {
+              largura,
+              altura,
+            };
+          }
+        }
+
+        posicao += tamanho;
       }
     }
   } catch {
@@ -134,35 +298,59 @@ function dimensoes(b: Uint8Array, ext: string): { largura: number; altura: numbe
   return null;
 }
 
+/**
+ * ============================================================
+ * HASH
+ * ============================================================
+ */
+
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
 
   return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
 
 /**
- * Envia ao Storage (bucket "produtos") em caminho previsível
- * e devolve a URL pública servida pelo proxy do site.
+ * ============================================================
+ * STORAGE
+ * ============================================================
  */
+
 export async function guardarImagem(
   chave: string,
   imagem: ImagemBaixada,
-): Promise<{ url: string; caminho: string }> {
+): Promise<{
+  url: string;
+  caminho: string;
+}> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  const caminho = `catalogo/${chave}/main.${imagem.extensao}`;
+  const chaveLimpa =
+    String(chave)
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .slice(0, 100) || "produto";
+
+  const caminho = `catalogo/${chaveLimpa}/main.${imagem.extensao}`;
 
   const { error } = await supabaseAdmin.storage
     .from("produtos")
     .upload(caminho, imagem.bytes as unknown as ArrayBuffer, {
       contentType: imagem.mime,
+
       upsert: true,
+
       cacheControl: "31536000",
     });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(`Erro ao salvar imagem: ${error.message}`);
+  }
 
-  return { url: `/api/public/img/${caminho}`, caminho };
+  return {
+    url: `/api/public/img/${caminho}`,
+
+    caminho,
+  };
 }
