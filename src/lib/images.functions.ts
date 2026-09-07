@@ -469,25 +469,35 @@ export const sincronizarLote = createServerFn({
         fabricante: z.string().default(""),
 
         comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
+
+        /** Modo seleção manual: quando informado, processa apenas estes produtos. */
+        ids: z.array(z.string().uuid()).default([]),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
+    const selecaoManual = data.ids.length > 0;
+
     let query = context.supabase.from("produtos").select(CAMPOS + ", image_hash");
 
-    if (data.escopo === "sem_imagem") {
+    if (selecaoManual) {
+      query = query.in("id", data.ids);
+    }
+
+    if (!selecaoManual && data.escopo === "sem_imagem") {
       query = query.is("imagem", null);
     }
 
-    if (data.escopo === "revisao") {
+    if (!selecaoManual && data.escopo === "revisao") {
       query = query.eq("image_status", "manual_review");
     }
 
-    if (!data.forcar) {
+    if (!selecaoManual && !data.forcar) {
       query = query.neq("image_status", "not_found").neq("image_status", "error");
     }
+
 
     if (data.categoria.trim()) {
       query = query.eq("categoria_slug", data.categoria.trim());
