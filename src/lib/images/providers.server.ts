@@ -103,11 +103,15 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
       }
       for (const m of html.matchAll(
         /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
-      ))
-        imagens.add(m[1]);
-      for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) imagens.add(m[1]);
-      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g))
-        imagens.add(m[1]);
+      )) {
+        if (m[1]) imagens.add(m[1]);
+      }
+      for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) {
+        if (m[1]) imagens.add(m[1]);
+      }
+      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)) {
+        if (m[1]) imagens.add(m[1]);
+      }
 
       for (const imageUrl of imagens) {
         if (!/^https?:\/\//i.test(imageUrl)) continue;
@@ -115,7 +119,7 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
           imageUrl,
           source: site.id,
           sourceUrl,
-          ean,
+          ...(ean ? { ean } : {}),
           nome: item?.title || undefined,
           fabricante: undefined,
           licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
