@@ -542,7 +542,8 @@ export const sincronizarLote = createServerFn({
     }
 
     const resultado = {
-      solicitados: data.tamanho,
+      solicitados: selecaoManual ? data.ids.length : data.tamanho,
+
 
       processados: 0,
 
