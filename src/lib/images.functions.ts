@@ -499,27 +499,27 @@ export const sincronizarLote = createServerFn({
     }
 
 
-    if (data.categoria.trim()) {
+    if (!selecaoManual && data.categoria.trim()) {
       query = query.eq("categoria_slug", data.categoria.trim());
     }
 
-    if (data.subcategoria.trim()) {
+    if (!selecaoManual && data.subcategoria.trim()) {
       query = query.eq("subcategoria_slug", data.subcategoria.trim());
     }
 
-    if (data.fabricante.trim()) {
+    if (!selecaoManual && data.fabricante.trim()) {
       query = query.ilike("fabricante", `%${data.fabricante.trim()}%`);
     }
 
-    if (data.comEan === "sim") {
+    if (!selecaoManual && data.comEan === "sim") {
       query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
     }
 
-    if (data.comEan === "nao") {
+    if (!selecaoManual && data.comEan === "nao") {
       query = query.or("codigo_barras.is.null,codigo_barras.eq.");
     }
 
-    if (data.busca.trim()) {
+    if (!selecaoManual && data.busca.trim()) {
       const termo = data.busca.replace(/[%,]/g, " ").trim();
 
       if (termo) {
@@ -534,7 +534,8 @@ export const sincronizarLote = createServerFn({
         ascending: true,
         nullsFirst: true,
       })
-      .limit(data.tamanho);
+      .limit(selecaoManual ? data.ids.length : data.tamanho);
+
 
     if (error) {
       throw new Error(error.message);
