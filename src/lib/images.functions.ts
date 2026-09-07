@@ -218,9 +218,9 @@ function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] 
       continue;
     }
 
-    const chave = url.toLowerCase().split("?")[0];
+    const chave = url.toLowerCase().split("?")[0] ?? "";
 
-    if (urls.has(chave)) {
+    if (!chave || urls.has(chave)) {
       continue;
     }
 
@@ -594,7 +594,7 @@ export const sincronizarLote = createServerFn({
             started_at: inicio,
           });
 
-          continue;
+          return { contagem, detalhes };
         }
 
         const decisao = classificar({
