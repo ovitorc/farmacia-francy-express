@@ -121,7 +121,6 @@ async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?
           sourceUrl,
           ...(ean ? { ean } : {}),
           nome: item?.title || undefined,
-          fabricante: undefined,
           licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
         });
       }
