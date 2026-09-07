@@ -99,6 +99,31 @@ function ImagensPage() {
 
   const [rodandoLote, setRodandoLote] = useState(false);
 
+  // ---- Modo 2: seleção manual (camada adicional, independente do modo tradicional) ----
+  const [selecao, setSelecao] = useState<Record<string, string>>({});
+
+  const [confirmarSelecao, setConfirmarSelecao] = useState(false);
+
+  const [rodandoSelecao, setRodandoSelecao] = useState(false);
+
+  const [progressoSelecao, setProgressoSelecao] = useState<{
+    atual: number;
+    total: number;
+    nome: string;
+  } | null>(null);
+
+  const [resumoSelecao, setResumoSelecao] = useState<{
+    selecionados: number;
+    pesquisados: number;
+    encontradas: number;
+    baixadas: number;
+    naoEncontradas: number;
+    erros: number;
+  } | null>(null);
+
+  const idsSelecionados = Object.keys(selecao);
+
+
   const estat = useQuery({
     queryKey: ["imagens", "estatisticas"],
 
