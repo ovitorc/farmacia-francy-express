@@ -30,7 +30,7 @@ function limpar(v: string | null | undefined) {
 function removerDuplicados(c: Candidato[]) {
   const vistos = new Set<string>();
   return c.filter((x) => {
-    const k = (x.imageUrl ?? "").trim().split("?")[0].toLowerCase();
+    const k = (x.imageUrl ?? "").trim().split("?")[0]?.toLowerCase() ?? "";
     if (!k || vistos.has(k)) return false;
     vistos.add(k);
     return true;
