@@ -92,6 +92,10 @@ const filtroSchema = z.object({
 
   subcategoria: z.string().default(""),
 
+  categorias: z.array(z.string()).default([]),
+
+  subcategorias: z.array(z.string()).default([]),
+
   pagina: z.number().int().min(1).default(1),
 
   porPagina: z.number().int().min(1).max(100).default(24),
@@ -118,11 +122,20 @@ function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
     query = query.ilike("fabricante", `%${f.fabricante.trim()}%`);
   }
 
-  if (f.categoria.trim()) {
+  const categorias = (f.categorias ?? []).map((c) => c.trim()).filter(Boolean);
+  const subcategorias = (f.subcategorias ?? []).map((c) => c.trim()).filter(Boolean);
+
+  if (subcategorias.length > 0) {
+    query = query.in("subcategoria_slug", subcategorias);
+  } else if (categorias.length > 0) {
+    query = query.in("categoria_slug", categorias);
+  }
+
+  if (categorias.length === 0 && f.categoria.trim()) {
     query = query.eq("categoria_slug", f.categoria.trim());
   }
 
-  if (f.subcategoria.trim()) {
+  if (subcategorias.length === 0 && f.subcategoria.trim()) {
     query = query.eq("subcategoria_slug", f.subcategoria.trim());
   }
 
@@ -218,7 +231,7 @@ function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] 
       continue;
     }
 
-    const chave = url.toLowerCase().split("?")[0];
+    const chave = url.toLowerCase().split("?")[0] ?? url.toLowerCase();
 
     if (urls.has(chave)) {
       continue;
@@ -594,7 +607,7 @@ export const sincronizarLote = createServerFn({
             started_at: inicio,
           });
 
-          continue;
+          return { contagem, detalhes };
         }
 
         const decisao = classificar({
@@ -967,4 +980,100 @@ export const enviarImagemProduto = createServerFn({
     }
 
     return { url };
+  });
+
+/** Processa a busca de imagem de UM produto (usado pela busca em lote com progresso). */
+export const processarProdutoImagem = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produtoRaw, error } = await context.supabase
+      .from("produtos")
+      .select(CAMPOS + ", image_hash")
+      .eq("id", data.produtoId)
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const produto = produtoRaw as any;
+    const inicio = new Date().toISOString();
+
+    try {
+      const candidatos = await candidatosPara(produto);
+      const melhor = candidatos[0];
+
+      if (!melhor) {
+        await context.supabase
+          .from("produtos")
+          .update({
+            image_status: "not_found",
+            image_last_synced_at: new Date().toISOString(),
+            image_error: null,
+          })
+          .eq("id", produto.id);
+
+        await registrarLog(context, {
+          produto_id: produto.id,
+          ean: produto.codigo_barras,
+          status: "not_found",
+          started_at: inicio,
+        });
+
+        return { produtoId: produto.id, nome: produto.nome, status: "not_found" as const, fonte: null };
+      }
+
+      const url = await aplicar(context, produto, melhor, melhor.confianca, "approved");
+
+      await registrarLog(context, {
+        produto_id: produto.id,
+        ean: produto.codigo_barras,
+        status: "approved",
+        source: melhor.source,
+        image_url: url,
+        confidence: melhor.confianca,
+        started_at: inicio,
+      });
+
+      return {
+        produtoId: produto.id,
+        nome: produto.nome,
+        status: "found" as const,
+        fonte: melhor.source ?? null,
+        confianca: melhor.confianca,
+        url,
+      };
+    } catch (e) {
+      const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
+
+      await context.supabase
+        .from("produtos")
+        .update({
+          image_status: "error",
+          image_error: mensagem,
+          image_last_synced_at: new Date().toISOString(),
+        })
+        .eq("id", produto.id);
+
+      await registrarLog(context, {
+        produto_id: produto.id,
+        ean: produto.codigo_barras,
+        status: "error",
+        error: mensagem,
+        started_at: inicio,
+      });
+
+      return { produtoId: produto.id, nome: produto.nome, status: "error" as const, fonte: null, erro: mensagem };
+    }
   });

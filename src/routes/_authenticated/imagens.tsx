@@ -14,11 +14,14 @@ import {
   aprovarCandidatoPendente,
   rejeitarImagem,
   enviarImagemProduto,
+  processarProdutoImagem,
 } from "@/lib/images.functions";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -48,6 +51,21 @@ type Filtro = "todos" | "sem_imagem" | "com_imagem" | "manual_review" | "not_fou
 
 const QUANTIDADES_RAPIDAS = [5, 10, 15, 20, 25, 30, 50, 100];
 
+const CONCORRENCIA = 5;
+
+const NOMES_FONTES: Record<string, string> = {
+  pague_menos: "Pague Menos",
+  farmacia_permanente: "Farmácia Permanente",
+  droga_raia: "Droga Raia",
+};
+
+type ResultadoProduto = {
+  produtoId: string;
+  nome: string;
+  status: "found" | "not_found" | "error";
+  fonte?: string | null;
+};
+
 function ImagensPage() {
   const qc = useQueryClient();
 
@@ -69,15 +87,17 @@ function ImagensPage() {
 
   const fnEnviar = useServerFn(enviarImagemProduto);
 
+  const fnProcessar = useServerFn(processarProdutoImagem);
+
   const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
 
   const [busca, setBusca] = useState("");
 
   const [termoBusca, setTermoBusca] = useState("");
 
-  const [categoria, setCategoria] = useState("");
+  const [categoriasSel, setCategoriasSel] = useState<string[]>([]);
 
-  const [subcategoria, setSubcategoria] = useState("");
+  const [subcategoriasSel, setSubcategoriasSel] = useState<string[]>([]);
 
   const [pagina, setPagina] = useState(1);
 
@@ -99,6 +119,15 @@ function ImagensPage() {
 
   const [rodandoLote, setRodandoLote] = useState(false);
 
+  // Seleção de produtos (mantida entre filtros, buscas e páginas).
+  const [selecao, setSelecao] = useState<Record<string, string>>({});
+
+  const [resultados, setResultados] = useState<ResultadoProduto[]>([]);
+
+  const [processando, setProcessando] = useState(false);
+
+  const [totalProcessar, setTotalProcessar] = useState(0);
+
   const estat = useQuery({
     queryKey: ["imagens", "estatisticas"],
 
@@ -116,15 +145,15 @@ function ImagensPage() {
   const subcategorias = filtrosDisponiveis.data?.subcategorias ?? [];
 
   const subcategoriasFiltradas = useMemo(() => {
-    if (!categoria) {
+    if (categoriasSel.length === 0) {
       return subcategorias;
     }
 
-    return subcategorias.filter((item: any) => item.categoria_slug === categoria);
-  }, [categoria, subcategorias]);
+    return subcategorias.filter((item: any) => categoriasSel.includes(item.categoria_slug));
+  }, [categoriasSel, subcategorias]);
 
   const lista = useQuery({
-    queryKey: ["imagens", "lista", filtro, termoBusca, categoria, subcategoria, pagina],
+    queryKey: ["imagens", "lista", filtro, termoBusca, categoriasSel, subcategoriasSel, pagina],
 
     queryFn: () =>
       fnListar({
@@ -137,9 +166,15 @@ function ImagensPage() {
 
           fabricante: "",
 
-          categoria,
+          categoria: "",
 
-          subcategoria,
+          subcategoria: "",
+
+          categorias: categoriasSel,
+
+          subcategorias: subcategoriasSel.filter((slug) =>
+            subcategoriasFiltradas.some((item: any) => item.slug === slug),
+          ),
 
           pagina,
 
@@ -152,6 +187,18 @@ function ImagensPage() {
     void qc.invalidateQueries({
       queryKey: ["imagens"],
     });
+  };
+
+  const alternarCategoria = (slug: string) => {
+    setCategoriasSel((atual) => (atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug]));
+
+    setPagina(1);
+  };
+
+  const alternarSubcategoria = (slug: string) => {
+    setSubcategoriasSel((atual) => (atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug]));
+
+    setPagina(1);
   };
 
   const selecionarQuantidade = (quantidade: number) => {
@@ -185,9 +232,9 @@ function ImagensPage() {
 
     setTermoBusca("");
 
-    setCategoria("");
+    setCategoriasSel([]);
 
-    setSubcategoria("");
+    setSubcategoriasSel([]);
 
     setFiltro("sem_imagem");
 
@@ -335,9 +382,9 @@ function ImagensPage() {
 
           forcar: false,
 
-          categoria,
+          categoria: categoriasSel[0] ?? "",
 
-          subcategoria,
+          subcategoria: subcategoriasSel[0] ?? "",
 
           busca: termoBusca,
 
@@ -371,9 +418,114 @@ function ImagensPage() {
 
   const paginas = Math.max(1, Math.ceil(total / porPagina));
 
-  const categoriaSelecionada = categorias.find((item: any) => item.slug === categoria);
+  const idsSelecionados = Object.keys(selecao);
 
-  const subcategoriaSelecionada = subcategorias.find((item: any) => item.slug === subcategoria);
+  const todosExibidosSelecionados = itens.length > 0 && itens.every((p: any) => selecao[p.id]);
+
+  const alternarProduto = (produto: any) => {
+    setSelecao((atual) => {
+      const copia = { ...atual };
+
+      if (copia[produto.id]) {
+        delete copia[produto.id];
+      } else {
+        copia[produto.id] = produto.nome;
+      }
+
+      return copia;
+    });
+  };
+
+  const selecionarExibidos = () => {
+    setSelecao((atual) => {
+      const copia = { ...atual };
+
+      for (const p of itens as any[]) {
+        copia[p.id] = p.nome;
+      }
+
+      return copia;
+    });
+  };
+
+  const limparSelecao = () => setSelecao({});
+
+  /** Processa uma lista de produtos com no máximo 5 buscas simultâneas. */
+  const processarLista = async (produtos: Array<{ id: string; nome: string }>) => {
+    if (produtos.length === 0) {
+      toast.info("Selecione ao menos um produto.");
+
+      return;
+    }
+
+    setProcessando(true);
+
+    setResultados([]);
+
+    setTotalProcessar(produtos.length);
+
+    let indice = 0;
+
+    const trabalhador = async () => {
+      while (indice < produtos.length) {
+        const atual = produtos[indice++];
+
+        if (!atual) {
+          return;
+        }
+
+        try {
+          const r = await fnProcessar({ data: { produtoId: atual.id } });
+
+          setResultados((lista) => [
+            ...lista,
+            { produtoId: atual.id, nome: r.nome ?? atual.nome, status: r.status, fonte: r.fonte },
+          ]);
+        } catch (erro) {
+          setResultados((lista) => [
+            ...lista,
+            { produtoId: atual.id, nome: atual.nome, status: "error", fonte: null },
+          ]);
+        }
+      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, produtos.length) }, trabalhador));
+
+      toast.success("Busca concluída.");
+
+      atualizar();
+    } finally {
+      setProcessando(false);
+    }
+  };
+
+  const buscarSelecionados = () =>
+    processarLista(idsSelecionados.map((id) => ({ id, nome: selecao[id] ?? "Produto" })));
+
+  const naoEncontrados = resultados.filter((r) => r.status !== "found");
+
+  const buscarNaoEncontrados = () =>
+    processarLista(naoEncontrados.map((r) => ({ id: r.produtoId, nome: r.nome })));
+
+  const encontrados = resultados.filter((r) => r.status === "found").length;
+
+  const semImagemResultado = resultados.filter((r) => r.status === "not_found").length;
+
+  const errosResultado = resultados.filter((r) => r.status === "error").length;
+
+  const porFonte = useMemo(() => {
+    const mapa: Record<string, number> = {};
+
+    for (const r of resultados) {
+      if (r.status === "found" && r.fonte) {
+        mapa[r.fonte] = (mapa[r.fonte] ?? 0) + 1;
+      }
+    }
+
+    return mapa;
+  }, [resultados]);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
@@ -412,68 +564,108 @@ function ImagensPage() {
         <h2 className="text-lg font-semibold text-primary">Filtros dos produtos</h2>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          A busca automática de imagens utilizará exatamente os filtros escolhidos abaixo.
+          Marque quantas categorias e subcategorias quiser. A lista abaixo mostra apenas os produtos correspondentes.
         </p>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
           <div>
-            <Label>Categoria</Label>
+            <div className="flex items-center justify-between">
+              <Label>Categorias</Label>
 
-            <Select
-              value={categoria || "todas"}
-              onValueChange={(valor) => {
-                const novaCategoria = valor === "todas" ? "" : valor;
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCategoriasSel(categorias.map((c: any) => c.slug));
 
-                setCategoria(novaCategoria);
+                    setPagina(1);
+                  }}
+                >
+                  Todas
+                </Button>
 
-                setSubcategoria("");
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCategoriasSel([]);
 
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Todas as categorias" />
-              </SelectTrigger>
+                    setSubcategoriasSel([]);
 
-              <SelectContent>
-                <SelectItem value="todas">Todas as categorias</SelectItem>
+                    setPagina(1);
+                  }}
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
 
-                {categorias.map((item: any) => (
-                  <SelectItem key={item.slug} value={item.slug}>
-                    {item.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="mt-2 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
+              {categorias.map((item: any) => (
+                <label key={item.slug} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={categoriasSel.includes(item.slug)}
+                    onCheckedChange={() => alternarCategoria(item.slug)}
+                  />
+
+                  <span className="line-clamp-1">{item.nome}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div>
-            <Label>Subcategoria</Label>
+            <div className="flex items-center justify-between">
+              <Label>Subcategorias</Label>
 
-            <Select
-              value={subcategoria || "todas"}
-              onValueChange={(valor) => {
-                setSubcategoria(valor === "todas" ? "" : valor);
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSubcategoriasSel(subcategoriasFiltradas.map((s: any) => s.slug));
 
-                setPagina(1);
-              }}
-            >
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Todas as subcategorias" />
-              </SelectTrigger>
+                    setPagina(1);
+                  }}
+                >
+                  Todas
+                </Button>
 
-              <SelectContent>
-                <SelectItem value="todas">Todas as subcategorias</SelectItem>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSubcategoriasSel([]);
 
-                {subcategoriasFiltradas.map((item: any) => (
-                  <SelectItem key={item.slug} value={item.slug}>
-                    {item.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    setPagina(1);
+                  }}
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-2 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
+              {subcategoriasFiltradas.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma subcategoria disponível.</p>
+              )}
+
+              {subcategoriasFiltradas.map((item: any) => (
+                <label key={item.slug} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={subcategoriasSel.includes(item.slug)}
+                    onCheckedChange={() => alternarSubcategoria(item.slug)}
+                  />
+
+                  <span className="line-clamp-1">{item.nome}</span>
+                </label>
+              ))}
+            </div>
           </div>
+        </div>
 
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div>
             <Label>Situação da imagem</Label>
 
@@ -511,7 +703,7 @@ function ImagensPage() {
             <Input
               className="mt-2"
               value={busca}
-              placeholder="Nome, código ou código de barras"
+              placeholder="Nome, fabricante ou código de barras"
               onChange={(ev) => setBusca(ev.target.value)}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter") {
@@ -529,53 +721,109 @@ function ImagensPage() {
             Limpar filtros
           </Button>
         </div>
+      </section>
 
-        {(categoria || subcategoria || termoBusca) && (
-          <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <p className="font-medium text-primary">Filtros que serão usados na busca das imagens:</p>
+      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-primary">Buscar imagens dos produtos selecionados</h2>
 
-            <div className="mt-2 flex flex-wrap gap-2 text-sm">
-              {categoriaSelecionada && (
-                <span className="rounded-full bg-background px-3 py-1">Categoria: {categoriaSelecionada.nome}</span>
-              )}
+        <p className="mt-1 text-sm text-muted-foreground">
+          A busca acontece ao mesmo tempo em Pague Menos, Farmácia Permanente e Droga Raia, processando 5 produtos por
+          vez. Nada é pesquisado automaticamente ao abrir a página.
+        </p>
 
-              {subcategoriaSelecionada && (
-                <span className="rounded-full bg-background px-3 py-1">
-                  Subcategoria: {subcategoriaSelecionada.nome}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+            Produtos selecionados: {idsSelecionados.length}
+          </span>
+
+          <Button variant="outline" size="sm" onClick={selecionarExibidos} disabled={itens.length === 0}>
+            Selecionar todos os exibidos
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={limparSelecao} disabled={idsSelecionados.length === 0}>
+            Limpar seleção
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button disabled={processando || idsSelecionados.length === 0} onClick={buscarSelecionados}>
+            {processando
+              ? "Pesquisando…"
+              : `🔍 Buscar imagens de ${idsSelecionados.length} produto${idsSelecionados.length !== 1 ? "s" : ""}`}
+          </Button>
+
+          <Button
+            variant="outline"
+            disabled={processando || naoEncontrados.length === 0}
+            onClick={buscarNaoEncontrados}
+          >
+            🔄 Pesquisar novamente os não encontrados ({naoEncontrados.length})
+          </Button>
+        </div>
+
+        {(processando || resultados.length > 0) && (
+          <div className="mt-5 rounded-xl border bg-muted/30 p-4 text-sm">
+            <p className="font-semibold">{processando ? "Pesquisando imagens…" : "Resumo da pesquisa"}</p>
+
+            <Progress className="mt-3" value={totalProcessar ? (resultados.length / totalProcessar) * 100 : 0} />
+
+            <p className="mt-2">
+              {resultados.length} / {totalProcessar} produtos processados
+            </p>
+
+            <p className="mt-1 text-muted-foreground">
+              Encontrados: {encontrados} · Não encontrados: {semImagemResultado} · Erros: {errosResultado} · Aguardando:{" "}
+              {Math.max(0, totalProcessar - resultados.length)}
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-3 text-xs">
+              {Object.entries(porFonte).map(([fonte, quantidade]) => (
+                <span key={fonte} className="rounded-full bg-background px-3 py-1">
+                  {NOMES_FONTES[fonte] ?? fonte}: {quantidade}
                 </span>
-              )}
-
-              {termoBusca && <span className="rounded-full bg-background px-3 py-1">Busca: {termoBusca}</span>}
+              ))}
             </div>
+
+            <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto text-xs">
+              {resultados.map((r) => (
+                <li key={r.produtoId}>
+                  {r.status === "found" && (
+                    <span className="text-green-700">
+                      ✓ {r.nome} — Fonte: {NOMES_FONTES[r.fonte ?? ""] ?? r.fonte}
+                    </span>
+                  )}
+
+                  {r.status === "not_found" && <span className="text-muted-foreground">✗ {r.nome} — não encontrado</span>}
+
+                  {r.status === "error" && <span className="text-destructive">⚠ {r.nome} — erro na pesquisa</span>}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </section>
 
       <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Quantidade de produtos</h2>
+        <h2 className="text-lg font-semibold text-primary">Busca automática por quantidade (opcional)</h2>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Escolha quantos produtos serão processados de acordo com os filtros selecionados.
+          Continua disponível: processa produtos pelos filtros, sem precisar marcar um a um.
         </p>
 
-        <div className="mt-5">
-          <Label className="text-sm font-medium">Escolha uma quantidade</Label>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {QUANTIDADES_RAPIDAS.map((quantidade) => (
-              <Button
-                key={quantidade}
-                type="button"
-                variant={quantidadeLote === quantidade && quantidadePersonalizada === "" ? "default" : "outline"}
-                onClick={() => selecionarQuantidade(quantidade)}
-              >
-                {quantidade}
-              </Button>
-            ))}
-          </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {QUANTIDADES_RAPIDAS.map((quantidade) => (
+            <Button
+              key={quantidade}
+              type="button"
+              variant={quantidadeLote === quantidade && quantidadePersonalizada === "" ? "default" : "outline"}
+              onClick={() => selecionarQuantidade(quantidade)}
+            >
+              {quantidade}
+            </Button>
+          ))}
         </div>
 
-        <div className="mt-6 max-w-sm">
+        <div className="mt-4 max-w-sm">
           <Label>Ou digite qualquer quantidade</Label>
 
           <Input
@@ -587,37 +835,6 @@ function ImagensPage() {
             placeholder={`Quantidade atual: ${quantidadeLote}`}
             onChange={(ev) => alterarQuantidadePersonalizada(ev.target.value)}
           />
-
-          <p className="mt-2 text-xs text-muted-foreground">Você pode escolher qualquer quantidade entre 1 e 10.000.</p>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <p className="text-base font-medium">
-            Quantidade selecionada: <span className="text-primary">{quantidadeLote}</span> produto
-            {quantidadeLote !== 1 ? "s" : ""}
-          </p>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Buscar imagens automaticamente</h2>
-
-        <p className="mt-1 text-sm text-muted-foreground">
-          A busca será feita somente nos produtos selecionados pelos filtros acima.
-        </p>
-
-        <div className="mt-4 rounded-xl bg-muted/40 p-4 text-sm">
-          <p>
-            Categoria: <strong>{categoriaSelecionada ? categoriaSelecionada.nome : "Todas"}</strong>
-          </p>
-
-          <p>
-            Subcategoria: <strong>{subcategoriaSelecionada ? subcategoriaSelecionada.nome : "Todas"}</strong>
-          </p>
-
-          <p>
-            Quantidade máxima: <strong>{quantidadeLote}</strong>
-          </p>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -654,16 +871,39 @@ function ImagensPage() {
       </section>
 
       <section className="mt-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-primary">Produtos encontrados</h2>
 
             <p className="text-sm text-muted-foreground">
               {total} produto
               {total !== 1 ? "s" : ""} encontrado
-              {total !== 1 ? "s" : ""}
+              {total !== 1 ? "s" : ""} · {idsSelecionados.length} selecionado
+              {idsSelecionados.length !== 1 ? "s" : ""}
             </p>
           </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={todosExibidosSelecionados}
+              onCheckedChange={(marcado) => {
+                if (marcado) {
+                  selecionarExibidos();
+                } else {
+                  setSelecao((atual) => {
+                    const copia = { ...atual };
+
+                    for (const p of itens as any[]) {
+                      delete copia[p.id];
+                    }
+
+                    return copia;
+                  });
+                }
+              }}
+            />
+            Selecionar todos os produtos exibidos
+          </label>
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
@@ -677,6 +917,11 @@ function ImagensPage() {
 
           {itens.map((produto: any) => (
             <div key={produto.id} className="flex flex-col rounded-xl border bg-card p-3 shadow-sm">
+              <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs">
+                <Checkbox checked={!!selecao[produto.id]} onCheckedChange={() => alternarProduto(produto)} />
+                Selecionar
+              </label>
+
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
                 {produto.imagem || produto.image_candidato_url ? (
                   <img
@@ -832,7 +1077,7 @@ function ImagensPage() {
                   </div>
 
                   <p className="mt-2 text-[11px] text-muted-foreground">
-                    {candidato.source} · {Math.round(candidato.confianca ?? 0)}%
+                    {NOMES_FONTES[candidato.source] ?? candidato.source} · {Math.round(candidato.confianca ?? 0)}%
                     {candidato.conflito ? " · conflito" : ""}
                   </p>
 
