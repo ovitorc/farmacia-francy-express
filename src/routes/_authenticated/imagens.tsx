@@ -64,7 +64,7 @@ const NOMES_FONTES: Record<string, string> = {
 type ResultadoProduto = {
   produtoId: string;
   nome: string;
-  status: "found" | "not_found" | "error";
+  status: "found" | "manual_review" | "not_found" | "error";
   fonte?: string | null;
 };
 
@@ -496,7 +496,7 @@ function ImagensPage() {
     try {
       await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, produtos.length) }, trabalhador));
 
-      toast.success("Busca concluída.");
+      toast.success("Busca concluída. As imagens encontradas foram enviadas para revisão manual.");
 
       atualizar();
     } finally {
@@ -523,11 +523,13 @@ function ImagensPage() {
     }
   };
 
-  const naoEncontrados = resultados.filter((r) => r.status !== "found");
+  const naoEncontrados = resultados.filter((r) => r.status === "not_found" || r.status === "error");
 
   const buscarNaoEncontrados = () => processarLista(naoEncontrados.map((r) => ({ id: r.produtoId, nome: r.nome })));
 
   const encontrados = resultados.filter((r) => r.status === "found").length;
+
+  const emRevisaoResultado = resultados.filter((r) => r.status === "manual_review").length;
 
   const semImagemResultado = resultados.filter((r) => r.status === "not_found").length;
 
@@ -790,7 +792,8 @@ function ImagensPage() {
             </p>
 
             <p className="mt-1 text-muted-foreground">
-              Encontrados: {encontrados} · Não encontrados: {semImagemResultado} · Erros: {errosResultado} · Aguardando:{" "}
+              Aprovadas automaticamente: {encontrados} · Em revisão: {emRevisaoResultado} · Não encontrados:{" "}
+              {semImagemResultado} · Erros: {errosResultado} · Aguardando:{" "}
               {Math.max(0, totalProcessar - resultados.length)}
             </p>
 
@@ -893,7 +896,7 @@ function ImagensPage() {
       {idsSelecionados.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={buscarSelecionados} disabled={processando}>
-            Buscar imagens selecionadas ({idsSelecionados.length})
+            Procurar imagens para revisão ({idsSelecionados.length})
           </Button>
           <Button variant="destructive" onClick={excluirSelecionados}>
             Excluir imagens selecionadas ({idsSelecionados.length})
