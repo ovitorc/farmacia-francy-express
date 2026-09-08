@@ -607,7 +607,7 @@ export const sincronizarLote = createServerFn({
             started_at: inicio,
           });
 
-          continue;
+          return { contagem, detalhes };
         }
 
         const decisao = classificar({
