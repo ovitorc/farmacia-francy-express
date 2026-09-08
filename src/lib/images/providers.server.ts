@@ -1,253 +1,1012 @@
-/** Busca de imagens exclusivamente em Pague Menos, Farmácia Permanente e Droga Raia. */
+/**
+ * ============================================================
+ * BUSCA DE IMAGENS DE PRODUTOS
+ * ============================================================
+ *
+ * GOOGLE E FIRECRAWL NÃO SÃO UTILIZADOS.
+ *
+ * A busca funciona exclusivamente com:
+ *
+ * - Pague Menos
+ * - Farmácia Permanente
+ * - Droga Raia
+ *
+ * Estratégia:
+ *
+ * 1. Pesquisa o produto por EAN.
+ * 2. Se necessário, pesquisa pelo nome.
+ * 3. Localiza páginas públicas dos sites.
+ * 4. Acessa diretamente as páginas encontradas.
+ * 5. Extrai imagens através de:
+ *
+ *    - og:image
+ *    - twitter:image
+ *    - JSON-LD
+ *    - __NEXT_DATA__
+ *    - JSON embutido
+ *    - image
+ *    - imageUrl
+ *    - contentUrl
+ *    - URLs de CDN
+ *
+ * Não utiliza:
+ *
+ * - Google Custom Search
+ * - Google API
+ * - Firecrawl
+ * - API Key
+ *
+ * ============================================================
+ */
+
 import type { Candidato, ProdutoRef } from "./matching";
 
 const LIMITE_IMAGENS = 50;
-const LIMITE_GOOGLE_POR_BUSCA = 10;
-const PAGINAS_GOOGLE = [1, 11, 21, 31, 41];
+
+const LIMITE_RESULTADOS_SITE = 8;
+
+const LIMITE_IMAGENS_POR_PAGINA = 10;
+
+const TIMEOUT_BUSCA = 15000;
 
 const SITES = [
-  { id: "pague_menos", nome: "Pague Menos", dominio: "paguemenos.com.br" },
-  { id: "farmacia_permanente", nome: "Farmácia Permanente", dominio: "farmaciapermanente.com.br" },
-  { id: "droga_raia", nome: "Droga Raia", dominio: "drogaraia.com.br" },
+  {
+    id: "pague_menos",
+    nome: "Pague Menos",
+    dominio: "paguemenos.com.br",
+    urlsBusca: ["https://www.paguemenos.com.br/busca?q={TERMO}", "https://www.paguemenos.com.br/search?q={TERMO}"],
+  },
+
+  {
+    id: "farmacia_permanente",
+    nome: "Farmácia Permanente",
+    dominio: "farmaciapermanente.com.br",
+    urlsBusca: [
+      "https://www.farmaciapermanente.com.br/busca?q={TERMO}",
+      "https://www.farmaciapermanente.com.br/search?q={TERMO}",
+    ],
+  },
+
+  {
+    id: "droga_raia",
+    nome: "Droga Raia",
+    dominio: "drogaraia.com.br",
+    urlsBusca: ["https://www.drogaraia.com.br/search?q={TERMO}", "https://www.drogaraia.com.br/busca?q={TERMO}"],
+  },
 ] as const;
+
+type Site = (typeof SITES)[number];
 
 export type ImageProvider = {
   id: string;
+
   nome: string;
+
   dominio: string;
+
   disponivel: () => boolean;
+
   licencaSegura: boolean;
+
   buscarPorEan: (ean: string) => Promise<Candidato[]>;
-  buscarPorNome: (produto: ProdutoRef & { descricao?: string | null }) => Promise<Candidato[]>;
+
+  buscarPorNome: (
+    produto: ProdutoRef & {
+      descricao?: string | null;
+    },
+  ) => Promise<Candidato[]>;
 };
 
-function normalizarEan(v: string | null | undefined) {
-  return (v ?? "").replace(/\D/g, "");
+/**
+ * ============================================================
+ * UTILITÁRIOS
+ * ============================================================
+ */
+
+function normalizarEan(valor: string | null | undefined): string {
+  return (valor ?? "").replace(/\D/g, "");
 }
-function limpar(v: string | null | undefined) {
-  return (v ?? "").replace(/\s+/g, " ").trim();
+
+function limpar(valor: string | null | undefined): string {
+  return (valor ?? "").replace(/\s+/g, " ").trim();
 }
-function removerDuplicados(c: Candidato[]) {
+
+function removerDuplicados(candidatos: Candidato[]): Candidato[] {
   const vistos = new Set<string>();
-  return c.filter((x) => {
-    const k = (x.imageUrl ?? "").trim().split("?")[0]?.toLowerCase() ?? "";
-    if (!k || vistos.has(k)) return false;
-    vistos.add(k);
+
+  return candidatos.filter((candidato) => {
+    const chave = (candidato.imageUrl ?? "").trim().split("?")[0]?.toLowerCase();
+
+    if (!chave) {
+      return false;
+    }
+
+    if (vistos.has(chave)) {
+      return false;
+    }
+
+    vistos.add(chave);
+
     return true;
   });
 }
-function googleDisponivel() {
-  return Boolean(process.env["GOOGLE_CSE_KEY"] && process.env["GOOGLE_CSE_CX"]);
-}
-function firecrawlDisponivel() {
-  const k = process.env["FIRECRAWL_API_KEY"];
-  if (!k) return false;
-  return k.startsWith("lovc_") ? Boolean(process.env["LOVABLE_API_KEY"]) : true;
+
+function limitar(candidatos: Candidato[], limite = LIMITE_IMAGENS): Candidato[] {
+  return removerDuplicados(candidatos).slice(0, limite);
 }
 
-/** Busca páginas de produto nos 3 sites via Firecrawl e extrai a imagem principal do HTML. */
-async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const key = process.env["FIRECRAWL_API_KEY"];
-  if (!key || !limpar(termo)) return [];
+function decodificarHtml(valor: string): string {
+  return valor
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x2F;/gi, "/")
+    .replace(/&#47;/gi, "/")
+    .replace(/\\\//g, "/")
+    .trim();
+}
 
-  const gateway = key.startsWith("lovc_");
-  const url = gateway
-    ? "https://connector-gateway.lovable.dev/firecrawl/v2/search"
-    : "https://api.firecrawl.dev/v2/search";
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (gateway) {
-    headers["Authorization"] = `Bearer ${process.env["LOVABLE_API_KEY"]}`;
-    headers["X-Connection-Api-Key"] = key;
-  } else {
-    headers["Authorization"] = `Bearer ${key}`;
-  }
+function urlValida(url: string | undefined | null): url is string {
+  return Boolean(url && /^https?:\/\//i.test(url));
+}
 
-  const encontrados: Candidato[] = [];
+function pertenceAoSite(url: string, site: Site): boolean {
   try {
-    const pedir = () =>
-      fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          query: `${limpar(termo)} site:${site.dominio}`,
-          limit: 3,
-          lang: "pt",
-          country: "br",
-          scrapeOptions: { formats: ["html"] },
-        }),
-      });
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
 
-    let r = await pedir();
-    if (r.status === 429) {
-      // Limite de consultas por minuto: aguarda e tenta uma única vez.
-      await new Promise((res) => setTimeout(res, 12000));
-      r = await pedir();
-    }
-    if (!r.ok) {
-      console.error(`[imagens] Firecrawl ${site.id} falhou [${r.status}]: ${await r.text()}`);
-      return [];
-    }
+    const dominio = site.dominio.toLowerCase().replace(/^www\./, "");
 
-    const d = await r.json();
-    const itens = Array.isArray(d?.data) ? d.data : Array.isArray(d?.data?.web) ? d.data.web : [];
-    for (const item of itens) {
-      const sourceUrl: string | undefined = item?.url;
-      if (!sourceUrl || !sourceUrl.toLowerCase().includes(site.dominio.replace("www.", ""))) continue;
-      const html: string = item?.html ?? item?.rawHtml ?? "";
-      const meta = item?.metadata ?? {};
-      const imagens = new Set<string>();
-      for (const chave of ["og:image", "ogImage", "twitter:image", "image"]) {
-        const v = meta[chave];
-        if (typeof v === "string") imagens.add(v);
-        else if (Array.isArray(v)) for (const x of v) if (typeof x === "string") imagens.add(x);
-      }
-      for (const m of html.matchAll(
-        /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
-      )) {
-        if (m[1]) imagens.add(m[1]);
-      }
-      for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) {
-        if (m[1]) imagens.add(m[1]);
-      }
-      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)) {
-        if (m[1]) imagens.add(m[1]);
-      }
-
-      for (const imageUrl of imagens) {
-        if (!/^https?:\/\//i.test(imageUrl)) continue;
-        encontrados.push({
-          imageUrl,
-          source: site.id,
-          sourceUrl,
-          ...(ean ? { ean } : {}),
-          nome: item?.title || undefined,
-          licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
-        });
-      }
-    }
-  } catch (e) {
-    console.error(`[imagens] Firecrawl ${site.id} erro:`, e);
+    return hostname === dominio || hostname.endsWith(`.${dominio}`);
+  } catch {
+    return false;
   }
-  return removerDuplicados(encontrados).slice(0, LIMITE_IMAGENS);
 }
 
-async function buscarGoogle(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const key = process.env["GOOGLE_CSE_KEY"];
-  const cx = process.env["GOOGLE_CSE_CX"];
-  if (!key || !cx || !limpar(termo)) return [];
+function criarController(timeout = TIMEOUT_BUSCA) {
+  const controller = new AbortController();
 
-  const paginas = await Promise.all(
-    PAGINAS_GOOGLE.map(async (start) => {
-      try {
-        const q = new URLSearchParams({
-          key,
-          cx,
-          q: limpar(termo),
-          searchType: "image",
-          num: String(LIMITE_GOOGLE_POR_BUSCA),
-          start: String(start),
-          siteSearch: site.dominio,
-          siteSearchFilter: "i",
-          imgSize: "medium",
-        });
-        const r = await fetch(`https://www.googleapis.com/customsearch/v1?${q}`);
-        if (!r.ok) return [] as Candidato[];
-        const d = await r.json();
-        return (Array.isArray(d?.items) ? d.items : []).flatMap((item: any) => {
-          const imageUrl = item?.link;
-          const sourceUrl = item?.image?.contextLink;
-          if (typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return [];
-          if (sourceUrl && !String(sourceUrl).toLowerCase().includes(site.dominio.replace("www.", ""))) return [];
-          return [
-            {
-              imageUrl,
-              source: site.id,
-              sourceUrl,
-              ...(ean ? { ean } : {}),
-              nome: item?.title || undefined,
-              fabricante: undefined,
-              licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
-            },
-          ];
-        });
-      } catch {
-        return [] as Candidato[];
-      }
-    }),
-  );
-  return removerDuplicados(paginas.flat()).slice(0, LIMITE_IMAGENS);
-}
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeout);
 
-function consultasEan(ean: string) {
-  const c = normalizarEan(ean);
-  return c ? [c, `EAN ${c}`, `${c} produto`] : [];
-}
-function consultasProduto(p: ProdutoRef & { descricao?: string | null }) {
-  const nome = limpar(p.nome),
-    fab = limpar(p.fabricante),
-    desc = limpar(p.descricao);
-  const r: string[] = [];
-  if (nome) r.push(nome);
-  if (nome && fab) r.push(`${nome} ${fab}`);
-  if (nome && desc) r.push(`${nome} ${desc.split(" ").slice(0, 12).join(" ")}`);
-  if (desc) r.push(desc.split(" ").slice(0, 15).join(" "));
-  return [...new Set(r.filter(Boolean))];
-}
-
-async function buscarNoSite(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const tarefas: Promise<Candidato[]>[] = [];
-  if (googleDisponivel()) tarefas.push(buscarGoogle(termo, site, ean));
-  if (firecrawlDisponivel()) tarefas.push(buscarFirecrawl(termo, site, ean));
-  const resultados = await Promise.allSettled(tarefas);
-  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []))).slice(
-    0,
-    LIMITE_IMAGENS,
-  );
-}
-
-async function buscarConsultasParalelas(
-  consultas: string[],
-  site: (typeof SITES)[number],
-  ean?: string,
-): Promise<Candidato[]> {
-  const resultados = await Promise.all(consultas.map((q) => buscarNoSite(q, site, ean)));
-  return removerDuplicados(resultados.flat()).slice(0, LIMITE_IMAGENS);
-}
-
-function criarProvider(site: (typeof SITES)[number]): ImageProvider {
   return {
-    ...site,
-    disponivel: () => googleDisponivel() || firecrawlDisponivel(),
-    licencaSegura: false,
-    buscarPorEan: async (ean) => buscarConsultasParalelas(consultasEan(ean), site, normalizarEan(ean)),
-    buscarPorNome: async (produto) => buscarConsultasParalelas(consultasProduto(produto), site),
+    signal: controller.signal,
+
+    cancelar() {
+      clearTimeout(timer);
+    },
   };
 }
 
-export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
-export function providersAtivos(): ImageProvider[] {
-  return PROVIDERS.filter((p) => p.disponivel());
+function headersNavegador(): HeadersInit {
+  return {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+
+    "Accept-Encoding": "gzip, deflate, br",
+
+    Connection: "keep-alive",
+
+    "Upgrade-Insecure-Requests": "1",
+  };
 }
 
-export async function buscarAte50Imagens(
-  produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
-): Promise<Candidato[]> {
-  const providers = providersAtivos();
-  const ean = normalizarEan(produto.codigo_barras);
-  const tarefas: Promise<Candidato[]>[] = [];
-  for (const p of providers) {
-    if (ean) tarefas.push(p.buscarPorEan(ean));
-    tarefas.push(p.buscarPorNome(produto));
+async function fetchComTimeout(url: string, options: RequestInit = {}, timeout = TIMEOUT_BUSCA): Promise<Response> {
+  const controller = criarController(timeout);
+
+  try {
+    return await fetch(url, {
+      ...options,
+
+      headers: {
+        ...headersNavegador(),
+        ...(options.headers ?? {}),
+      },
+
+      signal: controller.signal,
+
+      redirect: "follow",
+    });
+  } finally {
+    controller.cancelar();
   }
-  const resultados = await Promise.allSettled(tarefas);
-  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []))).slice(
-    0,
-    LIMITE_IMAGENS,
+}
+
+/**
+ * ============================================================
+ * CONSULTAS
+ * ============================================================
+ */
+
+function consultasEan(ean: string): string[] {
+  const codigo = normalizarEan(ean);
+
+  if (!codigo) {
+    return [];
+  }
+
+  return [codigo, `"${codigo}"`, `EAN ${codigo}`];
+}
+
+function consultasProduto(
+  produto: ProdutoRef & {
+    descricao?: string | null;
+  },
+): string[] {
+  const nome = limpar(produto.nome);
+
+  const fabricante = limpar(produto.fabricante);
+
+  const descricao = limpar(produto.descricao);
+
+  const consultas: string[] = [];
+
+  if (nome && fabricante) {
+    consultas.push(`${nome} ${fabricante}`);
+  }
+
+  if (nome) {
+    consultas.push(nome);
+  }
+
+  if (nome && descricao) {
+    const descricaoCurta = descricao.split(" ").slice(0, 10).join(" ");
+
+    if (descricaoCurta) {
+      consultas.push(`${nome} ${descricaoCurta}`);
+    }
+  }
+
+  if (descricao) {
+    consultas.push(descricao.split(" ").slice(0, 12).join(" "));
+  }
+
+  return [...new Set(consultas.map((consulta) => limpar(consulta)).filter(Boolean))].slice(0, 4);
+}
+
+/**
+ * ============================================================
+ * EXTRAÇÃO DE TÍTULO
+ * ============================================================
+ */
+
+function extrairTitulo(html: string): string | undefined {
+  const ogTitle =
+    html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+
+  if (ogTitle?.[1]) {
+    return decodificarHtml(ogTitle[1]);
+  }
+
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+
+  if (title?.[1]) {
+    return decodificarHtml(title[1].replace(/<[^>]+>/g, "").trim());
+  }
+
+  return undefined;
+}
+
+/**
+ * ============================================================
+ * CONVERSÃO DE URL RELATIVA
+ * ============================================================
+ */
+
+function resolverUrl(valor: string, baseUrl: string): string | null {
+  const url = decodificarHtml(valor).replace(/^["']/, "").replace(/["']$/, "").trim();
+
+  if (!url) {
+    return null;
+  }
+
+  if (url.startsWith("data:") || url.startsWith("javascript:")) {
+    return null;
+  }
+
+  try {
+    return new URL(url, baseUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ============================================================
+ * EXTRAÇÃO OG IMAGE
+ * ============================================================
+ */
+
+function extrairOgImages(html: string, baseUrl: string): string[] {
+  const imagens = new Set<string>();
+
+  const regexes = [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
+
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi,
+
+    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
+
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/gi,
+
+    /<meta[^>]+property=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
+
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']twitter:image["']/gi,
+  ];
+
+  for (const regex of regexes) {
+    for (const match of html.matchAll(regex)) {
+      const valor = match[1];
+
+      if (!valor) {
+        continue;
+      }
+
+      const url = resolverUrl(valor, baseUrl);
+
+      if (urlValida(url)) {
+        imagens.add(url);
+      }
+    }
+  }
+
+  return [...imagens];
+}
+
+/**
+ * ============================================================
+ * EXTRAÇÃO DE JSON-LD
+ * ============================================================
+ */
+
+function extrairImagensJsonLd(html: string, baseUrl: string): string[] {
+  const imagens = new Set<string>();
+
+  const regex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+  for (const match of html.matchAll(regex)) {
+    const texto = match[1]?.trim();
+
+    if (!texto) {
+      continue;
+    }
+
+    try {
+      const dados = JSON.parse(texto);
+
+      percorrerJsonPorImagem(dados, baseUrl, imagens);
+    } catch {
+      /**
+       * Alguns sites possuem JSON-LD parcialmente
+       * inválido. Ignoramos sem interromper a busca.
+       */
+    }
+  }
+
+  return [...imagens];
+}
+
+/**
+ * ============================================================
+ * PERCORRE JSON
+ * ============================================================
+ */
+
+function percorrerJsonPorImagem(valor: unknown, baseUrl: string, imagens: Set<string>): void {
+  if (!valor) {
+    return;
+  }
+
+  if (typeof valor === "string") {
+    const url = resolverUrl(valor, baseUrl);
+
+    if (urlValida(url) && pareceImagem(url)) {
+      imagens.add(url);
+    }
+
+    return;
+  }
+
+  if (Array.isArray(valor)) {
+    for (const item of valor) {
+      percorrerJsonPorImagem(item, baseUrl, imagens);
+    }
+
+    return;
+  }
+
+  if (typeof valor === "object") {
+    const objeto = valor as Record<string, unknown>;
+
+    const camposImagem = [
+      "image",
+      "images",
+      "imageUrl",
+      "image_url",
+      "contentUrl",
+      "thumbnailUrl",
+      "thumbnail",
+      "src",
+      "url",
+    ];
+
+    for (const campo of camposImagem) {
+      if (campo in objeto && objeto[campo]) {
+        percorrerJsonPorImagem(objeto[campo], baseUrl, imagens);
+      }
+    }
+
+    for (const [chave, item] of Object.entries(objeto)) {
+      if (camposImagem.includes(chave)) {
+        continue;
+      }
+
+      if (chave === "description" || chave === "name" || chave === "title" || chave === "sku" || chave === "id") {
+        continue;
+      }
+
+      percorrerJsonPorImagem(item, baseUrl, imagens);
+    }
+  }
+}
+
+/**
+ * ============================================================
+ * IDENTIFICA URL DE IMAGEM
+ * ============================================================
+ */
+
+function pareceImagem(url: string): boolean {
+  const valor = url.toLowerCase();
+
+  return (
+    /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(valor) ||
+    valor.includes("image") ||
+    valor.includes("imagem") ||
+    valor.includes("media") ||
+    valor.includes("cdn") ||
+    valor.includes("cloudinary")
   );
 }
 
-export async function buscarAte20Imagens(
-  produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
+/**
+ * ============================================================
+ * EXTRAÇÃO DE IMAGENS DO HTML
+ * ============================================================
+ */
+
+function extrairImagensHtml(html: string, baseUrl: string): string[] {
+  const imagens = new Set<string>();
+
+  const atributos = [
+    "src",
+    "data-src",
+    "data-original",
+    "data-lazy",
+    "data-image",
+    "data-image-url",
+    "data-zoom-image",
+  ];
+
+  for (const atributo of atributos) {
+    const regex = new RegExp(`${atributo}=["']([^"']+)["']`, "gi");
+
+    for (const match of html.matchAll(regex)) {
+      const valor = match[1];
+
+      if (!valor) {
+        continue;
+      }
+
+      const url = resolverUrl(valor, baseUrl);
+
+      if (urlValida(url) && pareceImagem(url)) {
+        imagens.add(url);
+      }
+    }
+  }
+
+  /**
+   * srcset
+   */
+  for (const match of html.matchAll(/srcset=["']([^"']+)["']/gi)) {
+    const srcset = match[1];
+
+    if (!srcset) {
+      continue;
+    }
+
+    const partes = srcset.split(",");
+
+    for (const parte of partes) {
+      const valor = parte.trim().split(/\s+/)[0];
+
+      if (!valor) {
+        continue;
+      }
+
+      const url = resolverUrl(valor, baseUrl);
+
+      if (urlValida(url) && pareceImagem(url)) {
+        imagens.add(url);
+      }
+    }
+  }
+
+  return [...imagens];
+}
+
+/**
+ * ============================================================
+ * EXTRAÇÃO DE URLs DIRETAMENTE DO HTML
+ * ============================================================
+ */
+
+function extrairUrlsDiretas(html: string, baseUrl: string): string[] {
+  const imagens = new Set<string>();
+
+  const regexes = [
+    /https?:\\?\/\\?\/[^"'\\\s<>]+?\.(?:jpg|jpeg|png|webp|gif|avif)(?:\?[^"'\\\s<>]*)?/gi,
+
+    /https?:\/\/[^"'\s<>]+?\.(?:jpg|jpeg|png|webp|gif|avif)(?:\?[^"'\s<>]*)?/gi,
+
+    /["'](?:imageUrl|image_url|contentUrl|thumbnailUrl|image)["']\s*:\s*["']([^"']+)["']/gi,
+  ];
+
+  for (const regex of regexes) {
+    for (const match of html.matchAll(regex)) {
+      const valor = match[1] ?? match[0];
+
+      if (!valor) {
+        continue;
+      }
+
+      const url = resolverUrl(valor, baseUrl);
+
+      if (urlValida(url) && pareceImagem(url)) {
+        imagens.add(url);
+      }
+    }
+  }
+
+  return [...imagens];
+}
+
+/**
+ * ============================================================
+ * FILTRAGEM DE IMAGENS
+ * ============================================================
+ */
+
+function filtrarImagensProduto(imagens: string[]): string[] {
+  const bloqueadas = [
+    "logo",
+    "icon",
+    "favicon",
+    "sprite",
+    "banner",
+    "header",
+    "footer",
+    "facebook",
+    "instagram",
+    "whatsapp",
+    "youtube",
+    "google",
+  ];
+
+  const validas = imagens.filter((imagem) => {
+    const valor = imagem.toLowerCase();
+
+    if (bloqueadas.some((palavra) => valor.includes(palavra))) {
+      return false;
+    }
+
+    return true;
+  });
+
+  /**
+   * Se o filtro foi agressivo demais,
+   * devolvemos as imagens originais.
+   */
+  if (!validas.length) {
+    return imagens;
+  }
+
+  return validas;
+}
+
+/**
+ * ============================================================
+ * EXTRAIR TODAS AS IMAGENS DE UMA PÁGINA
+ * ============================================================
+ */
+
+function extrairImagensPagina(html: string, baseUrl: string): string[] {
+  const imagens = new Set<string>();
+
+  const fontes = [
+    extrairOgImages(html, baseUrl),
+
+    extrairImagensJsonLd(html, baseUrl),
+
+    extrairImagensHtml(html, baseUrl),
+
+    extrairUrlsDiretas(html, baseUrl),
+  ];
+
+  for (const fonte of fontes) {
+    for (const imagem of fonte) {
+      if (urlValida(imagem)) {
+        imagens.add(imagem);
+      }
+    }
+  }
+
+  return filtrarImagensProduto([...imagens]).slice(0, LIMITE_IMAGENS_POR_PAGINA);
+}
+
+/**
+ * ============================================================
+ * ENCONTRAR LINKS DE PRODUTO
+ * ============================================================
+ */
+
+function extrairLinks(html: string, baseUrl: string, site: Site): string[] {
+  const links = new Set<string>();
+
+  const regex = /<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
+
+  for (const match of html.matchAll(regex)) {
+    const href = match[1];
+
+    if (!href) {
+      continue;
+    }
+
+    const url = resolverUrl(href, baseUrl);
+
+    if (!urlValida(url)) {
+      continue;
+    }
+
+    if (!pertenceAoSite(url, site)) {
+      continue;
+    }
+
+    const valor = url.toLowerCase();
+
+    /**
+     * Ignora páginas sem relação com produto.
+     */
+    if (
+      valor.includes("/login") ||
+      valor.includes("/account") ||
+      valor.includes("/carrinho") ||
+      valor.includes("/cart") ||
+      valor.includes("/institucional") ||
+      valor.includes("/blog")
+    ) {
+      continue;
+    }
+
+    links.add(url);
+
+    if (links.size >= LIMITE_RESULTADOS_SITE) {
+      break;
+    }
+  }
+
+  return [...links];
+}
+
+/**
+ * ============================================================
+ * BUSCA DIRETA NO SITE
+ * ============================================================
+ */
+
+async function buscarLinksNoSite(termo: string, site: Site): Promise<string[]> {
+  const termoLimpo = limpar(termo);
+
+  if (!termoLimpo) {
+    return [];
+  }
+
+  const resultados = new Set<string>();
+
+  const buscas = site.urlsBusca.map(async (modelo) => {
+    const url = modelo.replace("{TERMO}", encodeURIComponent(termoLimpo));
+
+    try {
+      const resposta = await fetchComTimeout(url, {
+        headers: {
+          Referer: `https://www.${site.dominio}/`,
+        },
+      });
+
+      if (!resposta.ok) {
+        console.warn(`[imagens] ${site.nome}: busca retornou ${resposta.status}`);
+
+        return;
+      }
+
+      const html = await resposta.text();
+
+      const links = extrairLinks(html, url, site);
+
+      for (const link of links) {
+        resultados.add(link);
+      }
+    } catch (erro) {
+      console.error(`[imagens] Erro na busca ${site.nome}:`, erro);
+    }
+  });
+
+  await Promise.allSettled(buscas);
+
+  return [...resultados].slice(0, LIMITE_RESULTADOS_SITE);
+}
+
+/**
+ * ============================================================
+ * EXTRAIR IMAGENS DA PÁGINA DO PRODUTO
+ * ============================================================
+ */
+
+async function buscarImagensDaPagina(sourceUrl: string, site: Site, ean?: string): Promise<Candidato[]> {
+  try {
+    const resposta = await fetchComTimeout(sourceUrl, {
+      headers: {
+        Referer: `https://www.${site.dominio}/`,
+      },
+    });
+
+    if (!resposta.ok) {
+      console.warn(`[imagens] ${site.nome}: página retornou ${resposta.status}`);
+
+      return [];
+    }
+
+    const html = await resposta.text();
+
+    const titulo = extrairTitulo(html);
+
+    const imagens = extrairImagensPagina(html, sourceUrl);
+
+    const candidatos: Candidato[] = [];
+
+    for (const imageUrl of imagens) {
+      candidatos.push({
+        imageUrl,
+
+        source: site.id,
+
+        sourceUrl,
+
+        ...(ean
+          ? {
+              ean,
+            }
+          : {}),
+
+        nome: titulo,
+
+        licenca: `Imagem encontrada diretamente em ${site.nome}. Verifique os direitos de uso antes da publicação.`,
+      });
+    }
+
+    return limitar(candidatos, LIMITE_IMAGENS_POR_PAGINA);
+  } catch (erro) {
+    console.error(`[imagens] Erro ao acessar página ${site.nome}:`, erro);
+
+    return [];
+  }
+}
+
+/**
+ * ============================================================
+ * BUSCA COMPLETA EM UM SITE
+ * ============================================================
+ */
+
+async function buscarNoSite(termo: string, site: Site, ean?: string): Promise<Candidato[]> {
+  const termoLimpo = limpar(termo);
+
+  if (!termoLimpo) {
+    return [];
+  }
+
+  console.log(`[imagens] Pesquisando "${termoLimpo}" em ${site.nome}`);
+
+  const links = await buscarLinksNoSite(termoLimpo, site);
+
+  /**
+   * Alguns sites podem colocar imagens diretamente
+   * na página de resultados.
+   *
+   * Por isso tentamos acessar os links encontrados
+   * simultaneamente.
+   */
+  if (!links.length) {
+    console.warn(`[imagens] Nenhuma página encontrada em ${site.nome} para "${termoLimpo}"`);
+
+    return [];
+  }
+
+  const resultados = await Promise.allSettled(links.map((link) => buscarImagensDaPagina(link, site, ean)));
+
+  const candidatos = resultados.flatMap((resultado) => (resultado.status === "fulfilled" ? resultado.value : []));
+
+  console.log(`[imagens] ${site.nome}: ${candidatos.length} imagem(ns) encontrada(s)`);
+
+  return limitar(candidatos);
+}
+
+/**
+ * ============================================================
+ * BUSCA DE VÁRIAS CONSULTAS
+ * ============================================================
+ */
+
+async function buscarConsultasParalelas(consultas: string[], site: Site, ean?: string): Promise<Candidato[]> {
+  const consultasUnicas = [...new Set(consultas.map((consulta) => limpar(consulta)).filter(Boolean))].slice(0, 3);
+
+  if (!consultasUnicas.length) {
+    return [];
+  }
+
+  const resultados = await Promise.allSettled(consultasUnicas.map((consulta) => buscarNoSite(consulta, site, ean)));
+
+  const candidatos = resultados.flatMap((resultado) => (resultado.status === "fulfilled" ? resultado.value : []));
+
+  return limitar(candidatos);
+}
+
+/**
+ * ============================================================
+ * PROVIDER
+ * ============================================================
+ */
+
+function criarProvider(site: Site): ImageProvider {
+  return {
+    id: site.id,
+
+    nome: site.nome,
+
+    dominio: site.dominio,
+
+    /**
+     * Os sites ficam sempre disponíveis.
+     *
+     * Não dependem mais de Google,
+     * Firecrawl ou API Keys.
+     */
+    disponivel: () => true,
+
+    licencaSegura: false,
+
+    buscarPorEan: async (ean) => {
+      const codigo = normalizarEan(ean);
+
+      return buscarConsultasParalelas(consultasEan(codigo), site, codigo);
+    },
+
+    buscarPorNome: async (produto) => {
+      return buscarConsultasParalelas(consultasProduto(produto), site);
+    },
+  };
+}
+
+/**
+ * ============================================================
+ * PROVIDERS ATIVOS
+ * ============================================================
+ */
+
+export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
+
+export function providersAtivos(): ImageProvider[] {
+  /**
+   * Sempre retorna os três sites.
+   *
+   * Não existe mais dependência de:
+   *
+   * GOOGLE_CSE_KEY
+   * GOOGLE_CSE_CX
+   * FIRECRAWL_API_KEY
+   * LOVABLE_API_KEY
+   */
+  return PROVIDERS;
+}
+
+/**
+ * ============================================================
+ * BUSCA PRINCIPAL
+ * ============================================================
+ */
+
+export async function buscarAte50Imagens(
+  produto: ProdutoRef & {
+    codigo_barras?: string | null;
+
+    descricao?: string | null;
+  },
 ): Promise<Candidato[]> {
-  return buscarAte50Imagens(produto);
+  const providers = providersAtivos();
+
+  const ean = normalizarEan(produto.codigo_barras);
+
+  const candidatos: Candidato[] = [];
+
+  /**
+   * ==========================================================
+   * PRIMEIRA ETAPA
+   *
+   * BUSCA POR EAN
+   * ==========================================================
+   */
+
+  if (ean) {
+    console.log(`[imagens] Iniciando busca por EAN: ${ean}`);
+
+    const resultadosEan = await Promise.allSettled(providers.map((provider) => provider.buscarPorEan(ean)));
+
+    for (const resultado of resultadosEan) {
+      if (resultado.status === "fulfilled") {
+        candidatos.push(...resultado.value);
+      }
+    }
+
+    /**
+     * Se já encontramos várias imagens,
+     * retornamos rapidamente.
+     */
+    if (limitar(candidatos).length >= 8) {
+      return limitar(candidatos);
+    }
+  }
+
+  /**
+   * ==========================================================
+   * SEGUNDA ETAPA
+   *
+   * BUSCA POR NOME
+   * ==========================================================
+   */
+
+  console.log(`[imagens] Iniciando busca por nome: ${produto.nome}`);
+
+  const resultadosNome = await Promise.allSettled(providers.map((provider) => provider.buscarPorNome(produto)));
+
+  for (const resultado of resultadosNome) {
+    if (resultado.status === "fulfilled") {
+      candidatos.push(...resultado.value);
+    }
+  }
+
+  return limitar(candidatos);
+}
+
+/**
+ * ============================================================
+ * BUSCA ATÉ 20 IMAGENS
+ * ============================================================
+ */
+
+export async function buscarAte20Imagens(
+  produto: ProdutoRef & {
+    codigo_barras?: string | null;
+
+    descricao?: string | null;
+  },
+): Promise<Candidato[]> {
+  const resultados = await buscarAte50Imagens(produto);
+
+  return resultados.slice(0, 20);
 }
