@@ -607,51 +607,16 @@ export const sincronizarLote = createServerFn({
       try {
         const candidatos = await candidatosPara(produto);
 
-        const aprovaveis = candidatos.filter((candidato: any) => {
-          const decisao = classificar({
-            confianca: candidato.confianca,
-            conflito: candidato.conflito,
-            motivos: candidato.motivos,
-          });
-
-          return decisao === "approved";
-        });
-
-        const aplicado = await aplicarPrimeiroCandidatoValido(context, produto, aprovaveis);
-
-        if (aplicado.candidato && aplicado.url) {
-          contagem.aprovados++;
-
-          detalhes.push({
-            nome: produto.nome,
-            status: "aprovada",
-            fonte: aplicado.candidato.source,
-            confianca: aplicado.candidato.confianca,
-          });
-
-          await registrarLog(context, {
-            produto_id: produto.id,
-            ean: produto.codigo_barras,
-            status: "approved",
-            source: aplicado.candidato.source,
-            image_url: aplicado.url,
-            confidence: aplicado.candidato.confianca,
-            started_at: inicio,
-          });
-
-          return { contagem, detalhes };
-        }
+        // Busca em todas as fontes e nunca aplica automaticamente no lote.
+        // Todo candidato válido vai para revisão manual.
+        const aprovaveis: any[] = [];
+        const aplicado = { candidato: null, url: null, erros: [] as string[] };
 
         /*
          * Candidatos para revisão também são testados antes de a URL ser
          * exibida no painel. Isso impede que a prévia receba uma URL 404.
          */
-        const pendentes = candidatos.filter((candidato: any) => {
-          const decisao = classificar({
-            confianca: candidato.confianca,
-            conflito: candidato.conflito,
-            motivos: candidato.motivos,
-          });
+        const pendentes = candidatos;
 
           return decisao === "manual_review";
         });
@@ -1149,55 +1114,54 @@ export const processarProdutoImagem = createServerFn({
 
     try {
       const candidatos = await candidatosPara(produto);
+      let melhorPendente: any = null;
+      for (const candidato of candidatos) {
+        if (await validarCandidatoImagem(candidato)) {
+          melhorPendente = candidato;
+          break;
+        }
+      }
 
-      /*
-       * Tenta os candidatos em ordem de relevância. Se uma URL retornou
-       * 404, HTML, arquivo inválido ou falhou no download, ela é descartada
-       * e o próximo candidato é testado. Nunca gravamos uma imagem sem
-       * conseguir baixá-la e validá-la.
-       */
-      const aplicado = await aplicarPrimeiroCandidatoValido(context, produto, candidatos);
-
-      if (!aplicado.candidato || !aplicado.url) {
-        await context.supabase
-          .from("produtos")
-          .update({
-            imagem: null,
-            image_status: "not_found",
-            image_last_synced_at: new Date().toISOString(),
-            image_error: aplicado.erros.length ? aplicado.erros.slice(-1)[0] : null,
-            image_candidato_url: null,
-          })
-          .eq("id", produto.id);
+      if (!melhorPendente) {
+        await context.supabase.from("produtos").update({
+          imagem: null,
+          image_status: "not_found",
+          image_candidato_url: null,
+          image_last_synced_at: new Date().toISOString(),
+          image_error: null,
+        }).eq("id", produto.id);
 
         await registrarLog(context, {
-          produto_id: produto.id,
-          ean: produto.codigo_barras,
-          status: "not_found",
-          error: aplicado.erros.slice(-1)[0],
-          started_at: inicio,
+          produto_id: produto.id, ean: produto.codigo_barras, status: "not_found", started_at: inicio,
         });
-
         return { produtoId: produto.id, nome: produto.nome, status: "not_found" as const, fonte: null };
       }
+
+      await context.supabase.from("produtos").update({
+        imagem: null,
+        image_status: "manual_review",
+        image_candidato_url: melhorPendente.imageUrl,
+        image_source: melhorPendente.source,
+        image_source_url: melhorPendente.sourceUrl ?? melhorPendente.imageUrl,
+        image_confidence: melhorPendente.confianca ?? 0,
+        image_license: melhorPendente.licenca ?? null,
+        image_last_synced_at: new Date().toISOString(),
+        image_error: null,
+      }).eq("id", produto.id);
 
       await registrarLog(context, {
         produto_id: produto.id,
         ean: produto.codigo_barras,
-        status: "approved",
-        source: aplicado.candidato.source,
-        image_url: aplicado.url,
-        confidence: aplicado.candidato.confianca,
+        status: "manual_review",
+        source: melhorPendente.source,
+        image_url: melhorPendente.imageUrl,
+        confidence: melhorPendente.confianca ?? 0,
         started_at: inicio,
       });
 
       return {
-        produtoId: produto.id,
-        nome: produto.nome,
-        status: "found" as const,
-        fonte: aplicado.candidato.source ?? null,
-        confianca: aplicado.candidato.confianca,
-        url: aplicado.url,
+        produtoId: produto.id, nome: produto.nome, status: "manual_review" as const,
+        fonte: melhorPendente.source ?? null, confianca: melhorPendente.confianca ?? 0,
       };
     } catch (e) {
       const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
