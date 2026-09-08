@@ -7,7 +7,7 @@ import type { Candidato, ProdutoRef } from "./matching";
 
 const LIMITE_IMAGENS = 24;
 const LIMITE_POR_SITE = 8;
-const TEMPO_LIMITE_MS = 12000;
+const TEMPO_LIMITE_MS = 7000;
 
 const SITES = [
   { id: "pague_menos", nome: "Pague Menos", dominio: "paguemenos.com.br", base: "https://www.paguemenos.com.br" },
@@ -92,7 +92,10 @@ function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Re
 async function buscarCatalogo(site: Site, termo: string): Promise<Candidato[]> {
   const q = encodeURIComponent(limpar(termo));
   if (!q) return [];
-  const texto = await pegar(`${site.base}/api/catalog_system/pub/products/search?ft=${q}&_from=0&_to=4`, "application/json");
+  const texto = await pegar(
+    `${site.base}/api/catalog_system/pub/products/search?ft=${q}&_from=0&_to=4`,
+    "application/json",
+  );
   if (!texto || !texto.trim().startsWith("[")) return [];
   let lista: any[];
   try {
@@ -135,7 +138,8 @@ async function buscarHtml(site: Site, termo: string): Promise<Candidato[]> {
   ))
     if (m[1]) urls.add(m[1]);
   for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) if (m[1]) urls.add(m[1]);
-  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi)) if (m[1]) urls.add(m[1]);
+  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi))
+    if (m[1]) urls.add(m[1]);
   for (const m of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) if (m[1]) urls.add(m[1]);
   for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi)) if (m[0]) urls.add(m[0]);
 
@@ -186,25 +190,24 @@ export async function buscarAte50Imagens(
   const nome = limpar(produto.nome);
   const fabricante = limpar(produto.fabricante);
 
-  // 1) Código de barras tem prioridade — se achar, não gasta mais buscas.
-  if (ean) {
-    const porEan = await buscarTodosOsSites(ean, ean);
-    if (porEan.length > 0) return porEan.slice(0, LIMITE_IMAGENS);
-  }
+  /*
+   * As três fontes são consultadas sempre em paralelo.
+   * A busca por EAN continua sendo a mais precisa, mas não bloqueia
+   * a busca por nome quando algum site não indexa o código de barras.
+   */
+  const termos = Array.from(
+    new Set([ean, nome, nome && fabricante ? `${nome} ${fabricante}` : ""].map(limpar).filter(Boolean)),
+  );
 
-  // 2) Nome do produto.
-  if (nome) {
-    const porNome = await buscarTodosOsSites(nome);
-    if (porNome.length > 0) return porNome.slice(0, LIMITE_IMAGENS);
+  if (termos.length === 0) return [];
 
-    // 3) Nome + fabricante.
-    if (fabricante) {
-      const porNomeFab = await buscarTodosOsSites(`${nome} ${fabricante}`);
-      if (porNomeFab.length > 0) return porNomeFab.slice(0, LIMITE_IMAGENS);
-    }
-  }
+  const resultados = await Promise.allSettled(
+    termos.map((termo) => buscarTodosOsSites(termo, termo === ean && ean ? ean : undefined)),
+  );
 
-  return [];
+  const achados = resultados.flatMap((resultado) => (resultado.status === "fulfilled" ? resultado.value : []));
+
+  return removerDuplicados(achados).slice(0, LIMITE_IMAGENS);
 }
 
 export async function buscarAte20Imagens(
