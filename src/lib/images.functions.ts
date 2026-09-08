@@ -462,7 +462,11 @@ export const sincronizarLote = createServerFn({
 
         categoria: z.string().default(""),
 
+        categorias: z.array(z.string()).default([]),
+
         subcategoria: z.string().default(""),
+
+        subcategorias: z.array(z.string()).default([]),
 
         busca: z.string().default(""),
 
@@ -494,12 +498,34 @@ export const sincronizarLote = createServerFn({
       query = query.eq("image_status", "manual_review");
     }
 
-    if (!selecaoManual && data.categoria.trim()) {
-      query = query.eq("categoria_slug", data.categoria.trim());
+    const categoriasSelecionadas = [
+      ...new Set([
+        ...data.categorias.map((item) => item.trim()).filter(Boolean),
+        ...(data.categoria.trim() ? [data.categoria.trim()] : []),
+      ]),
+    ];
+
+    const subcategoriasSelecionadas = [
+      ...new Set([
+        ...data.subcategorias.map((item) => item.trim()).filter(Boolean),
+        ...(data.subcategoria.trim() ? [data.subcategoria.trim()] : []),
+      ]),
+    ];
+
+    if (!selecaoManual && categoriasSelecionadas.length === 1) {
+      query = query.eq("categoria_slug", categoriasSelecionadas[0]);
     }
 
-    if (!selecaoManual && data.subcategoria.trim()) {
-      query = query.eq("subcategoria_slug", data.subcategoria.trim());
+    if (!selecaoManual && categoriasSelecionadas.length > 1) {
+      query = query.in("categoria_slug", categoriasSelecionadas);
+    }
+
+    if (!selecaoManual && subcategoriasSelecionadas.length === 1) {
+      query = query.eq("subcategoria_slug", subcategoriasSelecionadas[0]);
+    }
+
+    if (!selecaoManual && subcategoriasSelecionadas.length > 1) {
+      query = query.in("subcategoria_slug", subcategoriasSelecionadas);
     }
 
     if (!selecaoManual && data.fabricante.trim()) {
