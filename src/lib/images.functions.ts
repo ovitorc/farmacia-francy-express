@@ -597,7 +597,7 @@ export const sincronizarLote = createServerFn({
 
     const produtos = (produtosRaw ?? []) as any[];
 
-    const CONCORRENCIA = 10;
+    const CONCORRENCIA = 2;
 
     const processarProduto = async (produto: any) => {
       const contagem = { aprovados: 0, revisao: 0, naoEncontrados: 0, erros: 0 };
@@ -617,9 +617,6 @@ export const sincronizarLote = createServerFn({
          * exibida no painel. Isso impede que a prévia receba uma URL 404.
          */
         const pendentes = candidatos;
-
-          return decisao === "manual_review";
-        });
 
         let melhorPendente: any = null;
 
@@ -1123,31 +1120,40 @@ export const processarProdutoImagem = createServerFn({
       }
 
       if (!melhorPendente) {
-        await context.supabase.from("produtos").update({
-          imagem: null,
-          image_status: "not_found",
-          image_candidato_url: null,
-          image_last_synced_at: new Date().toISOString(),
-          image_error: null,
-        }).eq("id", produto.id);
+        await context.supabase
+          .from("produtos")
+          .update({
+            imagem: null,
+            image_status: "not_found",
+            image_candidato_url: null,
+            image_last_synced_at: new Date().toISOString(),
+            image_error: null,
+          })
+          .eq("id", produto.id);
 
         await registrarLog(context, {
-          produto_id: produto.id, ean: produto.codigo_barras, status: "not_found", started_at: inicio,
+          produto_id: produto.id,
+          ean: produto.codigo_barras,
+          status: "not_found",
+          started_at: inicio,
         });
         return { produtoId: produto.id, nome: produto.nome, status: "not_found" as const, fonte: null };
       }
 
-      await context.supabase.from("produtos").update({
-        imagem: null,
-        image_status: "manual_review",
-        image_candidato_url: melhorPendente.imageUrl,
-        image_source: melhorPendente.source,
-        image_source_url: melhorPendente.sourceUrl ?? melhorPendente.imageUrl,
-        image_confidence: melhorPendente.confianca ?? 0,
-        image_license: melhorPendente.licenca ?? null,
-        image_last_synced_at: new Date().toISOString(),
-        image_error: null,
-      }).eq("id", produto.id);
+      await context.supabase
+        .from("produtos")
+        .update({
+          imagem: null,
+          image_status: "manual_review",
+          image_candidato_url: melhorPendente.imageUrl,
+          image_source: melhorPendente.source,
+          image_source_url: melhorPendente.sourceUrl ?? melhorPendente.imageUrl,
+          image_confidence: melhorPendente.confianca ?? 0,
+          image_license: melhorPendente.licenca ?? null,
+          image_last_synced_at: new Date().toISOString(),
+          image_error: null,
+        })
+        .eq("id", produto.id);
 
       await registrarLog(context, {
         produto_id: produto.id,
@@ -1160,8 +1166,11 @@ export const processarProdutoImagem = createServerFn({
       });
 
       return {
-        produtoId: produto.id, nome: produto.nome, status: "manual_review" as const,
-        fonte: melhorPendente.source ?? null, confianca: melhorPendente.confianca ?? 0,
+        produtoId: produto.id,
+        nome: produto.nome,
+        status: "manual_review" as const,
+        fonte: melhorPendente.source ?? null,
+        confianca: melhorPendente.confianca ?? 0,
       };
     } catch (e) {
       const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
