@@ -92,6 +92,10 @@ const filtroSchema = z.object({
 
   subcategoria: z.string().default(""),
 
+  categorias: z.array(z.string()).default([]),
+
+  subcategorias: z.array(z.string()).default([]),
+
   pagina: z.number().int().min(1).default(1),
 
   porPagina: z.number().int().min(1).max(100).default(24),
@@ -118,11 +122,20 @@ function aplicarFiltros(query: any, f: z.infer<typeof filtroSchema>) {
     query = query.ilike("fabricante", `%${f.fabricante.trim()}%`);
   }
 
-  if (f.categoria.trim()) {
+  const categorias = (f.categorias ?? []).map((c) => c.trim()).filter(Boolean);
+  const subcategorias = (f.subcategorias ?? []).map((c) => c.trim()).filter(Boolean);
+
+  if (subcategorias.length > 0) {
+    query = query.in("subcategoria_slug", subcategorias);
+  } else if (categorias.length > 0) {
+    query = query.in("categoria_slug", categorias);
+  }
+
+  if (categorias.length === 0 && f.categoria.trim()) {
     query = query.eq("categoria_slug", f.categoria.trim());
   }
 
-  if (f.subcategoria.trim()) {
+  if (subcategorias.length === 0 && f.subcategoria.trim()) {
     query = query.eq("subcategoria_slug", f.subcategoria.trim());
   }
 
