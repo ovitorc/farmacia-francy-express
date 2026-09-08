@@ -14,6 +14,7 @@ import {
   aprovarCandidatoPendente,
   rejeitarImagem,
   excluirImagemProduto,
+  excluirImagensProdutos,
   enviarImagemProduto,
   processarProdutoImagem,
 } from "@/lib/images.functions";
@@ -52,7 +53,7 @@ type Filtro = "todos" | "sem_imagem" | "com_imagem" | "manual_review" | "not_fou
 
 const QUANTIDADES_RAPIDAS = [5, 10, 15, 20, 25, 30, 50, 100];
 
-const CONCORRENCIA = 5;
+const CONCORRENCIA = 2;
 
 const NOMES_FONTES: Record<string, string> = {
   pague_menos: "Pague Menos",
@@ -87,6 +88,8 @@ function ImagensPage() {
   const fnRejeitar = useServerFn(rejeitarImagem);
 
   const fnExcluirImagem = useServerFn(excluirImagemProduto);
+
+  const fnExcluirImagens = useServerFn(excluirImagensProdutos);
 
   const fnEnviar = useServerFn(enviarImagemProduto);
 
@@ -503,6 +506,22 @@ function ImagensPage() {
 
   const buscarSelecionados = () =>
     processarLista(idsSelecionados.map((id) => ({ id, nome: selecao[id] ?? "Produto" })));
+  const excluirSelecionados = async () => {
+    if (idsSelecionados.length === 0) {
+      toast.info("Selecione ao menos um produto.");
+      return;
+    }
+    const confirmar = window.confirm(`Excluir as imagens de ${idsSelecionados.length} produto(s) selecionado(s)?`);
+    if (!confirmar) return;
+    try {
+      const r = await fnExcluirImagens({ data: { produtoIds: idsSelecionados } });
+      toast.success(`${r.excluidas} imagem(ns) removida(s).`);
+      limparSelecao();
+      atualizar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Falha ao excluir imagens.");
+    }
+  };
 
   const naoEncontrados = resultados.filter((r) => r.status !== "found");
 
@@ -870,6 +889,20 @@ function ImagensPage() {
           </div>
         )}
       </section>
+
+      {idsSelecionados.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={buscarSelecionados} disabled={processando}>
+            Buscar imagens selecionadas ({idsSelecionados.length})
+          </Button>
+          <Button variant="destructive" onClick={excluirSelecionados}>
+            Excluir imagens selecionadas ({idsSelecionados.length})
+          </Button>
+          <Button variant="ghost" onClick={limparSelecao}>
+            Limpar seleção
+          </Button>
+        </div>
+      )}
 
       <section className="mt-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
