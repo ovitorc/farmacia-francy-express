@@ -47,7 +47,7 @@ function limpar(v: string | null | undefined) {
 function removerDuplicados(c: Candidato[]) {
   const vistos = new Set<string>();
   return c.filter((x) => {
-    const k = (x.imageUrl ?? "").trim().split("?")[0].toLowerCase();
+    const k = ((x.imageUrl ?? "").trim().split("?")[0] ?? "").toLowerCase();
     if (!k || vistos.has(k)) return false;
     vistos.add(k);
     return true;
@@ -78,7 +78,7 @@ async function pegar(url: string, aceitar: string): Promise<string | null> {
   }
 }
 
-function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Partial<Candidato>): Candidato {
+function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Record<string, unknown>): Candidato {
   return {
     imageUrl,
     source: site.id,
@@ -133,11 +133,11 @@ async function buscarHtml(site: Site, termo: string): Promise<Candidato[]> {
   for (const m of html.matchAll(
     /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
   ))
-    urls.add(m[1]);
-  for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) urls.add(m[1]);
-  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi)) urls.add(m[1]);
-  for (const m of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) urls.add(m[1]);
-  for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi)) urls.add(m[0]);
+    if (m[1]) urls.add(m[1]);
+  for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) if (m[1]) urls.add(m[1]);
+  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi)) if (m[1]) urls.add(m[1]);
+  for (const m of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) if (m[1]) urls.add(m[1]);
+  for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi)) if (m[0]) urls.add(m[0]);
 
   const achados: Candidato[] = [];
   for (const url of urls) {

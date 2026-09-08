@@ -231,7 +231,7 @@ function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] 
       continue;
     }
 
-    const chave = url.toLowerCase().split("?")[0];
+    const chave = url.toLowerCase().split("?")[0] ?? url.toLowerCase();
 
     if (urls.has(chave)) {
       continue;
