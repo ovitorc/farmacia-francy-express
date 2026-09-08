@@ -13,6 +13,7 @@ import {
   sincronizarLote,
   aprovarCandidatoPendente,
   rejeitarImagem,
+  excluirImagemProduto,
   enviarImagemProduto,
   processarProdutoImagem,
 } from "@/lib/images.functions";
@@ -84,6 +85,8 @@ function ImagensPage() {
   const fnAprovar = useServerFn(aprovarCandidatoPendente);
 
   const fnRejeitar = useServerFn(rejeitarImagem);
+
+  const fnExcluirImagem = useServerFn(excluirImagemProduto);
 
   const fnEnviar = useServerFn(enviarImagemProduto);
 
@@ -482,10 +485,7 @@ function ImagensPage() {
             { produtoId: atual.id, nome: r.nome ?? atual.nome, status: r.status, fonte: r.fonte },
           ]);
         } catch (erro) {
-          setResultados((lista) => [
-            ...lista,
-            { produtoId: atual.id, nome: atual.nome, status: "error", fonte: null },
-          ]);
+          setResultados((lista) => [...lista, { produtoId: atual.id, nome: atual.nome, status: "error", fonte: null }]);
         }
       }
     };
@@ -506,8 +506,7 @@ function ImagensPage() {
 
   const naoEncontrados = resultados.filter((r) => r.status !== "found");
 
-  const buscarNaoEncontrados = () =>
-    processarLista(naoEncontrados.map((r) => ({ id: r.produtoId, nome: r.nome })));
+  const buscarNaoEncontrados = () => processarLista(naoEncontrados.map((r) => ({ id: r.produtoId, nome: r.nome })));
 
   const encontrados = resultados.filter((r) => r.status === "found").length;
 
@@ -793,7 +792,9 @@ function ImagensPage() {
                     </span>
                   )}
 
-                  {r.status === "not_found" && <span className="text-muted-foreground">✗ {r.nome} — não encontrado</span>}
+                  {r.status === "not_found" && (
+                    <span className="text-muted-foreground">✗ {r.nome} — não encontrado</span>
+                  )}
 
                   {r.status === "error" && <span className="text-destructive">⚠ {r.nome} — erro na pesquisa</span>}
                 </li>
@@ -929,6 +930,9 @@ function ImagensPage() {
                     alt={produto.nome}
                     className="h-full w-full object-contain"
                     loading="lazy"
+                    onError={(ev) => {
+                      ev.currentTarget.style.display = "none";
+                    }}
                   />
                 ) : (
                   <span className="text-xs text-muted-foreground">sem foto</span>
@@ -943,6 +947,34 @@ function ImagensPage() {
                 <Button size="sm" variant="outline" onClick={() => abrirProduto(produto)}>
                   Buscar imagem
                 </Button>
+
+                {produto.imagem && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={async () => {
+                      const confirmar = window.confirm(`Excluir a imagem de "${produto.nome}"?`);
+
+                      if (!confirmar) return;
+
+                      try {
+                        await fnExcluirImagem({
+                          data: {
+                            produtoId: produto.id,
+                          },
+                        });
+
+                        toast.success("Imagem excluída com sucesso.");
+
+                        atualizar();
+                      } catch (erro) {
+                        toast.error(erro instanceof Error ? erro.message : "Não foi possível excluir a imagem.");
+                      }
+                    }}
+                  >
+                    Excluir imagem
+                  </Button>
+                )}
 
                 {produto.image_status === "manual_review" && produto.image_candidato_url && (
                   <div className="flex gap-1">
