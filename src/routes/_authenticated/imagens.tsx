@@ -948,7 +948,7 @@ function ImagensPage() {
                   Buscar imagem
                 </Button>
 
-                {produto.imagem && (
+                {(produto.imagem || produto.image_candidato_url) && (
                   <Button
                     size="sm"
                     variant="destructive"
