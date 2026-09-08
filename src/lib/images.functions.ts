@@ -958,6 +958,52 @@ export const excluirImagemProduto = createServerFn({
     return { ok: true };
   });
 
+export const excluirImagensProdutos = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ produtoIds: z.array(z.string().uuid()).min(1).max(500) }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: produtos, error: leituraError } = await context.supabase
+      .from("produtos")
+      .select("id, imagem")
+      .in("id", data.produtoIds);
+    if (leituraError) throw new Error(leituraError.message);
+    const caminhos = (produtos ?? [])
+      .map((p: any) =>
+        typeof p.imagem === "string" && p.imagem.startsWith("/api/public/img/")
+          ? p.imagem.slice("/api/public/img/".length).split("?")[0]
+          : null,
+      )
+      .filter((x): x is string => !!x && !x.includes(".."));
+    if (caminhos.length) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error: storageError } = await supabaseAdmin.storage.from("produtos").remove(caminhos);
+      if (storageError) throw new Error(storageError.message);
+    }
+    const { error } = await context.supabase
+      .from("produtos")
+      .update({
+        imagem: null,
+        image_status: "pending",
+        image_source: null,
+        image_source_url: null,
+        image_confidence: null,
+        image_hash: null,
+        image_width: null,
+        image_height: null,
+        image_format: null,
+        image_error: null,
+        image_candidato_url: null,
+        image_license: null,
+        image_last_synced_at: new Date().toISOString(),
+      })
+      .in("id", data.produtoIds);
+    if (error) throw new Error(error.message);
+    return { ok: true, excluidas: (produtos ?? []).length };
+  });
+
 export const enviarImagemProduto = createServerFn({
   method: "POST",
 })
