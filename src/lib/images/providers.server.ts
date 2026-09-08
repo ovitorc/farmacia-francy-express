@@ -1,15 +1,26 @@
-/** Busca de imagens exclusivamente em Pague Menos, Farmácia Permanente e Droga Raia. */
+/**
+ * Busca de imagens exclusivamente nas páginas públicas de
+ * Pague Menos, Farmácia Permanente e Droga Raia.
+ * Sem Google, sem Firecrawl e sem qualquer API paga.
+ */
 import type { Candidato, ProdutoRef } from "./matching";
 
-const LIMITE_IMAGENS = 50;
-const LIMITE_GOOGLE_POR_BUSCA = 10;
-const PAGINAS_GOOGLE = [1, 11, 21, 31, 41];
+const LIMITE_IMAGENS = 24;
+const LIMITE_POR_SITE = 8;
+const TEMPO_LIMITE_MS = 12000;
 
 const SITES = [
-  { id: "pague_menos", nome: "Pague Menos", dominio: "paguemenos.com.br" },
-  { id: "farmacia_permanente", nome: "Farmácia Permanente", dominio: "farmaciapermanente.com.br" },
-  { id: "droga_raia", nome: "Droga Raia", dominio: "drogaraia.com.br" },
+  { id: "pague_menos", nome: "Pague Menos", dominio: "paguemenos.com.br", base: "https://www.paguemenos.com.br" },
+  {
+    id: "farmacia_permanente",
+    nome: "Farmácia Permanente",
+    dominio: "farmaciapermanente.com.br",
+    base: "https://www.farmaciapermanente.com.br",
+  },
+  { id: "droga_raia", nome: "Droga Raia", dominio: "drogaraia.com.br", base: "https://www.drogaraia.com.br" },
 ] as const;
+
+type Site = (typeof SITES)[number];
 
 export type ImageProvider = {
   id: string;
@@ -19,6 +30,12 @@ export type ImageProvider = {
   licencaSegura: boolean;
   buscarPorEan: (ean: string) => Promise<Candidato[]>;
   buscarPorNome: (produto: ProdutoRef & { descricao?: string | null }) => Promise<Candidato[]>;
+};
+
+const CABECALHOS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "Accept-Language": "pt-BR,pt;q=0.9",
 };
 
 function normalizarEan(v: string | null | undefined) {
@@ -36,211 +53,158 @@ function removerDuplicados(c: Candidato[]) {
     return true;
   });
 }
-function googleDisponivel() {
-  return Boolean(process.env["GOOGLE_CSE_KEY"] && process.env["GOOGLE_CSE_CX"]);
+
+function imagemValida(url: string) {
+  if (!/^https?:\/\//i.test(url)) return false;
+  const u = url.toLowerCase();
+  if (/\.svg(\?|$)/.test(u)) return false;
+  if (/(sprite|logo|icon|placeholder|banner|bandeira|selo)/.test(u)) return false;
+  return true;
 }
-function firecrawlDisponivel() {
-  const k = process.env["FIRECRAWL_API_KEY"];
-  if (!k) return false;
-  return k.startsWith("lovc_") ? Boolean(process.env["LOVABLE_API_KEY"]) : true;
-}
 
-/** Busca páginas de produto nos 3 sites via Firecrawl e extrai a imagem principal do HTML. */
-async function buscarFirecrawl(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const key = process.env["FIRECRAWL_API_KEY"];
-  if (!key || !limpar(termo)) return [];
-
-  const gateway = key.startsWith("lovc_");
-  const url = gateway
-    ? "https://connector-gateway.lovable.dev/firecrawl/v2/search"
-    : "https://api.firecrawl.dev/v2/search";
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (gateway) {
-    headers["Authorization"] = `Bearer ${process.env["LOVABLE_API_KEY"]}`;
-    headers["X-Connection-Api-Key"] = key;
-  } else {
-    headers["Authorization"] = `Bearer ${key}`;
-  }
-
-  const encontrados: Candidato[] = [];
+async function pegar(url: string, aceitar: string): Promise<string | null> {
   try {
-    const pedir = () =>
-      fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          query: `${limpar(termo)} site:${site.dominio}`,
-          limit: 3,
-          lang: "pt",
-          country: "br",
-          scrapeOptions: { formats: ["html"] },
-        }),
-      });
-
-    let r = await pedir();
-    if (r.status === 429) {
-      // Limite de consultas por minuto: aguarda e tenta uma única vez.
-      await new Promise((res) => setTimeout(res, 12000));
-      r = await pedir();
-    }
-    if (!r.ok) {
-      console.error(`[imagens] Firecrawl ${site.id} falhou [${r.status}]: ${await r.text()}`);
-      return [];
-    }
-
-    const d = await r.json();
-    const itens = Array.isArray(d?.data) ? d.data : Array.isArray(d?.data?.web) ? d.data.web : [];
-    for (const item of itens) {
-      const sourceUrl: string | undefined = item?.url;
-      if (!sourceUrl || !sourceUrl.toLowerCase().includes(site.dominio.replace("www.", ""))) continue;
-      const html: string = item?.html ?? item?.rawHtml ?? "";
-      const meta = item?.metadata ?? {};
-      const imagens = new Set<string>();
-      for (const chave of ["og:image", "ogImage", "twitter:image", "image"]) {
-        const v = meta[chave];
-        if (typeof v === "string") imagens.add(v);
-        else if (Array.isArray(v)) for (const x of v) if (typeof x === "string") imagens.add(x);
-      }
-      for (const m of html.matchAll(
-        /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
-      ))
-        imagens.add(m[1]);
-      for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) imagens.add(m[1]);
-      for (const m of String(item?.description ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g))
-        imagens.add(m[1]);
-
-      for (const imageUrl of imagens) {
-        if (!/^https?:\/\//i.test(imageUrl)) continue;
-        encontrados.push({
-          imageUrl,
-          source: site.id,
-          sourceUrl,
-          ean,
-          nome: item?.title || undefined,
-          fabricante: undefined,
-          licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
-        });
-      }
-    }
-  } catch (e) {
-    console.error(`[imagens] Firecrawl ${site.id} erro:`, e);
+    const controlador = new AbortController();
+    const t = setTimeout(() => controlador.abort(), TEMPO_LIMITE_MS);
+    const r = await fetch(url, {
+      headers: { ...CABECALHOS, Accept: aceitar },
+      signal: controlador.signal,
+    });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return await r.text();
+  } catch {
+    return null;
   }
-  return removerDuplicados(encontrados).slice(0, LIMITE_IMAGENS);
 }
 
-async function buscarGoogle(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const key = process.env["GOOGLE_CSE_KEY"];
-  const cx = process.env["GOOGLE_CSE_CX"];
-  if (!key || !cx || !limpar(termo)) return [];
-
-  const paginas = await Promise.all(
-    PAGINAS_GOOGLE.map(async (start) => {
-      try {
-        const q = new URLSearchParams({
-          key,
-          cx,
-          q: limpar(termo),
-          searchType: "image",
-          num: String(LIMITE_GOOGLE_POR_BUSCA),
-          start: String(start),
-          siteSearch: site.dominio,
-          siteSearchFilter: "i",
-          imgSize: "medium",
-        });
-        const r = await fetch(`https://www.googleapis.com/customsearch/v1?${q}`);
-        if (!r.ok) return [] as Candidato[];
-        const d = await r.json();
-        return (Array.isArray(d?.items) ? d.items : []).flatMap((item: any) => {
-          const imageUrl = item?.link;
-          const sourceUrl = item?.image?.contextLink;
-          if (typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return [];
-          if (sourceUrl && !String(sourceUrl).toLowerCase().includes(site.dominio.replace("www.", ""))) return [];
-          return [
-            {
-              imageUrl,
-              source: site.id,
-              sourceUrl,
-              ean,
-              nome: item?.title || undefined,
-              fabricante: undefined,
-              licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
-            },
-          ];
-        });
-      } catch {
-        return [] as Candidato[];
-      }
-    }),
-  );
-  return removerDuplicados(paginas.flat()).slice(0, LIMITE_IMAGENS);
-}
-
-function consultasEan(ean: string) {
-  const c = normalizarEan(ean);
-  return c ? [c, `EAN ${c}`, `${c} produto`] : [];
-}
-function consultasProduto(p: ProdutoRef & { descricao?: string | null }) {
-  const nome = limpar(p.nome),
-    fab = limpar(p.fabricante),
-    desc = limpar(p.descricao);
-  const r: string[] = [];
-  if (nome) r.push(nome);
-  if (nome && fab) r.push(`${nome} ${fab}`);
-  if (nome && desc) r.push(`${nome} ${desc.split(" ").slice(0, 12).join(" ")}`);
-  if (desc) r.push(desc.split(" ").slice(0, 15).join(" "));
-  return [...new Set(r.filter(Boolean))];
-}
-
-async function buscarNoSite(termo: string, site: (typeof SITES)[number], ean?: string): Promise<Candidato[]> {
-  const tarefas: Promise<Candidato[]>[] = [];
-  if (googleDisponivel()) tarefas.push(buscarGoogle(termo, site, ean));
-  if (firecrawlDisponivel()) tarefas.push(buscarFirecrawl(termo, site, ean));
-  const resultados = await Promise.allSettled(tarefas);
-  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []))).slice(
-    0,
-    LIMITE_IMAGENS,
-  );
-}
-
-async function buscarConsultasParalelas(
-  consultas: string[],
-  site: (typeof SITES)[number],
-  ean?: string,
-): Promise<Candidato[]> {
-  const resultados = await Promise.all(consultas.map((q) => buscarNoSite(q, site, ean)));
-  return removerDuplicados(resultados.flat()).slice(0, LIMITE_IMAGENS);
-}
-
-function criarProvider(site: (typeof SITES)[number]): ImageProvider {
+function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Partial<Candidato>): Candidato {
   return {
-    ...site,
-    disponivel: () => googleDisponivel() || firecrawlDisponivel(),
+    imageUrl,
+    source: site.id,
+    sourceUrl: sourceUrl ?? site.base,
+    licenca: `Imagem localizada em ${site.nome}; verificar direitos de uso antes da publicação.`,
+    ...extras,
+  } as Candidato;
+}
+
+/** Catálogo público VTEX (usado por Pague Menos, Droga Raia e Farmácia Permanente). */
+async function buscarCatalogo(site: Site, termo: string): Promise<Candidato[]> {
+  const q = encodeURIComponent(limpar(termo));
+  if (!q) return [];
+  const texto = await pegar(`${site.base}/api/catalog_system/pub/products/search?ft=${q}&_from=0&_to=4`, "application/json");
+  if (!texto || !texto.trim().startsWith("[")) return [];
+  let lista: any[];
+  try {
+    lista = JSON.parse(texto);
+  } catch {
+    return [];
+  }
+  const achados: Candidato[] = [];
+  for (const p of lista) {
+    const sourceUrl: string | undefined = p?.link ?? (p?.linkText ? `${site.base}/${p.linkText}/p` : undefined);
+    for (const item of Array.isArray(p?.items) ? p.items : []) {
+      for (const img of Array.isArray(item?.images) ? item.images : []) {
+        const url = img?.imageUrl;
+        if (typeof url === "string" && imagemValida(url)) {
+          achados.push(
+            candidato(site, url, sourceUrl, {
+              nome: p?.productName || undefined,
+              fabricante: p?.brand || undefined,
+              ean: normalizarEan(item?.ean) || undefined,
+            }),
+          );
+        }
+      }
+    }
+  }
+  return achados;
+}
+
+/** Fallback: página pública de busca em HTML (og:image, JSON-LD, <img> e CDN). */
+async function buscarHtml(site: Site, termo: string): Promise<Candidato[]> {
+  const q = encodeURIComponent(limpar(termo));
+  if (!q) return [];
+  const sourceUrl = `${site.base}/${q}?_q=${q}&map=ft`;
+  const html = await pegar(sourceUrl, "text/html");
+  if (!html) return [];
+
+  const urls = new Set<string>();
+  for (const m of html.matchAll(
+    /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
+  ))
+    urls.add(m[1]);
+  for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) urls.add(m[1]);
+  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi)) urls.add(m[1]);
+  for (const m of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) urls.add(m[1]);
+  for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi)) urls.add(m[0]);
+
+  const achados: Candidato[] = [];
+  for (const url of urls) {
+    const limpo = url.replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
+    if (imagemValida(limpo)) achados.push(candidato(site, limpo, sourceUrl));
+  }
+  return achados;
+}
+
+async function buscarNoSite(site: Site, termo: string, ean?: string): Promise<Candidato[]> {
+  if (!limpar(termo)) return [];
+  let achados = await buscarCatalogo(site, termo);
+  if (achados.length === 0) achados = await buscarHtml(site, termo);
+  if (ean) achados = achados.map((c) => ({ ...c, ean: c.ean ?? ean }));
+  return removerDuplicados(achados).slice(0, LIMITE_POR_SITE);
+}
+
+/** Consulta os três sites simultaneamente. */
+async function buscarTodosOsSites(termo: string, ean?: string): Promise<Candidato[]> {
+  const resultados = await Promise.allSettled(SITES.map((site) => buscarNoSite(site, termo, ean)));
+  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : [])));
+}
+
+function criarProvider(site: Site): ImageProvider {
+  return {
+    id: site.id,
+    nome: site.nome,
+    dominio: site.dominio,
+    disponivel: () => true,
     licencaSegura: false,
-    buscarPorEan: async (ean) => buscarConsultasParalelas(consultasEan(ean), site, normalizarEan(ean)),
-    buscarPorNome: async (produto) => buscarConsultasParalelas(consultasProduto(produto), site),
+    buscarPorEan: async (ean) => buscarNoSite(site, normalizarEan(ean), normalizarEan(ean)),
+    buscarPorNome: async (produto) =>
+      buscarNoSite(site, [limpar(produto.nome), limpar(produto.fabricante)].filter(Boolean).join(" ")),
   };
 }
 
 export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
 export function providersAtivos(): ImageProvider[] {
-  return PROVIDERS.filter((p) => p.disponivel());
+  return PROVIDERS;
 }
 
 export async function buscarAte50Imagens(
   produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
 ): Promise<Candidato[]> {
-  const providers = providersAtivos();
   const ean = normalizarEan(produto.codigo_barras);
-  const tarefas: Promise<Candidato[]>[] = [];
-  for (const p of providers) {
-    if (ean) tarefas.push(p.buscarPorEan(ean));
-    tarefas.push(p.buscarPorNome(produto));
+  const nome = limpar(produto.nome);
+  const fabricante = limpar(produto.fabricante);
+
+  // 1) Código de barras tem prioridade — se achar, não gasta mais buscas.
+  if (ean) {
+    const porEan = await buscarTodosOsSites(ean, ean);
+    if (porEan.length > 0) return porEan.slice(0, LIMITE_IMAGENS);
   }
-  const resultados = await Promise.allSettled(tarefas);
-  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : []))).slice(
-    0,
-    LIMITE_IMAGENS,
-  );
+
+  // 2) Nome do produto.
+  if (nome) {
+    const porNome = await buscarTodosOsSites(nome);
+    if (porNome.length > 0) return porNome.slice(0, LIMITE_IMAGENS);
+
+    // 3) Nome + fabricante.
+    if (fabricante) {
+      const porNomeFab = await buscarTodosOsSites(`${nome} ${fabricante}`);
+      if (porNomeFab.length > 0) return porNomeFab.slice(0, LIMITE_IMAGENS);
+    }
+  }
+
+  return [];
 }
 
 export async function buscarAte20Imagens(
