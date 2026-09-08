@@ -303,7 +303,7 @@ async function candidatosPara(produto: any, termoManual?: string) {
 
       encontrados.push({
         ...candidato,
-        confianca: Math.min(av.confianca, 70),
+        confianca: av.confianca,
         conflito: av.conflito,
         motivos: av.motivos,
       });
@@ -402,6 +402,37 @@ async function aplicar(
   }
 
   return url;
+}
+
+async function aplicarPrimeiroCandidatoValido(
+  context: any,
+  produto: any,
+  candidatos: any[],
+  status: "approved" | "manual_review" = "approved",
+) {
+  const erros: string[] = [];
+
+  for (const candidato of candidatos) {
+    try {
+      const url = await aplicar(context, produto, candidato, candidato.confianca ?? 100, status);
+      return { candidato, url, erros };
+    } catch (erro) {
+      erros.push(erro instanceof Error ? erro.message : "Falha ao validar a imagem");
+    }
+  }
+
+  return { candidato: null, url: null, erros };
+}
+
+async function validarCandidatoImagem(candidato: any) {
+  const { baixarImagem } = await import("@/lib/images/pipeline.server");
+
+  try {
+    await baixarImagem(candidato.imageUrl);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function registrarLog(context: any, log: Record<string, unknown>) {
@@ -576,93 +607,77 @@ export const sincronizarLote = createServerFn({
       try {
         const candidatos = await candidatosPara(produto);
 
-        const melhor = candidatos[0];
+        const aprovaveis = candidatos.filter((candidato: any) => {
+          const decisao = classificar({
+            confianca: candidato.confianca,
+            conflito: candidato.conflito,
+            motivos: candidato.motivos,
+          });
 
-        if (!melhor) {
-          await context.supabase
-            .from("produtos")
-            .update({
-              image_status: "not_found",
+          return decisao === "approved";
+        });
 
-              image_last_synced_at: new Date().toISOString(),
+        const aplicado = await aplicarPrimeiroCandidatoValido(context, produto, aprovaveis);
 
-              image_error: null,
-            })
-            .eq("id", produto.id);
-
-          contagem.naoEncontrados++;
+        if (aplicado.candidato && aplicado.url) {
+          contagem.aprovados++;
 
           detalhes.push({
             nome: produto.nome,
-            status: "não encontrada",
+            status: "aprovada",
+            fonte: aplicado.candidato.source,
+            confianca: aplicado.candidato.confianca,
           });
 
           await registrarLog(context, {
             produto_id: produto.id,
-
             ean: produto.codigo_barras,
-
-            status: "not_found",
-
+            status: "approved",
+            source: aplicado.candidato.source,
+            image_url: aplicado.url,
+            confidence: aplicado.candidato.confianca,
             started_at: inicio,
           });
 
           return { contagem, detalhes };
         }
 
-        const decisao = classificar({
-          confianca: melhor.confianca,
+        /*
+         * Candidatos para revisão também são testados antes de a URL ser
+         * exibida no painel. Isso impede que a prévia receba uma URL 404.
+         */
+        const pendentes = candidatos.filter((candidato: any) => {
+          const decisao = classificar({
+            confianca: candidato.confianca,
+            conflito: candidato.conflito,
+            motivos: candidato.motivos,
+          });
 
-          conflito: melhor.conflito,
-
-          motivos: melhor.motivos,
+          return decisao === "manual_review";
         });
 
-        if (decisao === "approved") {
-          await aplicar(context, produto, melhor, melhor.confianca, "approved");
+        let melhorPendente: any = null;
 
-          contagem.aprovados++;
+        for (const candidato of pendentes) {
+          if (await validarCandidatoImagem(candidato)) {
+            melhorPendente = candidato;
+            break;
+          }
+        }
 
-          detalhes.push({
-            nome: produto.nome,
-
-            status: "aprovada",
-
-            fonte: melhor.source,
-
-            confianca: melhor.confianca,
-          });
-
-          await registrarLog(context, {
-            produto_id: produto.id,
-
-            ean: produto.codigo_barras,
-
-            status: "approved",
-
-            source: melhor.source,
-
-            confidence: melhor.confianca,
-
-            started_at: inicio,
-          });
-        } else if (decisao === "manual_review") {
+        if (melhorPendente) {
           await context.supabase
             .from("produtos")
             .update({
+              imagem: null,
               image_status: "manual_review",
-
-              image_candidato_url: melhor.imageUrl,
-
-              image_source: melhor.source,
-
-              image_source_url: melhor.sourceUrl ?? melhor.imageUrl,
-
-              image_confidence: melhor.confianca,
-
-              image_license: melhor.licenca ?? null,
-
+              image_candidato_url: melhorPendente.imageUrl,
+              image_source: melhorPendente.source,
+              image_source_url: melhorPendente.sourceUrl ?? melhorPendente.imageUrl,
+              image_confidence: melhorPendente.confianca,
+              image_license: melhorPendente.licenca ?? null,
               image_last_synced_at: new Date().toISOString(),
+              image_error: null,
             })
             .eq("id", produto.id);
 
@@ -670,45 +685,50 @@ export const sincronizarLote = createServerFn({
 
           detalhes.push({
             nome: produto.nome,
-
             status: "revisão manual",
-
-            fonte: melhor.source,
-
-            confianca: melhor.confianca,
+            fonte: melhorPendente.source,
+            confianca: melhorPendente.confianca,
           });
 
           await registrarLog(context, {
             produto_id: produto.id,
-
             ean: produto.codigo_barras,
-
             status: "manual_review",
-
-            source: melhor.source,
-
-            confidence: melhor.confianca,
-
+            source: melhorPendente.source,
+            confidence: melhorPendente.confianca,
             started_at: inicio,
           });
-        } else {
-          await context.supabase
-            .from("produtos")
-            .update({
-              image_status: "not_found",
 
-              image_last_synced_at: new Date().toISOString(),
-            })
-            .eq("id", produto.id);
-
-          contagem.naoEncontrados++;
-
-          detalhes.push({
-            nome: produto.nome,
-
-            status: "descartada (baixa confiança)",
-          });
+          return { contagem, detalhes };
         }
+
+        await context.supabase
+          .from("produtos")
+          .update({
+            imagem: null,
+            image_status: "not_found",
+            image_candidato_url: null,
+            image_last_synced_at: new Date().toISOString(),
+            image_error: aplicado.erros.length ? aplicado.erros.slice(-1)[0] : null,
+          })
+          .eq("id", produto.id);
+
+        contagem.naoEncontrados++;
+
+        detalhes.push({
+          nome: produto.nome,
+          status: "não encontrada nos três sites",
+        });
+
+        await registrarLog(context, {
+          produto_id: produto.id,
+          ean: produto.codigo_barras,
+          status: "not_found",
+          error: aplicado.erros.slice(-1)[0],
+          started_at: inicio,
+        });
+
+        return { contagem, detalhes };
       } catch (e) {
         const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
 
@@ -867,6 +887,77 @@ export const rejeitarImagem = createServerFn({
     };
   });
 
+export const excluirImagemProduto = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produto, error: produtoError } = await context.supabase
+      .from("produtos")
+      .select("id, imagem")
+      .eq("id", data.produtoId)
+      .single();
+
+    if (produtoError || !produto) {
+      throw new Error(produtoError?.message ?? "Produto não encontrado.");
+    }
+
+    const imagemAtual = typeof produto.imagem === "string" ? produto.imagem.trim() : "";
+
+    /*
+     * Se a imagem foi salva pelo pipeline atual, remove também o arquivo
+     * do bucket para não deixar objetos órfãos no Storage.
+     */
+    const prefixo = "/api/public/img/";
+
+    if (imagemAtual.startsWith(prefixo)) {
+      const caminho = imagemAtual.slice(prefixo.length).split("?")[0];
+
+      if (caminho && !caminho.includes("..")) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { error: erroStorage } = await supabaseAdmin.storage.from("produtos").remove([caminho]);
+
+        if (erroStorage) {
+          throw new Error(erroStorage.message);
+        }
+      }
+    }
+
+    const { error } = await context.supabase
+      .from("produtos")
+      .update({
+        imagem: null,
+        image_status: "pending",
+        image_source: null,
+        image_source_url: null,
+        image_confidence: null,
+        image_hash: null,
+        image_width: null,
+        image_height: null,
+        image_format: null,
+        image_error: null,
+        image_candidato_url: null,
+        image_license: null,
+        image_last_synced_at: new Date().toISOString(),
+      })
+      .eq("id", data.produtoId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { ok: true };
+  });
+
 export const enviarImagemProduto = createServerFn({
   method: "POST",
 })
@@ -1012,15 +1103,24 @@ export const processarProdutoImagem = createServerFn({
 
     try {
       const candidatos = await candidatosPara(produto);
-      const melhor = candidatos[0];
 
-      if (!melhor) {
+      /*
+       * Tenta os candidatos em ordem de relevância. Se uma URL retornou
+       * 404, HTML, arquivo inválido ou falhou no download, ela é descartada
+       * e o próximo candidato é testado. Nunca gravamos uma imagem sem
+       * conseguir baixá-la e validá-la.
+       */
+      const aplicado = await aplicarPrimeiroCandidatoValido(context, produto, candidatos);
+
+      if (!aplicado.candidato || !aplicado.url) {
         await context.supabase
           .from("produtos")
           .update({
+            imagem: null,
             image_status: "not_found",
             image_last_synced_at: new Date().toISOString(),
-            image_error: null,
+            image_error: aplicado.erros.length ? aplicado.erros.slice(-1)[0] : null,
+            image_candidato_url: null,
           })
           .eq("id", produto.id);
 
@@ -1028,21 +1128,20 @@ export const processarProdutoImagem = createServerFn({
           produto_id: produto.id,
           ean: produto.codigo_barras,
           status: "not_found",
+          error: aplicado.erros.slice(-1)[0],
           started_at: inicio,
         });
 
         return { produtoId: produto.id, nome: produto.nome, status: "not_found" as const, fonte: null };
       }
 
-      const url = await aplicar(context, produto, melhor, melhor.confianca, "approved");
-
       await registrarLog(context, {
         produto_id: produto.id,
         ean: produto.codigo_barras,
         status: "approved",
-        source: melhor.source,
-        image_url: url,
-        confidence: melhor.confianca,
+        source: aplicado.candidato.source,
+        image_url: aplicado.url,
+        confidence: aplicado.candidato.confianca,
         started_at: inicio,
       });
 
@@ -1050,9 +1149,9 @@ export const processarProdutoImagem = createServerFn({
         produtoId: produto.id,
         nome: produto.nome,
         status: "found" as const,
-        fonte: melhor.source ?? null,
-        confianca: melhor.confianca,
-        url,
+        fonte: aplicado.candidato.source ?? null,
+        confianca: aplicado.candidato.confianca,
+        url: aplicado.url,
       };
     } catch (e) {
       const mensagem = e instanceof Error ? e.message : "Erro desconhecido";
