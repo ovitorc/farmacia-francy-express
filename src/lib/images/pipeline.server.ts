@@ -146,7 +146,10 @@ async function sha256(bytes: Uint8Array): Promise<string> {
  * Envia ao Storage (bucket "produtos") em caminho previsível
  * e devolve a URL pública servida pelo proxy do site.
  */
-export async function guardarImagem(chave: string, imagem: ImagemBaixada): Promise<{ url: string; caminho: string }> {
+export async function guardarImagem(
+  chave: string,
+  imagem: ImagemBaixada,
+): Promise<{ url: string; caminho: string }> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const caminho = `catalogo/${chave}/main.${imagem.extensao}`;

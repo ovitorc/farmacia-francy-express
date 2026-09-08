@@ -22,30 +22,6 @@ const TAMANHO_PADRAO_LOTE = 20;
 const TAMANHO_MAXIMO_LOTE = 10000;
 const MAX_CANDIDATOS_POR_PRODUTO = 50;
 
-async function processarFila<T, R>(
-  itens: T[],
-  worker: (item: T, index: number) => Promise<R>,
-  opcoes: { concorrencia?: number } = {},
-): Promise<Array<PromiseSettledResult<R>>> {
-  const concorrencia = Math.max(1, Math.min(opcoes.concorrencia ?? 10, 30));
-  const resultados: Array<PromiseSettledResult<R>> = new Array(itens.length);
-  let proximo = 0;
-  const executar = async () => {
-    while (true) {
-      const index = proximo++;
-      if (index >= itens.length) return;
-      try {
-        const value = await worker(itens[index], index);
-        resultados[index] = { status: "fulfilled", value };
-      } catch (reason) {
-        resultados[index] = { status: "rejected", reason };
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concorrencia, itens.length) }, executar));
-  return resultados;
-}
-
 export const estatisticasImagens = createServerFn({
   method: "GET",
 })
@@ -242,9 +218,9 @@ function removerCandidatosDuplicados<T extends Candidato>(candidatos: T[]): T[] 
       continue;
     }
 
-    const chave = url.toLowerCase().split("?")[0] ?? "";
+    const chave = url.toLowerCase().split("?")[0];
 
-    if (!chave || urls.has(chave)) {
+    if (urls.has(chave)) {
       continue;
     }
 
@@ -310,11 +286,11 @@ async function candidatosPara(produto: any, termoManual?: string) {
 
   for (const candidato of brutos) {
     try {
-      const av = avaliarCandidato(produtoBusca, candidato);
+      const av = avaliarCandidato(produto, candidato);
 
       encontrados.push({
         ...candidato,
-        confianca: av.confianca,
+        confianca: Math.min(av.confianca, 70),
         conflito: av.conflito,
         motivos: av.motivos,
       });
@@ -486,85 +462,54 @@ export const sincronizarLote = createServerFn({
 
         categoria: z.string().default(""),
 
-        categorias: z.array(z.string()).default([]),
-
         subcategoria: z.string().default(""),
-
-        subcategorias: z.array(z.string()).default([]),
 
         busca: z.string().default(""),
 
         fabricante: z.string().default(""),
 
         comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
-
-        /** Modo seleção manual: quando informado, processa apenas estes produtos. */
-        ids: z.array(z.string().uuid()).default([]),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    const selecaoManual = data.ids.length > 0;
-
     let query = context.supabase.from("produtos").select(CAMPOS + ", image_hash");
 
-    if (selecaoManual) {
-      query = query.in("id", data.ids);
-    }
-
-    if (!selecaoManual && data.escopo === "sem_imagem") {
+    if (data.escopo === "sem_imagem") {
       query = query.is("imagem", null);
     }
 
-    if (!selecaoManual && data.escopo === "revisao") {
+    if (data.escopo === "revisao") {
       query = query.eq("image_status", "manual_review");
     }
 
-    const categoriasSelecionadas = [
-      ...new Set([
-        ...data.categorias.map((item) => item.trim()).filter(Boolean),
-        ...(data.categoria.trim() ? [data.categoria.trim()] : []),
-      ]),
-    ];
-
-    const subcategoriasSelecionadas = [
-      ...new Set([
-        ...data.subcategorias.map((item) => item.trim()).filter(Boolean),
-        ...(data.subcategoria.trim() ? [data.subcategoria.trim()] : []),
-      ]),
-    ];
-
-    if (!selecaoManual && categoriasSelecionadas.length === 1) {
-      query = query.eq("categoria_slug", categoriasSelecionadas[0]);
+    if (!data.forcar) {
+      query = query.neq("image_status", "not_found").neq("image_status", "error");
     }
 
-    if (!selecaoManual && categoriasSelecionadas.length > 1) {
-      query = query.in("categoria_slug", categoriasSelecionadas);
+    if (data.categoria.trim()) {
+      query = query.eq("categoria_slug", data.categoria.trim());
     }
 
-    if (!selecaoManual && subcategoriasSelecionadas.length === 1) {
-      query = query.eq("subcategoria_slug", subcategoriasSelecionadas[0]);
+    if (data.subcategoria.trim()) {
+      query = query.eq("subcategoria_slug", data.subcategoria.trim());
     }
 
-    if (!selecaoManual && subcategoriasSelecionadas.length > 1) {
-      query = query.in("subcategoria_slug", subcategoriasSelecionadas);
-    }
-
-    if (!selecaoManual && data.fabricante.trim()) {
+    if (data.fabricante.trim()) {
       query = query.ilike("fabricante", `%${data.fabricante.trim()}%`);
     }
 
-    if (!selecaoManual && data.comEan === "sim") {
+    if (data.comEan === "sim") {
       query = query.not("codigo_barras", "is", null).neq("codigo_barras", "");
     }
 
-    if (!selecaoManual && data.comEan === "nao") {
+    if (data.comEan === "nao") {
       query = query.or("codigo_barras.is.null,codigo_barras.eq.");
     }
 
-    if (!selecaoManual && data.busca.trim()) {
+    if (data.busca.trim()) {
       const termo = data.busca.replace(/[%,]/g, " ").trim();
 
       if (termo) {
@@ -579,14 +524,14 @@ export const sincronizarLote = createServerFn({
         ascending: true,
         nullsFirst: true,
       })
-      .limit(selecaoManual ? data.ids.length : data.tamanho);
+      .limit(data.tamanho);
 
     if (error) {
       throw new Error(error.message);
     }
 
     const resultado = {
-      solicitados: selecaoManual ? data.ids.length : data.tamanho,
+      solicitados: data.tamanho,
 
       processados: 0,
 
@@ -649,7 +594,7 @@ export const sincronizarLote = createServerFn({
             started_at: inicio,
           });
 
-          return { contagem, detalhes };
+          continue;
         }
 
         const decisao = classificar({
@@ -789,21 +734,16 @@ export const sincronizarLote = createServerFn({
       return { contagem, detalhes };
     };
 
-    const resultadosFila = await processarFila(produtos, processarProduto, {
-      concorrencia: CONCORRENCIA,
-    });
-
-    for (const item of resultadosFila) {
-      resultado.processados++;
-
-      if (item.status === "fulfilled") {
-        resultado.aprovados += item.value.contagem.aprovados;
-        resultado.revisao += item.value.contagem.revisao;
-        resultado.naoEncontrados += item.value.contagem.naoEncontrados;
-        resultado.erros += item.value.contagem.erros;
-        resultado.detalhes.push(...item.value.detalhes);
-      } else {
-        resultado.erros++;
+    for (let i = 0; i < produtos.length; i += CONCORRENCIA) {
+      const grupo = produtos.slice(i, i + CONCORRENCIA);
+      const resultadosGrupo = await Promise.all(grupo.map(processarProduto));
+      for (const item of resultadosGrupo) {
+        resultado.processados++;
+        resultado.aprovados += item.contagem.aprovados;
+        resultado.revisao += item.contagem.revisao;
+        resultado.naoEncontrados += item.contagem.naoEncontrados;
+        resultado.erros += item.contagem.erros;
+        resultado.detalhes.push(...item.detalhes);
       }
     }
     return {
