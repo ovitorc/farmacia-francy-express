@@ -1,14 +1,10 @@
-/**
- * Busca de imagens exclusivamente nas páginas públicas de
- * Pague Menos, Farmácia Permanente e Droga Raia.
- * Sem Google, sem Firecrawl e sem qualquer API paga.
- */
+/** Busca sequencial e cuidadosa de imagens em Pague Menos, Farmácia Permanente e Droga Raia. */
 import type { Candidato, ProdutoRef } from "./matching";
 
 const LIMITE_IMAGENS = 24;
 const LIMITE_POR_SITE = 8;
-const TEMPO_LIMITE_MS = 7000;
-
+const TEMPO_LIMITE_MS = 12000;
+const PAUSA_ENTRE_ETAPAS_MS = 250;
 const SITES = [
   { id: "pague_menos", nome: "Pague Menos", dominio: "paguemenos.com.br", base: "https://www.paguemenos.com.br" },
   {
@@ -19,9 +15,7 @@ const SITES = [
   },
   { id: "droga_raia", nome: "Droga Raia", dominio: "drogaraia.com.br", base: "https://www.drogaraia.com.br" },
 ] as const;
-
 type Site = (typeof SITES)[number];
-
 export type ImageProvider = {
   id: string;
   nome: string;
@@ -31,53 +25,41 @@ export type ImageProvider = {
   buscarPorEan: (ean: string) => Promise<Candidato[]>;
   buscarPorNome: (produto: ProdutoRef & { descricao?: string | null }) => Promise<Candidato[]>;
 };
-
-const CABECALHOS = {
+const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   "Accept-Language": "pt-BR,pt;q=0.9",
 };
-
-function normalizarEan(v: string | null | undefined) {
-  return (v ?? "").replace(/\D/g, "");
-}
-function limpar(v: string | null | undefined) {
-  return (v ?? "").replace(/\s+/g, " ").trim();
-}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const limpar = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
+const normalizarEan = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
 function removerDuplicados(c: Candidato[]) {
-  const vistos = new Set<string>();
+  const s = new Set<string>();
   return c.filter((x) => {
-    const k = ((x.imageUrl ?? "").trim().split("?")[0] ?? "").toLowerCase();
-    if (!k || vistos.has(k)) return false;
-    vistos.add(k);
+    const k = (x.imageUrl ?? "").trim().split("?")[0].toLowerCase();
+    if (!k || s.has(k)) return false;
+    s.add(k);
     return true;
   });
 }
-
 function imagemValida(url: string) {
   if (!/^https?:\/\//i.test(url)) return false;
   const u = url.toLowerCase();
-  if (/\.svg(\?|$)/.test(u)) return false;
-  if (/(sprite|logo|icon|placeholder|banner|bandeira|selo)/.test(u)) return false;
-  return true;
+  return !/\.svg(\?|$)/.test(u) && !/(sprite|logo|icon|placeholder|banner|bandeira|selo)/.test(u);
 }
-
-async function pegar(url: string, aceitar: string): Promise<string | null> {
+async function pegar(url: string, aceitar: string) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), TEMPO_LIMITE_MS);
   try {
-    const controlador = new AbortController();
-    const t = setTimeout(() => controlador.abort(), TEMPO_LIMITE_MS);
-    const r = await fetch(url, {
-      headers: { ...CABECALHOS, Accept: aceitar },
-      signal: controlador.signal,
-    });
-    clearTimeout(t);
+    const r = await fetch(url, { headers: { ...HEADERS, Accept: aceitar }, signal: c.signal });
     if (!r.ok) return null;
     return await r.text();
   } catch {
     return null;
+  } finally {
+    clearTimeout(t);
   }
 }
-
 function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Record<string, unknown>): Candidato {
   return {
     imageUrl,
@@ -87,13 +69,11 @@ function candidato(site: Site, imageUrl: string, sourceUrl?: string, extras?: Re
     ...extras,
   } as Candidato;
 }
-
-/** Catálogo público VTEX (usado por Pague Menos, Droga Raia e Farmácia Permanente). */
-async function buscarCatalogo(site: Site, termo: string): Promise<Candidato[]> {
+async function buscarCatalogo(site: Site, termo: string) {
   const q = encodeURIComponent(limpar(termo));
   if (!q) return [];
   const texto = await pegar(
-    `${site.base}/api/catalog_system/pub/products/search?ft=${q}&_from=0&_to=4`,
+    `${site.base}/api/catalog_system/pub/products/search?ft=${q}&_from=0&_to=9`,
     "application/json",
   );
   if (!texto || !texto.trim().startsWith("[")) return [];
@@ -103,115 +83,99 @@ async function buscarCatalogo(site: Site, termo: string): Promise<Candidato[]> {
   } catch {
     return [];
   }
-  const achados: Candidato[] = [];
-  for (const p of lista) {
-    const sourceUrl: string | undefined = p?.link ?? (p?.linkText ? `${site.base}/${p.linkText}/p` : undefined);
-    for (const item of Array.isArray(p?.items) ? p.items : []) {
+  const a: Candidato[] = [];
+  for (const p of lista)
+    for (const item of Array.isArray(p?.items) ? p.items : [])
       for (const img of Array.isArray(item?.images) ? item.images : []) {
         const url = img?.imageUrl;
-        if (typeof url === "string" && imagemValida(url)) {
-          achados.push(
-            candidato(site, url, sourceUrl, {
+        if (typeof url === "string" && imagemValida(url))
+          a.push(
+            candidato(site, url, p?.link ?? (p?.linkText ? `${site.base}/${p.linkText}/p` : undefined), {
               nome: p?.productName || undefined,
               fabricante: p?.brand || undefined,
               ean: normalizarEan(item?.ean) || undefined,
             }),
           );
-        }
       }
-    }
-  }
-  return achados;
+  return a;
 }
-
-/** Fallback: página pública de busca em HTML (og:image, JSON-LD, <img> e CDN). */
-async function buscarHtml(site: Site, termo: string): Promise<Candidato[]> {
+async function buscarHtml(site: Site, termo: string) {
   const q = encodeURIComponent(limpar(termo));
   if (!q) return [];
   const sourceUrl = `${site.base}/${q}?_q=${q}&map=ft`;
   const html = await pegar(sourceUrl, "text/html");
   if (!html) return [];
-
   const urls = new Set<string>();
   for (const m of html.matchAll(
     /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi,
   ))
     if (m[1]) urls.add(m[1]);
-  for (const m of html.matchAll(/"image"\s*:\s*"(https?:\/\/[^"]+)"/gi)) if (m[1]) urls.add(m[1]);
-  for (const m of html.matchAll(/"(?:imageUrl|image_url|thumbnail)"\s*:\s*"(https?:\/\/[^"]+)"/gi))
+  for (const m of html.matchAll(
+    /"(?:imageUrl|image_url|thumbnail|image)"\s*:\s*"(https?:\/\/[^"\\]+(?:\\.[^"\\]+)*)"/gi,
+  ))
     if (m[1]) urls.add(m[1]);
   for (const m of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) if (m[1]) urls.add(m[1]);
-  for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi)) if (m[0]) urls.add(m[0]);
-
-  const achados: Candidato[] = [];
-  for (const url of urls) {
-    const limpo = url.replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
-    if (imagemValida(limpo)) achados.push(candidato(site, limpo, sourceUrl));
-  }
-  return achados;
+  for (const m of html.matchAll(/https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s]*)?/gi)) urls.add(m[0]);
+  return [...urls]
+    .map((u) => u.replace(/\\u002F/gi, "/").replace(/\\\//g, "/"))
+    .filter(imagemValida)
+    .map((u) => candidato(site, u, sourceUrl));
 }
-
-async function buscarNoSite(site: Site, termo: string, ean?: string): Promise<Candidato[]> {
+async function buscarNoSite(site: Site, termo: string, ean?: string) {
   if (!limpar(termo)) return [];
-  let achados = await buscarCatalogo(site, termo);
-  if (achados.length === 0) achados = await buscarHtml(site, termo);
-  if (ean) achados = achados.map((c) => ({ ...c, ean: c.ean ?? ean }));
-  return removerDuplicados(achados).slice(0, LIMITE_POR_SITE);
+  let a = await buscarCatalogo(site, termo);
+  if (a.length === 0) a = await buscarHtml(site, termo);
+  if (ean) a = a.map((c) => ({ ...c, ean: c.ean ?? ean }));
+  return removerDuplicados(a).slice(0, LIMITE_POR_SITE);
 }
-
-/** Consulta os três sites simultaneamente. */
-async function buscarTodosOsSites(termo: string, ean?: string): Promise<Candidato[]> {
-  const resultados = await Promise.allSettled(SITES.map((site) => buscarNoSite(site, termo, ean)));
-  return removerDuplicados(resultados.flatMap((r) => (r.status === "fulfilled" ? r.value : [])));
+async function buscarTodosOsSites(termo: string, ean?: string) {
+  const a: Candidato[] = [];
+  for (const site of SITES) {
+    const r = await buscarNoSite(site, termo, ean);
+    a.push(...r);
+  }
+  return removerDuplicados(a);
 }
-
-function criarProvider(site: Site): ImageProvider {
-  return {
-    id: site.id,
-    nome: site.nome,
-    dominio: site.dominio,
-    disponivel: () => true,
-    licencaSegura: false,
-    buscarPorEan: async (ean) => buscarNoSite(site, normalizarEan(ean), normalizarEan(ean)),
-    buscarPorNome: async (produto) =>
-      buscarNoSite(site, [limpar(produto.nome), limpar(produto.fabricante)].filter(Boolean).join(" ")),
-  };
+function termosUnicos(xs: string[]) {
+  return [...new Set(xs.map(limpar).filter(Boolean))];
 }
-
-export const PROVIDERS: ImageProvider[] = SITES.map(criarProvider);
-export function providersAtivos(): ImageProvider[] {
-  return PROVIDERS;
-}
-
+export const PROVIDERS: ImageProvider[] = SITES.map((site) => ({
+  id: site.id,
+  nome: site.nome,
+  dominio: site.dominio,
+  disponivel: () => true,
+  licencaSegura: false,
+  buscarPorEan: (ean) => buscarNoSite(site, normalizarEan(ean), normalizarEan(ean)),
+  buscarPorNome: (produto) =>
+    buscarNoSite(site, [limpar(produto.nome), limpar(produto.fabricante)].filter(Boolean).join(" ")),
+}));
+export const providersAtivos = () => PROVIDERS;
+/** Executa EAN primeiro e somente depois as buscas textuais; nenhuma etapa é cancelada por outra. */
 export async function buscarAte50Imagens(
   produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
 ): Promise<Candidato[]> {
-  const ean = normalizarEan(produto.codigo_barras);
-  const nome = limpar(produto.nome);
-  const fabricante = limpar(produto.fabricante);
-
-  /*
-   * As três fontes são consultadas sempre em paralelo.
-   * A busca por EAN continua sendo a mais precisa, mas não bloqueia
-   * a busca por nome quando algum site não indexa o código de barras.
-   */
-  const termos = Array.from(
-    new Set([ean, nome, nome && fabricante ? `${nome} ${fabricante}` : ""].map(limpar).filter(Boolean)),
-  );
-
-  if (termos.length === 0) return [];
-
-  const resultados = await Promise.allSettled(
-    termos.map((termo) => buscarTodosOsSites(termo, termo === ean && ean ? ean : undefined)),
-  );
-
-  const achados = resultados.flatMap((resultado) => (resultado.status === "fulfilled" ? resultado.value : []));
-
-  return removerDuplicados(achados).slice(0, LIMITE_IMAGENS);
+  const ean = normalizarEan(produto.codigo_barras),
+    nome = limpar(produto.nome),
+    fab = limpar(produto.fabricante),
+    desc = limpar(produto.descricao);
+  const etapas = termosUnicos([
+    ean,
+    nome,
+    nome && fab ? `${nome} ${fab}` : "",
+    desc,
+    desc && fab ? `${desc} ${fab}` : "",
+  ]);
+  const todos: Candidato[] = [];
+  for (let i = 0; i < etapas.length; i++) {
+    const termo = etapas[i]!;
+    const r = await buscarTodosOsSites(termo, termo === ean && ean ? ean : undefined);
+    todos.push(...r);
+    if (i < etapas.length - 1) await sleep(PAUSA_ENTRE_ETAPAS_MS);
+  }
+  return removerDuplicados(todos).slice(0, LIMITE_IMAGENS);
 }
-
 export async function buscarAte20Imagens(
   produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
-): Promise<Candidato[]> {
+) {
   return buscarAte50Imagens(produto);
 }
