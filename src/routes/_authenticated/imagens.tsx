@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/_authenticated/imagens")({
   head: () => ({
@@ -76,8 +77,11 @@ function ImagensPage() {
   const [termoBusca, setTermoBusca] = useState("");
 
   const [categoria, setCategoria] = useState("");
+  const [categoriasSelecionadas, setCategoriasSelecionadas] = useState<string[]>([]);
 
   const [subcategoria, setSubcategoria] = useState("");
+
+  const [produtosSelecionados, setProdutosSelecionados] = useState<string[]>([]);
 
   const [pagina, setPagina] = useState(1);
 
@@ -139,7 +143,11 @@ function ImagensPage() {
 
           categoria,
 
+          categorias: categoriasSelecionadas,
+
           subcategoria,
+
+          subcategorias: [],
 
           pagina,
 
@@ -187,11 +195,40 @@ function ImagensPage() {
 
     setCategoria("");
 
+    setCategoriasSelecionadas([]);
+
+    setProdutosSelecionados([]);
+
     setSubcategoria("");
 
     setFiltro("sem_imagem");
 
     setPagina(1);
+  };
+
+  const alternarProdutoSelecionado = (id: string) => {
+    setProdutosSelecionados((atual) => (atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]));
+  };
+
+  const selecionarTodosDaPagina = (marcar: boolean) => {
+    const idsPagina = itens.map((produto: any) => produto.id);
+
+    setProdutosSelecionados((atual) => {
+      const conjunto = new Set(atual);
+
+      for (const id of idsPagina) {
+        if (marcar) conjunto.add(id);
+        else conjunto.delete(id);
+      }
+
+      return Array.from(conjunto);
+    });
+  };
+
+  const alternarCategoriaSelecionada = (slug: string) => {
+    setCategoriasSelecionadas((atual) =>
+      atual.includes(slug) ? atual.filter((item) => item !== slug) : [...atual, slug],
+    );
   };
 
   const abrirProduto = async (produto: any) => {
@@ -344,6 +381,8 @@ function ImagensPage() {
           fabricante: "",
 
           comEan: "qualquer",
+
+          ids: produtosSelecionados,
         },
       });
 
@@ -522,6 +561,44 @@ function ImagensPage() {
           </div>
         </div>
 
+        <div className="mt-5 rounded-xl border bg-muted/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <Label className="font-medium">Selecionar várias categorias</Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Marque quantas categorias quiser. Os produtos podem ser selecionados individualmente depois.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setCategoriasSelecionadas(
+                  categoriasSelecionadas.length === categorias.length ? [] : categorias.map((item: any) => item.slug),
+                )
+              }
+            >
+              {categoriasSelecionadas.length === categorias.length ? "Desmarcar categorias" : "Selecionar todas"}
+            </Button>
+          </div>
+
+          <div className="mt-3 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+            {categorias.map((item: any) => (
+              <label
+                key={item.slug}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"
+              >
+                <Checkbox
+                  checked={categoriasSelecionadas.includes(item.slug)}
+                  onCheckedChange={() => alternarCategoriaSelecionada(item.slug)}
+                />
+                <span>{item.nome}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-5 flex flex-wrap gap-2">
           <Button onClick={aplicarFiltros}>Aplicar filtros</Button>
 
@@ -552,95 +629,51 @@ function ImagensPage() {
       </section>
 
       <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Quantidade de produtos</h2>
+        <h2 className="text-lg font-semibold text-primary">Seleção dos produtos para busca</h2>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Escolha quantos produtos serão processados de acordo com os filtros selecionados.
+          Marque os produtos que deseja pesquisar. Você pode selecionar quantos produtos quiser, inclusive em páginas
+          diferentes.
         </p>
 
-        <div className="mt-5">
-          <Label className="text-sm font-medium">Escolha uma quantidade</Label>
+        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <p className="text-base font-medium">
+            Produtos selecionados: <span className="text-primary">{produtosSelecionados.length}</span>
+          </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {QUANTIDADES_RAPIDAS.map((quantidade) => (
-              <Button
-                key={quantidade}
-                type="button"
-                variant={quantidadeLote === quantidade && quantidadePersonalizada === "" ? "default" : "outline"}
-                onClick={() => selecionarQuantidade(quantidade)}
-              >
-                {quantidade}
-              </Button>
-            ))}
+            <Button disabled={rodandoLote || produtosSelecionados.length === 0} onClick={() => rodarLote("todos")}>
+              {rodandoLote
+                ? "Pesquisando em todos os sites…"
+                : `Buscar imagens dos ${produtosSelecionados.length} produto${produtosSelecionados.length !== 1 ? "s" : ""} selecionado${produtosSelecionados.length !== 1 ? "s" : ""}`}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={produtosSelecionados.length === 0 || rodandoLote}
+              onClick={() => setProdutosSelecionados([])}
+            >
+              Limpar seleção
+            </Button>
           </div>
         </div>
 
-        <div className="mt-6 max-w-sm">
-          <Label>Ou digite qualquer quantidade</Label>
-
-          <Input
-            className="mt-2"
-            type="number"
-            min="1"
-            max="10000"
-            value={quantidadePersonalizada}
-            placeholder={`Quantidade atual: ${quantidadeLote}`}
-            onChange={(ev) => alterarQuantidadePersonalizada(ev.target.value)}
-          />
-
-          <p className="mt-2 text-xs text-muted-foreground">Você pode escolher qualquer quantidade entre 1 e 10.000.</p>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <p className="text-base font-medium">
-            Quantidade selecionada: <span className="text-primary">{quantidadeLote}</span> produto
-            {quantidadeLote !== 1 ? "s" : ""}
-          </p>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-primary">Buscar imagens automaticamente</h2>
-
-        <p className="mt-1 text-sm text-muted-foreground">
-          A busca será feita somente nos produtos selecionados pelos filtros acima.
-        </p>
-
         <div className="mt-4 rounded-xl bg-muted/40 p-4 text-sm">
-          <p>
-            Categoria: <strong>{categoriaSelecionada ? categoriaSelecionada.nome : "Todas"}</strong>
+          <p className="font-medium">Busca rápida:</p>
+          <p className="mt-1 text-muted-foreground">
+            Os produtos selecionados serão processados em paralelo e cada produto será pesquisado simultaneamente em
+            todas as fontes configuradas.
           </p>
-
-          <p>
-            Subcategoria: <strong>{subcategoriaSelecionada ? subcategoriaSelecionada.nome : "Todas"}</strong>
-          </p>
-
-          <p>
-            Quantidade máxima: <strong>{quantidadeLote}</strong>
-          </p>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={rodandoLote} onClick={() => rodarLote("sem_imagem")}>
-            {rodandoLote
-              ? "Processando…"
-              : `Buscar imagens para ${quantidadeLote} produto${quantidadeLote !== 1 ? "s" : ""}`}
-          </Button>
-
-          <Button variant="outline" disabled={rodandoLote} onClick={() => rodarLote("revisao")}>
-            Reprocessar pendentes
-          </Button>
         </div>
 
         {lote && (
           <div className="mt-5 rounded-xl border bg-muted/30 p-4 text-sm">
             <p className="font-semibold">Resultado da busca</p>
-
             <p className="mt-2">
               Solicitados: {lote.solicitados} · Processados: {lote.processados} · Aprovados: {lote.aprovados} · Revisão:{" "}
               {lote.revisao} · Não encontradas: {lote.naoEncontrados} · Erros: {lote.erros}
             </p>
-
             <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto text-xs text-muted-foreground">
               {lote.detalhes?.map((detalhe: any, indice: number) => (
                 <li key={indice}>
@@ -664,6 +697,14 @@ function ImagensPage() {
               {total !== 1 ? "s" : ""}
             </p>
           </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={itens.length > 0 && itens.every((produto: any) => produtosSelecionados.includes(produto.id))}
+              onCheckedChange={(valor) => selecionarTodosDaPagina(Boolean(valor))}
+            />
+            <span className="text-sm">Selecionar todos desta página</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
@@ -676,7 +717,16 @@ function ImagensPage() {
           )}
 
           {itens.map((produto: any) => (
-            <div key={produto.id} className="flex flex-col rounded-xl border bg-card p-3 shadow-sm">
+            <div
+              key={produto.id}
+              className={`relative flex flex-col rounded-xl border bg-card p-3 shadow-sm ${produtosSelecionados.includes(produto.id) ? "ring-2 ring-primary" : ""}`}
+            >
+              <label className="absolute right-2 top-2 z-10 flex cursor-pointer items-center rounded-md bg-background/95 p-1 shadow">
+                <Checkbox
+                  checked={produtosSelecionados.includes(produto.id)}
+                  onCheckedChange={() => alternarProdutoSelecionado(produto.id)}
+                />
+              </label>
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
                 {produto.imagem || produto.image_candidato_url ? (
                   <img
