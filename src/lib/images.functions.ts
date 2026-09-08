@@ -22,6 +22,30 @@ const TAMANHO_PADRAO_LOTE = 20;
 const TAMANHO_MAXIMO_LOTE = 10000;
 const MAX_CANDIDATOS_POR_PRODUTO = 50;
 
+async function processarFila<T, R>(
+  itens: T[],
+  worker: (item: T, index: number) => Promise<R>,
+  opcoes: { concorrencia?: number } = {},
+): Promise<Array<PromiseSettledResult<R>>> {
+  const concorrencia = Math.max(1, Math.min(opcoes.concorrencia ?? 10, 30));
+  const resultados: Array<PromiseSettledResult<R>> = new Array(itens.length);
+  let proximo = 0;
+  const executar = async () => {
+    while (true) {
+      const index = proximo++;
+      if (index >= itens.length) return;
+      try {
+        const value = await worker(itens[index], index);
+        resultados[index] = { status: "fulfilled", value };
+      } catch (reason) {
+        resultados[index] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concorrencia, itens.length) }, executar));
+  return resultados;
+}
+
 export const estatisticasImagens = createServerFn({
   method: "GET",
 })
@@ -765,16 +789,21 @@ export const sincronizarLote = createServerFn({
       return { contagem, detalhes };
     };
 
-    for (let i = 0; i < produtos.length; i += CONCORRENCIA) {
-      const grupo = produtos.slice(i, i + CONCORRENCIA);
-      const resultadosGrupo = await Promise.all(grupo.map(processarProduto));
-      for (const item of resultadosGrupo) {
-        resultado.processados++;
-        resultado.aprovados += item.contagem.aprovados;
-        resultado.revisao += item.contagem.revisao;
-        resultado.naoEncontrados += item.contagem.naoEncontrados;
-        resultado.erros += item.contagem.erros;
-        resultado.detalhes.push(...item.detalhes);
+    const resultadosFila = await processarFila(produtos, processarProduto, {
+      concorrencia: CONCORRENCIA,
+    });
+
+    for (const item of resultadosFila) {
+      resultado.processados++;
+
+      if (item.status === "fulfilled") {
+        resultado.aprovados += item.value.contagem.aprovados;
+        resultado.revisao += item.value.contagem.revisao;
+        resultado.naoEncontrados += item.value.contagem.naoEncontrados;
+        resultado.erros += item.value.contagem.erros;
+        resultado.detalhes.push(...item.value.detalhes);
+      } else {
+        resultado.erros++;
       }
     }
     return {
