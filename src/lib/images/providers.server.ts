@@ -6,31 +6,52 @@ const LIMITE_TOTAL = 50;
 const TEMPO_LIMITE_MS = 15000;
 const PAUSA_ENTRE_ETAPAS_MS = 400;
 
-const SITES = [
-  {
-    id: "pague_menos",
-    nome: "Pague Menos",
-    dominio: "paguemenos.com.br",
-    base: "https://www.paguemenos.com.br",
-    busca: (q: string) => `https://www.paguemenos.com.br/busca?q=${encodeURIComponent(q)}`,
-  },
-  {
-    id: "farmacia_permanente",
-    nome: "Farmácia Permanente",
-    dominio: "farmaciapermanente.com.br",
-    base: "https://www.farmaciapermanente.com.br",
-    busca: (q: string) => `https://www.farmaciapermanente.com.br/busca?q=${encodeURIComponent(q)}`,
-  },
-  {
-    id: "droga_raia",
-    nome: "Droga Raia",
-    dominio: "drogaraia.com.br",
-    base: "https://www.drogaraia.com.br",
-    busca: (q: string) => `https://www.drogaraia.com.br/search?text=${encodeURIComponent(q)}`,
-  },
-] as const;
+type Site = {
+  id: string;
+  nome: string;
+  dominio: string;
+  base: string;
+  busca: (q: string) => string;
+};
 
-type Site = (typeof SITES)[number];
+/** Descrição simples de uma fonte vinda do banco (ou das fontes padrão). */
+export type FonteBusca = { id: string; nome: string; url: string };
+
+const CAMINHOS_BUSCA: Record<string, (base: string, q: string) => string> = {
+  "drogaraia.com.br": (base, q) => `${base}/search?text=${encodeURIComponent(q)}`,
+};
+
+export function montarSite(fonte: FonteBusca): Site | null {
+  let base: string;
+  let dominio: string;
+
+  try {
+    const u = new URL(fonte.url.trim().startsWith("http") ? fonte.url.trim() : `https://${fonte.url.trim()}`);
+    base = u.origin;
+    dominio = u.hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+
+  const caminho = CAMINHOS_BUSCA[dominio];
+
+  return {
+    id: fonte.id,
+    nome: fonte.nome,
+    dominio,
+    base,
+    busca: (q: string) => (caminho ? caminho(base, q) : `${base}/busca?q=${encodeURIComponent(q)}`),
+  };
+}
+
+/** Fontes padrão do sistema, preservadas mesmo que o banco não responda. */
+export const FONTES_PADRAO: FonteBusca[] = [
+  { id: "pague_menos", nome: "Pague Menos", url: "https://www.paguemenos.com.br" },
+  { id: "farmacia_permanente", nome: "Farmácia Permanente", url: "https://www.farmaciapermanente.com.br" },
+  { id: "droga_raia", nome: "Droga Raia", url: "https://www.drogaraia.com.br" },
+];
+
+const SITES: Site[] = FONTES_PADRAO.map((f) => montarSite(f)!).filter(Boolean);
 
 export type ImageProvider = {
   id: string;
