@@ -244,7 +244,7 @@ export async function buscarAte50Imagens(
   const acumulado: Candidato[] = [];
   for (let i = 0; i < termos.length && acumulado.length < LIMITE_TOTAL; i++) {
     const etapa = termos[i]!;
-    const encontrados = await buscarTodosOsSites(etapa.termo, etapa.ean);
+    const encontrados = await buscarTodosOsSites(sites, etapa.termo, etapa.ean);
     acumulado.push(...encontrados);
     if (i < termos.length - 1) await sleep(PAUSA_ENTRE_ETAPAS_MS);
   }
