@@ -183,9 +183,9 @@ async function buscarNoSite(site: Site, termo: string, ean?: string) {
     .slice(0, LIMITE_POR_SITE);
 }
 
-async function buscarTodosOsSites(termo: string, ean?: string) {
-  // Aguarda as três fontes; nenhuma fonte encerra a pesquisa das outras.
-  const grupos = await Promise.all(SITES.map((site) => buscarNoSite(site, termo, ean)));
+async function buscarTodosOsSites(sites: Site[], termo: string, ean?: string) {
+  // Aguarda todas as fontes; nenhuma fonte encerra a pesquisa das outras.
+  const grupos = await Promise.all(sites.map((site) => buscarNoSite(site, termo, ean)));
   // Intercala as fontes para evitar que Pague Menos ocupe todos os primeiros resultados.
   const resultado: Candidato[] = [];
   for (let i = 0; resultado.length < LIMITE_TOTAL; i++) {
