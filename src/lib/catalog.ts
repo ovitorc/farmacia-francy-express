@@ -18,12 +18,12 @@ export type Produto = {
   subcategoria: string;
   descricao: string;
   preco: number;
-  precoPromocional?: number | undefined;
-  imagem?: string | undefined;
+  precoPromocional?: number;
+  imagem?: string;
   disponivel: boolean;
   oferta: boolean;
-  rasgaPreco?: boolean | undefined;
-  informacoes?: string[] | undefined;
+  rasgaPreco?: boolean;
+  informacoes?: string[];
 };
 
 export type Catalogo = {
@@ -35,6 +35,9 @@ export type Catalogo = {
   };
 };
 
+export const WHATSAPP_URL = "https://wa.me/558321781349";
+export const INSTAGRAM_URL = "https://www.instagram.com/farmaciasfrancy/";
+
 export const CATEGORIAS_REMOVIDAS = [
   "pet",
   "pets",
@@ -42,15 +45,27 @@ export const CATEGORIAS_REMOVIDAS = [
   "produtos-para-animais",
   "produtos-para-pet",
   "animais",
+  "produtos-para-animais-pet",
 ];
 
-export const slugify = (n: string) =>
-  n
+export const slugify = (valor: string) =>
+  String(valor ?? "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+
+const normalizar = (valor: string) => slugify(valor).replace(/-/g, " ");
+
+const textoDoProduto = (produto: Produto) =>
+  normalizar(
+    [produto.categoria, produto.subcategoria, produto.nome, produto.descricao, ...(produto.informacoes ?? [])]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(normalizar(termo)));
 
 export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
   {
@@ -72,12 +87,11 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Comprimidos e Cápsulas", "comprimidos-capsulas"],
       ["Cremes e Pomadas", "cremes-pomadas"],
       ["Gotas", "gotas"],
-      ["Spray", "spray"],
+      ["Spray e Aerossol", "spray"],
       ["Pastilhas", "pastilhas"],
       ["Supositórios", "supositorios"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "MIPs",
     slug: "mips",
@@ -92,12 +106,11 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Nasais", "nasais"],
       ["Cremes e Pomadas", "cremes-pomadas"],
       ["Gotas", "gotas"],
-      ["Spray", "spray"],
+      ["Spray e Aerossol", "spray"],
       ["Pastilhas", "pastilhas"],
       ["Outros MIPs", "outros-mips"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "Perfumaria",
     slug: "perfumaria",
@@ -117,7 +130,6 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Eletrônicos", "eletronicos"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "Mamãe e Bebê",
     slug: "mamae-e-bebe",
@@ -130,7 +142,6 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Leite", "leite"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "Conveniência",
     slug: "conveniencia",
@@ -145,7 +156,6 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Chips", "chips"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "Vitaminas e Suplementos",
     slug: "vitaminas-e-suplementos",
@@ -158,7 +168,6 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Naturais", "naturais"],
     ].map(([nome, slug]) => ({ nome, slug })),
   },
-
   {
     nome: "Saúde e Bem-estar",
     slug: "saude-e-bem-estar",
@@ -173,222 +182,328 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
   },
 ];
 
-function textoProduto(p: Produto) {
-  return `${p.categoria} ${p.subcategoria} ${p.nome} ${p.descricao}`.toLowerCase();
+function subcategoriaPorTexto(texto: string, categoria: string): string | null {
+  if (categoria === "mamae-e-bebe") {
+    if (contem(texto, "fralda", "lenco", "lenço")) return "fraldas-lencos";
+    if (contem(texto, "chupeta", "mamadeira", "copo infantil")) return "chupetas-mamadeiras-copos";
+    if (contem(texto, "higiene infantil", "shampoo infantil", "sabonete infantil")) return "higiene-infantil";
+    if (contem(texto, "leite infantil", "formula infantil", "fórmula infantil")) return "leite";
+    return "infantil";
+  }
+
+  if (categoria === "conveniencia") {
+    if (contem(texto, "boboniere", "chocolate", "bala", "doce")) return "boboniere";
+    if (contem(texto, "adocante", "adoçante")) return "adocantes";
+    if (contem(texto, "chips", "salgadinho")) return "chips";
+    if (contem(texto, "leite")) return "leite";
+    if (contem(texto, "natural", "organico", "orgânico")) return "naturais";
+    if (contem(texto, "bebida", "agua", "água", "suco", "liquido", "líquido")) return "liquidos";
+    return "alimentos";
+  }
+
+  if (categoria === "vitaminas-e-suplementos") {
+    if (contem(texto, "polivitamin", "multivitamin")) return "polivitaminicos";
+    if (
+      contem(
+        texto,
+        "nutricao esportiva",
+        "nutrição esportiva",
+        "whey",
+        "creatina",
+        "pre treino",
+        "pré treino",
+        "proteina",
+        "proteína",
+      )
+    )
+      return "nutricao-esportiva";
+    if (contem(texto, "academia")) return "academia";
+    if (contem(texto, "natural")) return "naturais";
+    return "suplementos";
+  }
+
+  if (categoria === "saude-e-bem-estar") {
+    if (contem(texto, "ortopedic", "joelheira", "cinta", "compressao", "compressão", "bengala", "suporte"))
+      return "ortopedicos";
+    if (contem(texto, "oficinal", "manipulado")) return "oficinais";
+    if (contem(texto, "natural")) return "naturais";
+    if (contem(texto, "acessor", "utilidade")) return "acessorios";
+    return "medico-hospitalar";
+  }
+
+  if (categoria === "perfumaria") {
+    if (contem(texto, "importad")) return "perfumaria-importada";
+    if (contem(texto, "higiene bucal", "saude bucal", "saúde bucal", "creme dental", "escova", "enxaguante"))
+      return "higiene-bucal";
+    if (contem(texto, "dermocosmet", "dermatocosmet")) return "dermocosmeticos";
+    if (contem(texto, "cabelo", "capilar", "maquiagem", "beleza", "salao", "salão")) return "salao-e-beleza";
+    if (contem(texto, "protetor solar")) return "protetor-solar";
+    if (contem(texto, "solar")) return "solar";
+    if (contem(texto, "preservativo", "camisinha")) return "preservativos";
+    if (contem(texto, "eletron", "secador", "prancha", "barbeador")) return "eletronicos";
+    if (contem(texto, "acessor", "utilidade")) return "acessorios";
+    if (contem(texto, "creme", "pomada")) return "cremes-pomadas";
+    if (contem(texto, "higiene", "sabonete", "desodorante", "shampoo", "higiene intima", "higiene íntima"))
+      return "higiene-pessoal";
+    return "perfumaria";
+  }
+
+  if (categoria === "mips") {
+    if (contem(texto, "analges", "dor", "febre", "dipirona", "paracetamol", "ibuprofeno")) return "dor-e-febre";
+    if (contem(texto, "antigrip", "gripe", "resfriado", "tosse")) return "gripe-e-resfriado";
+    if (contem(texto, "antialerg", "alergia", "loratadina", "desloratadina", "fexofenadina")) return "alergia";
+    if (contem(texto, "digest", "antiacido", "antiácido", "azia", "estomago", "estômago", "laxante")) return "digestao";
+    if (contem(texto, "dermatolog")) return "dermatologicos";
+    if (contem(texto, "oftalm")) return "oftalmicos";
+    if (contem(texto, "nasal")) return "nasais";
+    if (contem(texto, "creme", "pomada")) return "cremes-pomadas";
+    if (contem(texto, "gota")) return "gotas";
+    if (contem(texto, "spray", "aerosol")) return "spray";
+    if (contem(texto, "pastilha")) return "pastilhas";
+    return "outros-mips";
+  }
+
+  if (categoria === "medicamentos") {
+    if (contem(texto, "generico", "genérico")) return "genericos";
+    if (contem(texto, "similar")) return "similares";
+    if (contem(texto, "uso continuo", "uso contínuo")) return "uso-continuo";
+    if (contem(texto, "antibiot")) return "antibioticos";
+    if (contem(texto, "anticoncepcional")) return "anticoncepcionais";
+    if (contem(texto, "dermatolog")) return "dermatologicos";
+    if (contem(texto, "oftalm")) return "oftalmicos";
+    if (contem(texto, "nasal")) return "nasais";
+    if (contem(texto, "otolog", "ouvido")) return "otologicos";
+    if (contem(texto, "injet", "ampola")) return "injetaveis";
+    if (contem(texto, "comprim", "capsula", "cápsula", "dragea", "drágea")) return "comprimidos-capsulas";
+    if (contem(texto, "creme", "pomada")) return "cremes-pomadas";
+    if (contem(texto, "gota")) return "gotas";
+    if (contem(texto, "spray", "aerosol")) return "spray";
+    if (contem(texto, "pastilha")) return "pastilhas";
+    if (contem(texto, "supositorio", "supositório")) return "supositorios";
+    return "medicamentos-de-marca";
+  }
+
+  return null;
 }
 
-const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(termo));
-
 export function classificarProdutoNoSite(produto: Produto): { categoria: string; subcategoria: string } {
-  const t = textoProduto(produto);
+  const categoriaOriginal = normalizar(produto.categoria);
+  const subcategoriaOriginal = normalizar(produto.subcategoria);
+  const texto = textoDoProduto(produto);
+  const origem = `${categoriaOriginal} ${subcategoriaOriginal}`;
 
-  const medicamento = contem(
-    t,
-    "medic",
-    "generico",
-    "genérico",
-    "similar",
-    "marcas",
-    "antibiot",
-    "anticoncepcional",
-    "oftalm",
-    "nasal",
-    "otolog",
-    "injet",
-    "comprim",
-    "capsula",
-    "cápsula",
-    "supositor",
-  );
+  if (categoriaFoiRemovida(produto.categoria)) return { categoria: "", subcategoria: "" };
 
-  const perfumaria = contem(
-    t,
-    "perfum",
-    "higiene",
-    "dermocosmet",
-    "salao",
-    "salão",
-    "protetor solar",
-    "preservativo",
-    "acessor",
-    "eletron",
-  );
+  if (
+    contem(
+      origem,
+      "fralda",
+      "bebe",
+      "bebes",
+      "crianca",
+      "crianças",
+      "infantil",
+      "mamadeira",
+      "chupeta",
+      "lencos umedecidos",
+      "lenços umedecidos",
+    )
+  ) {
+    return { categoria: "mamae-e-bebe", subcategoria: subcategoriaPorTexto(texto, "mamae-e-bebe") ?? "infantil" };
+  }
 
-  if (contem(t, "fralda", "lenco", "lenço", "chupeta", "mamadeira", "copos", "higiene infanti")) {
+  if (
+    contem(
+      origem,
+      "conveniencia",
+      "conveniência",
+      "alimento",
+      "boboniere",
+      "adoçante",
+      "adocante",
+      "chips",
+      "liquido",
+      "líquido",
+    )
+  ) {
+    return { categoria: "conveniencia", subcategoria: subcategoriaPorTexto(texto, "conveniencia") ?? "alimentos" };
+  }
+
+  if (contem(origem, "vitamina", "suplement", "nutricao esportiva", "nutrição esportiva", "academia")) {
     return {
-      categoria: "mamae-e-bebe",
-      subcategoria: contem(t, "fralda", "lenco", "lenço")
-        ? "fraldas-lencos"
-        : contem(t, "chupeta", "mamadeira", "copos")
-          ? "chupetas-mamadeiras-copos"
-          : "higiene-infantil",
+      categoria: "vitaminas-e-suplementos",
+      subcategoria: subcategoriaPorTexto(texto, "vitaminas-e-suplementos") ?? "suplementos",
     };
   }
 
   if (
-    contem(t, "conveniencia", "conveniência", "boboniere", "alimentos", "liquidos", "líquidos", "adocante", "chips")
+    contem(
+      origem,
+      "hospital",
+      "primeiros socorros",
+      "ortopedia",
+      "idosos",
+      "incontinencia",
+      "incontinência",
+      "oficinais",
+      "utilidades",
+    )
   ) {
     return {
-      categoria: "conveniencia",
-      subcategoria: contem(t, "boboniere")
-        ? "boboniere"
-        : contem(t, "alimentos")
-          ? "alimentos"
-          : contem(t, "adocante")
-            ? "adocantes"
-            : contem(t, "chips")
-              ? "chips"
-              : "liquidos",
-    };
-  }
-
-  if (contem(t, "polivitamin", "suplement", "nutriçao esport", "nutrição esport", "academia")) {
-    return {
-      categoria: "vitaminas-e-suplementos",
-      subcategoria: contem(t, "nutri")
-        ? "nutricao-esportiva"
-        : contem(t, "academia")
-          ? "academia"
-          : contem(t, "polivit")
-            ? "polivitaminicos"
-            : "suplementos",
-    };
-  }
-
-  if (contem(t, "hospital", "ortopedic", "oficinais")) {
-    return {
       categoria: "saude-e-bem-estar",
-      subcategoria: contem(t, "ortopedic") ? "ortopedicos" : contem(t, "oficinais") ? "oficinais" : "medico-hospitalar",
+      subcategoria: subcategoriaPorTexto(texto, "saude-e-bem-estar") ?? "medico-hospitalar",
     };
   }
 
-  if (perfumaria) {
-    let sub = "perfumaria";
-
-    if (contem(t, "import")) sub = "perfumaria-importada";
-    else if (contem(t, "higiene bucal", "oral")) sub = "higiene-bucal";
-    else if (contem(t, "higiene")) sub = "higiene-pessoal";
-    else if (contem(t, "dermocosmet")) sub = "dermocosmeticos";
-    else if (contem(t, "salao", "salão", "beleza")) sub = "salao-e-beleza";
-    else if (contem(t, "protetor solar")) sub = "protetor-solar";
-    else if (contem(t, "solar")) sub = "solar";
-    else if (contem(t, "preservativo")) sub = "preservativos";
-    else if (contem(t, "acessor")) sub = "acessorios";
-    else if (contem(t, "eletron")) sub = "eletronicos";
-    else if (contem(t, "cremes", "pomadas")) sub = "cremes-pomadas";
-
-    return {
-      categoria: "perfumaria",
-      subcategoria: sub,
-    };
+  if (contem(origem, "mip", "mips")) {
+    return { categoria: "mips", subcategoria: subcategoriaPorTexto(texto, "mips") ?? "outros-mips" };
   }
 
-  if (medicamento && contem(t, "analges", "antigrip", "antialerg", "digest", "dor", "febre", "gripe", "resfriado")) {
-    let sub = "outros-mips";
+  const pareceMIP =
+    contem(origem, "analgesico", "analgésico", "antialergico", "antialérgico", "antigripal", "digestivo") &&
+    !contem(origem, "uso continuo", "uso contínuo", "antibiot", "controlado");
 
-    if (contem(t, "analges", "dor", "febre")) sub = "dor-e-febre";
-    else if (contem(t, "antigrip", "gripe", "resfriado")) sub = "gripe-e-resfriado";
-    else if (contem(t, "antialerg", "alerg")) sub = "alergia";
-    else if (contem(t, "digest")) sub = "digestao";
-
-    return {
-      categoria: "mips",
-      subcategoria: sub,
-    };
+  if (pareceMIP) {
+    return { categoria: "mips", subcategoria: subcategoriaPorTexto(texto, "mips") ?? "outros-mips" };
   }
 
-  if (medicamento) {
-    let sub = "medicamentos-de-marca";
-
-    if (contem(t, "generico", "genérico")) sub = "genericos";
-    else if (contem(t, "similar")) sub = "similares";
-    else if (contem(t, "antibiot")) sub = "antibioticos";
-    else if (contem(t, "anticoncepcional")) sub = "anticoncepcionais";
-    else if (contem(t, "dermatolog")) sub = "dermatologicos";
-    else if (contem(t, "oftalm")) sub = "oftalmicos";
-    else if (contem(t, "nasal")) sub = "nasais";
-    else if (contem(t, "otolog")) sub = "otologicos";
-    else if (contem(t, "injet")) sub = "injetaveis";
-    else if (contem(t, "comprim", "capsula", "cápsula")) sub = "comprimidos-capsulas";
-    else if (contem(t, "spray", "aerosol")) sub = "spray";
-    else if (contem(t, "gotas")) sub = "gotas";
-    else if (contem(t, "pastilhas")) sub = "pastilhas";
-    else if (contem(t, "supositor")) sub = "supositorios";
-
+  if (
+    contem(
+      origem,
+      "medicamento",
+      "generico",
+      "genérico",
+      "similar",
+      "marca",
+      "antibiot",
+      "anticoncepcional",
+      "uso continuo",
+      "uso contínuo",
+    )
+  ) {
     return {
       categoria: "medicamentos",
-      subcategoria: sub,
+      subcategoria: subcategoriaPorTexto(texto, "medicamentos") ?? "medicamentos-de-marca",
     };
   }
 
-  return {
-    categoria: "perfumaria",
-    subcategoria: "perfumaria",
-  };
+  if (
+    contem(
+      origem,
+      "perfumaria",
+      "cosmet",
+      "higiene",
+      "beleza",
+      "saude bucal",
+      "saúde bucal",
+      "cuidados intimos",
+      "cuidados íntimos",
+      "acessorios",
+      "acessórios",
+    )
+  ) {
+    return { categoria: "perfumaria", subcategoria: subcategoriaPorTexto(texto, "perfumaria") ?? "perfumaria" };
+  }
+
+  if (contem(texto, "fralda", "mamadeira", "chupeta", "lenço umedecido", "lenco umedecido")) {
+    return { categoria: "mamae-e-bebe", subcategoria: subcategoriaPorTexto(texto, "mamae-e-bebe") ?? "infantil" };
+  }
+
+  if (contem(texto, "whey", "creatina", "suplemento", "vitamina", "mineral")) {
+    return {
+      categoria: "vitaminas-e-suplementos",
+      subcategoria: subcategoriaPorTexto(texto, "vitaminas-e-suplementos") ?? "suplementos",
+    };
+  }
+
+  if (contem(texto, "curativo", "termometro", "termômetro", "atadura", "ortopedic", "compressao", "compressão")) {
+    return {
+      categoria: "saude-e-bem-estar",
+      subcategoria: subcategoriaPorTexto(texto, "saude-e-bem-estar") ?? "medico-hospitalar",
+    };
+  }
+
+  if (
+    contem(
+      texto,
+      "perfume",
+      "sabonete",
+      "desodorante",
+      "shampoo",
+      "protetor solar",
+      "maquiagem",
+      "preservativo",
+      "creme dental",
+      "escova dental",
+    )
+  ) {
+    return { categoria: "perfumaria", subcategoria: subcategoriaPorTexto(texto, "perfumaria") ?? "perfumaria" };
+  }
+
+  return { categoria: "perfumaria", subcategoria: "perfumaria" };
 }
 
 export function produtosDaCategoriaSite(produtos: Produto[], categoria: string, sub?: string) {
   return produtos.filter((produto) => {
-    const c = classificarProdutoNoSite(produto);
-
-    return c.categoria === categoria && (!sub || c.subcategoria === sub);
+    const classificacao = classificarProdutoNoSite(produto);
+    return classificacao.categoria === categoria && (!sub || classificacao.subcategoria === sub);
   });
-}
-
-export const precoFinal = (p: Produto) => p.precoPromocional ?? p.preco;
-
-export const formatarPreco = (valor: number) =>
-  valor.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-
-export function produtoTemImagem(produto: Produto): boolean {
-  if (!produto.imagem) {
-    return false;
-  }
-
-  const imagem = produto.imagem.trim();
-
-  if (!imagem) {
-    return false;
-  }
-
-  const valor = imagem.toLowerCase();
-
-  if (valor === "null" || valor === "undefined" || valor === "sem imagem" || valor === "sem-imagem") {
-    return false;
-  }
-
-  return true;
 }
 
 export function categoriaFoiRemovida(slug: string): boolean {
   const categoria = slugify(slug);
+  return CATEGORIAS_REMOVIDAS.includes(categoria) || categoria.includes("pet") || categoria.includes("animal");
+}
 
-  if (CATEGORIAS_REMOVIDAS.includes(categoria)) {
-    return true;
-  }
+export function removerProdutosDeCategoriasRemovidas(produtos: Produto[]) {
+  return produtos.filter((produto) => !categoriaFoiRemovida(produto.categoria));
+}
 
-  return categoria.includes("pet") || categoria.includes("animal");
+export function produtoTemImagem(produto: Produto): boolean {
+  const imagem = produto.imagem?.trim().toLowerCase();
+  return Boolean(imagem && !["null", "undefined", "sem imagem", "sem-imagem"].includes(imagem));
 }
 
 export function ordenarProdutosPorRelevancia(produtos: Produto[]) {
   return [...produtos].sort((a, b) => {
-    const aImagem = produtoTemImagem(a) ? 1 : 0;
-    const bImagem = produtoTemImagem(b) ? 1 : 0;
-
-    if (aImagem !== bImagem) {
-      return bImagem - aImagem;
-    }
-
-    const aOferta = a.oferta ? 1 : 0;
-    const bOferta = b.oferta ? 1 : 0;
-
-    if (aOferta !== bOferta) {
-      return bOferta - aOferta;
-    }
-
+    const imagemA = produtoTemImagem(a) ? 1 : 0;
+    const imagemB = produtoTemImagem(b) ? 1 : 0;
+    if (imagemA !== imagemB) return imagemB - imagemA;
+    const ofertaA = a.oferta ? 1 : 0;
+    const ofertaB = b.oferta ? 1 : 0;
+    if (ofertaA !== ofertaB) return ofertaB - ofertaA;
     return a.nome.localeCompare(b.nome, "pt-BR");
   });
 }
+
+export function ordenarSubcategoriasPorRelevancia(
+  subcategorias: Subcategory[],
+  categoriaSlug: string,
+  produtos: Produto[],
+) {
+  const indiceOriginal = new Map(subcategorias.map((subcategoria, indice) => [subcategoria.slug, indice]));
+  return [...subcategorias].sort((a, b) => {
+    const totalA = produtosDaCategoriaSite(produtos, categoriaSlug, a.slug).length;
+    const totalB = produtosDaCategoriaSite(produtos, categoriaSlug, b.slug).length;
+    if (totalA !== totalB) return totalB - totalA;
+    return (indiceOriginal.get(a.slug) ?? 0) - (indiceOriginal.get(b.slug) ?? 0);
+  });
+}
+
+export function ordenarCategoriasPorRelevancia(categorias: Categoria[], produtos: Produto[]) {
+  const indiceOriginal = new Map(ESTRUTURA_CATEGORIAS_SITE.map((categoria, indice) => [categoria.slug, indice]));
+  return [...categorias].sort((a, b) => {
+    const totalA = produtosDaCategoriaSite(produtos, a.slug).length;
+    const totalB = produtosDaCategoriaSite(produtos, b.slug).length;
+    if (totalA !== totalB) return totalB - totalA;
+    return (indiceOriginal.get(a.slug) ?? 999) - (indiceOriginal.get(b.slug) ?? 999);
+  });
+}
+
+export function acharCategoria(categorias: Categoria[], slug: string) {
+  return categorias.find((categoria) => categoria.slug === slug);
+}
+
+export const precoFinal = (produto: Produto) => produto.precoPromocional ?? produto.preco;
+
+export const formatarPreco = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
