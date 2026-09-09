@@ -1,29 +1,27 @@
 import { createServerFn } from "@tanstack/react-start";
-
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/integrations/supabase/types";
 
 import {
   categoriaFoiRemovida,
-  ordenarCategoriasPorRelevancia,
   ordenarProdutosPorRelevancia,
-  ordenarSubcategoriasPorRelevancia,
   removerProdutosDeCategoriasRemovidas,
+  ESTRUTURA_CATEGORIAS_SITE,
+  produtosDaCategoriaSite,
   type Catalogo,
-  type Categoria,
   type Produto,
 } from "@/lib/catalog";
 
 /* ============================================================
    TIPOS
-   ============================================================ */
+============================================================ */
 
 type LinhaProduto = Database["public"]["Tables"]["produtos"]["Row"];
 
 /* ============================================================
    CLIENTE SUPABASE
-   ============================================================ */
+============================================================ */
 
 function publicClient() {
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"]!;
@@ -55,46 +53,61 @@ function publicClient() {
 
 /* ============================================================
    MAPEAMENTO DO PRODUTO
-   ============================================================ */
+============================================================ */
 
 function mapear(produto: LinhaProduto): Produto {
   return {
     id: produto.id,
+
     codigo: produto.codigo,
+
     nome: produto.nome,
+
     categoria: produto.categoria_slug,
+
     subcategoria: produto.subcategoria_slug,
+
     descricao: produto.descricao,
+
     preco: Number(produto.preco),
+
     precoPromocional: produto.preco_promocional == null ? undefined : Number(produto.preco_promocional),
+
     imagem: produto.imagem ?? undefined,
+
     disponivel: produto.disponivel,
+
     oferta: produto.oferta,
+
     rasgaPreco: produto.rasga_preco,
+
     informacoes: produto.informacoes ?? [],
   };
 }
 
 /* ============================================================
    COLUNAS
-   ============================================================ */
+============================================================ */
 
 const COLUNAS = "*";
 
 /* ============================================================
    CATÁLOGO PRINCIPAL
-   ============================================================ */
+============================================================ */
 
 export const getCatalogo = createServerFn({
   method: "GET",
 }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
 
-  const [cats, subs, todosProdutos, rasga, ofertas, promocionais] = await Promise.all([
-    supabase.from("categorias").select("slug, nome, icone, ordem").order("ordem"),
+  /*
+   * Busca todos os produtos disponíveis.
+   *
+   * As categorias exibidas no site são calculadas
+   * através da estrutura comercial definida em catalog.ts.
+   */
 
-    supabase.from("subcategorias").select("categoria_slug, slug, nome, ordem").order("ordem"),
-
+  const [todosProdutos, rasga, ofertas, promocionais] = await Promise.all([
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true),
 
     supabase.from("produtos").select(COLUNAS).eq("rasga_preco", true).eq("disponivel", true).order("ordem"),
@@ -104,36 +117,40 @@ export const getCatalogo = createServerFn({
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true).not("preco_promocional", "is", null),
   ]);
 
+  /* ============================================================
+     TODOS OS PRODUTOS
+  ============================================================ */
+
   const produtosDoBanco = (todosProdutos.data ?? []).map(mapear);
 
   const produtosPermitidos = removerProdutosDeCategoriasRemovidas(produtosDoBanco);
 
   const produtosOrdenados = ordenarProdutosPorRelevancia(produtosPermitidos);
 
-  const categoriasPermitidas = (cats.data ?? []).filter((categoria) => !categoriaFoiRemovida(categoria.slug));
+  /* ============================================================
+     CATEGORIAS COMERCIAIS DO SITE
+  ============================================================ */
 
-  const categoriasBase: Categoria[] = categoriasPermitidas.map((categoria) => {
-    const subcategorias = (subs.data ?? [])
-      .filter((subcategoria) => subcategoria.categoria_slug === categoria.slug)
-      .map((subcategoria) => ({
-        nome: subcategoria.nome,
-        slug: subcategoria.slug,
-      }));
+  const categorias = ESTRUTURA_CATEGORIAS_SITE.map((categoria) => {
+    const subcategorias = categoria.subcategorias.filter((subcategoria) => {
+      const produtos = produtosDaCategoriaSite(produtosOrdenados, categoria.slug, subcategoria.slug);
+
+      return produtos.length > 0;
+    });
 
     return {
-      nome: categoria.nome,
-      slug: categoria.slug,
-      icone: categoria.icone,
-
-      subcategorias: ordenarSubcategoriasPorRelevancia(subcategorias, categoria.slug, produtosOrdenados),
+      ...categoria,
+      subcategorias,
     };
-  });
+  }).filter((categoria) => {
+    const produtos = produtosDaCategoriaSite(produtosOrdenados, categoria.slug);
 
-  const categorias = ordenarCategoriasPorRelevancia(categoriasBase, produtosOrdenados);
+    return produtos.length > 0;
+  });
 
   /* ============================================================
      RASGA PREÇO
-     ============================================================ */
+  ============================================================ */
 
   const produtosRasga = removerProdutosDeCategoriasRemovidas((rasga.data ?? []).map(mapear));
 
@@ -141,7 +158,7 @@ export const getCatalogo = createServerFn({
 
   /* ============================================================
      OFERTAS
-     ============================================================ */
+  ============================================================ */
 
   const ofertasMarcadas = removerProdutosDeCategoriasRemovidas((ofertas.data ?? []).map(mapear));
 
@@ -154,6 +171,7 @@ export const getCatalogo = createServerFn({
   for (const produto of ofertasMarcadas) {
     if (!idsOfertas.has(produto.id)) {
       idsOfertas.add(produto.id);
+
       fonteOferta.push(produto);
     }
   }
@@ -161,11 +179,16 @@ export const getCatalogo = createServerFn({
   for (const produto of produtosPromocionais) {
     if (!idsOfertas.has(produto.id)) {
       idsOfertas.add(produto.id);
+
       fonteOferta.push(produto);
     }
   }
 
   const ofertasOrdenadas = ordenarProdutosPorRelevancia(fonteOferta).slice(0, 10);
+
+  /* ============================================================
+     RETORNO
+  ============================================================ */
 
   return {
     categorias,
@@ -174,6 +197,7 @@ export const getCatalogo = createServerFn({
 
     vitrines: {
       rasgaPreco: fonteRasga,
+
       ofertas: ofertasOrdenadas,
     },
   };
@@ -181,10 +205,11 @@ export const getCatalogo = createServerFn({
 
 /* ============================================================
    PAGINAÇÃO DE PRODUTOS
-   ============================================================ */
+============================================================ */
 
 export type PaginaProdutos = {
   itens: Produto[];
+
   total: number;
 };
 
@@ -193,6 +218,10 @@ export const listarProdutos = createServerFn({
 })
   .inputValidator((dados: { categoria: string; sub?: string; ordem?: string; pagina?: number }) => dados)
   .handler(async ({ data }): Promise<PaginaProdutos> => {
+    /*
+     * Bloqueia categorias removidas.
+     */
+
     if (categoriaFoiRemovida(data.categoria)) {
       return {
         itens: [],
@@ -206,11 +235,37 @@ export const listarProdutos = createServerFn({
 
     const pagina = Math.max(1, data.pagina ?? 1);
 
-    let query = supabase.from("produtos").select(COLUNAS).eq("categoria_slug", data.categoria);
+    /*
+     * Verifica se a categoria solicitada
+     * é uma categoria virtual/comercial do site.
+     */
 
-    if (data.sub) {
-      query = query.eq("subcategoria_slug", data.sub);
+    const categoriaVirtual = ESTRUTURA_CATEGORIAS_SITE.some((categoria) => categoria.slug === data.categoria);
+
+    /*
+     * Para categorias comerciais, precisamos
+     * buscar os produtos disponíveis e depois
+     * classificá-los pela lógica do catalog.ts.
+     */
+
+    let query = supabase.from("produtos").select(COLUNAS).eq("disponivel", true);
+
+    /*
+     * Caso seja uma categoria antiga do banco,
+     * mantém compatibilidade com o filtro original.
+     */
+
+    if (!categoriaVirtual) {
+      query = query.eq("categoria_slug", data.categoria);
+
+      if (data.sub) {
+        query = query.eq("subcategoria_slug", data.sub);
+      }
     }
+
+    /*
+     * FILTRO DE OFERTAS
+     */
 
     if (data.ordem === "ofertas") {
       query = query.eq("oferta", true);
@@ -219,6 +274,19 @@ export const listarProdutos = createServerFn({
     const { data: linhas } = await query;
 
     let produtos = removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear));
+
+    /*
+     * Aplica a classificação comercial
+     * definida no catalog.ts.
+     */
+
+    if (categoriaVirtual) {
+      produtos = produtosDaCategoriaSite(produtos, data.categoria, data.sub);
+    }
+
+    /* ============================================================
+         ORDENAÇÃO
+      ============================================================ */
 
     if (data.ordem === "menor-preco") {
       produtos = [...produtos].sort((a, b) => {
@@ -248,6 +316,10 @@ export const listarProdutos = createServerFn({
       produtos = ordenarProdutosPorRelevancia(produtos);
     }
 
+    /* ============================================================
+         PAGINAÇÃO
+      ============================================================ */
+
     const total = produtos.length;
 
     const inicio = (pagina - 1) * porPagina;
@@ -256,13 +328,14 @@ export const listarProdutos = createServerFn({
 
     return {
       itens: produtos.slice(inicio, fim),
+
       total,
     };
   });
 
 /* ============================================================
    BUSCAR PRODUTOS
-   ============================================================ */
+============================================================ */
 
 export const buscarProdutos = createServerFn({
   method: "GET",
@@ -282,6 +355,7 @@ export const buscarProdutos = createServerFn({
     const { data: linhas } = await supabase
       .from("produtos")
       .select(COLUNAS)
+      .eq("disponivel", true)
       .or(`nome.ilike.${like},codigo.ilike.${like},principio_ativo.ilike.${like}`);
 
     const produtos = removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear));
@@ -293,7 +367,7 @@ export const buscarProdutos = createServerFn({
 
 /* ============================================================
    PRODUTO INDIVIDUAL
-   ============================================================ */
+============================================================ */
 
 export const obterProduto = createServerFn({
   method: "GET",
@@ -308,6 +382,10 @@ export const obterProduto = createServerFn({
     } | null> => {
       const supabase = publicClient();
 
+      /*
+       * PRODUTO PRINCIPAL
+       */
+
       const { data: linha } = await supabase.from("produtos").select(COLUNAS).eq("id", data.id).maybeSingle();
 
       if (!linha) {
@@ -316,23 +394,69 @@ export const obterProduto = createServerFn({
 
       const produto = mapear(linha);
 
+      /*
+       * Impede produtos de categorias removidas.
+       */
+
       if (categoriaFoiRemovida(produto.categoria)) {
         return null;
       }
 
+      /*
+       * Para produtos relacionados,
+       * buscamos os produtos disponíveis.
+       *
+       * Depois tentamos priorizar produtos
+       * da mesma categoria comercial.
+       */
+
       const { data: relacionadosBanco } = await supabase
         .from("produtos")
         .select(COLUNAS)
-        .eq("categoria_slug", linha.categoria_slug)
         .eq("disponivel", true)
         .neq("id", linha.id);
 
-      const relacionados = ordenarProdutosPorRelevancia(
-        removerProdutosDeCategoriasRemovidas((relacionadosBanco ?? []).map(mapear)),
-      ).slice(0, 5);
+      const todosRelacionados = removerProdutosDeCategoriasRemovidas((relacionadosBanco ?? []).map(mapear));
+
+      /*
+       * Descobre a categoria comercial
+       * do produto atual.
+       */
+
+      const categoriaComercial = ESTRUTURA_CATEGORIAS_SITE.find(
+        (categoria) => produtosDaCategoriaSite([produto], categoria.slug).length > 0,
+      );
+
+      let relacionados = todosRelacionados;
+
+      /*
+       * Se o produto possuir uma categoria
+       * comercial identificada, prioriza
+       * produtos dessa mesma categoria.
+       */
+
+      if (categoriaComercial) {
+        const mesmaCategoria = produtosDaCategoriaSite(todosRelacionados, categoriaComercial.slug);
+
+        if (mesmaCategoria.length > 0) {
+          relacionados = mesmaCategoria;
+        }
+      } else {
+        /*
+         * Compatibilidade com categorias
+         * antigas do banco.
+         */
+
+        relacionados = todosRelacionados.filter(
+          (produtoRelacionado) => produtoRelacionado.categoria === produto.categoria,
+        );
+      }
+
+      relacionados = ordenarProdutosPorRelevancia(relacionados).slice(0, 5);
 
       return {
         produto,
+
         relacionados,
       };
     },
