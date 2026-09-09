@@ -5,211 +5,152 @@ import type { Database } from "@/integrations/supabase/types";
 
 import {
   categoriaFoiRemovida,
-  ordenarProdutosPorRelevancia,
-  removerProdutosDeCategoriasRemovidas,
+  classificarProdutoNoSite,
   ESTRUTURA_CATEGORIAS_SITE,
+  ordenarProdutosPorRelevancia,
   produtosDaCategoriaSite,
+  removerProdutosDeCategoriasRemovidas,
   type Catalogo,
   type Produto,
 } from "@/lib/catalog";
 
-/* ============================================================
-   TIPOS
-============================================================ */
-
 type LinhaProduto = Database["public"]["Tables"]["produtos"]["Row"];
 
-/* ============================================================
-   CLIENTE SUPABASE
-============================================================ */
-
 function publicClient() {
-  const key = process.env["SUPABASE_PUBLISHABLE_KEY"]!;
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  const url = process.env["SUPABASE_URL"];
 
-  return createClient<Database>(process.env["SUPABASE_URL"]!, key, {
+  if (!key || !url) {
+    throw new Error("Configuração do Supabase não encontrada.");
+  }
+
+  return createClient<Database>(url, key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
-
     global: {
       fetch: (input, init) => {
         const headers = new Headers(init?.headers);
-
         if (key.startsWith("sb_") && headers.get("Authorization") === `Bearer ${key}`) {
           headers.delete("Authorization");
         }
-
         headers.set("apikey", key);
-
-        return fetch(input, {
-          ...init,
-          headers,
-        });
+        return fetch(input, { ...init, headers });
       },
     },
   });
 }
 
-/* ============================================================
-   MAPEAMENTO DO PRODUTO
-============================================================ */
+function textoSeguro(valor: string | null | undefined) {
+  return valor ?? "";
+}
 
 function mapear(produto: LinhaProduto): Produto {
   return {
     id: produto.id,
-
-    codigo: produto.codigo,
-
-    nome: produto.nome,
-
-    categoria: produto.categoria_slug,
-
-    subcategoria: produto.subcategoria_slug,
-
-    descricao: produto.descricao,
-
-    preco: Number(produto.preco),
-
+    codigo: textoSeguro(produto.codigo),
+    nome: textoSeguro(produto.nome),
+    categoria: textoSeguro(produto.categoria_slug),
+    subcategoria: textoSeguro(produto.subcategoria_slug),
+    descricao: textoSeguro(produto.descricao),
+    preco: Number(produto.preco ?? 0),
     precoPromocional: produto.preco_promocional == null ? undefined : Number(produto.preco_promocional),
-
     imagem: produto.imagem ?? undefined,
-
-    disponivel: produto.disponivel,
-
-    oferta: produto.oferta,
-
-    rasgaPreco: produto.rasga_preco,
-
-    informacoes: produto.informacoes ?? [],
+    disponivel: produto.disponivel ?? true,
+    oferta: produto.oferta ?? false,
+    rasgaPreco: produto.rasga_preco ?? false,
+    informacoes: Array.isArray(produto.informacoes) ? produto.informacoes : [],
   };
 }
 
-/* ============================================================
-   COLUNAS
-============================================================ */
-
 const COLUNAS = "*";
+
+function prepararProdutos(linhas: LinhaProduto[] | null) {
+  return ordenarProdutosPorRelevancia(removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear)));
+}
 
 /* ============================================================
    CATÁLOGO PRINCIPAL
-============================================================ */
 
+   IMPORTANTE:
+   Cada produto é classificado uma única vez. A versão anterior
+   recalculava toda a classificação centenas de vezes ao montar o
+   Header, o que podia estourar o tempo do loader e gerar GET / 500.
+============================================================ */
 export const getCatalogo = createServerFn({
   method: "GET",
 }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
 
-  /*
-   * Busca todos os produtos disponíveis.
-   *
-   * As categorias exibidas no site são calculadas
-   * através da estrutura comercial definida em catalog.ts.
-   */
-
-  const [todosProdutos, rasga, ofertas, promocionais] = await Promise.all([
+  const [todosProdutosResult, rasgaResult, ofertasResult, promocionaisResult] = await Promise.all([
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true),
-
     supabase.from("produtos").select(COLUNAS).eq("rasga_preco", true).eq("disponivel", true).order("ordem"),
-
     supabase.from("produtos").select(COLUNAS).eq("oferta", true).eq("disponivel", true),
-
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true).not("preco_promocional", "is", null),
   ]);
 
-  /* ============================================================
-     TODOS OS PRODUTOS
-  ============================================================ */
+  if (todosProdutosResult.error) {
+    throw new Error(`Não foi possível carregar os produtos: ${todosProdutosResult.error.message}`);
+  }
 
-  const produtosDoBanco = (todosProdutos.data ?? []).map(mapear);
+  const produtos = prepararProdutos(todosProdutosResult.data);
 
-  const produtosPermitidos = removerProdutosDeCategoriasRemovidas(produtosDoBanco);
+  /* Classifica somente uma vez e monta índices rápidos. */
+  const classificados = produtos.map((produto) => ({
+    produto,
+    classificacao: classificarProdutoNoSite(produto),
+  }));
 
-  const produtosOrdenados = ordenarProdutosPorRelevancia(produtosPermitidos);
+  const totaisCategorias = new Map<string, number>();
+  const totaisSubcategorias = new Map<string, number>();
 
-  /* ============================================================
-     CATEGORIAS COMERCIAIS DO SITE
-  ============================================================ */
+  for (const { classificacao } of classificados) {
+    if (!classificacao.categoria) continue;
 
-  const categorias = ESTRUTURA_CATEGORIAS_SITE.map((categoria) => {
-    const subcategorias = categoria.subcategorias.filter((subcategoria) => {
-      const produtos = produtosDaCategoriaSite(produtosOrdenados, categoria.slug, subcategoria.slug);
+    totaisCategorias.set(classificacao.categoria, (totaisCategorias.get(classificacao.categoria) ?? 0) + 1);
 
-      return produtos.length > 0;
-    });
+    const chave = `${classificacao.categoria}:${classificacao.subcategoria}`;
+    totaisSubcategorias.set(chave, (totaisSubcategorias.get(chave) ?? 0) + 1);
+  }
 
-    return {
-      ...categoria,
-      subcategorias,
-    };
-  }).filter((categoria) => {
-    const produtos = produtosDaCategoriaSite(produtosOrdenados, categoria.slug);
+  const categorias = ESTRUTURA_CATEGORIAS_SITE.filter(
+    (categoria) => (totaisCategorias.get(categoria.slug) ?? 0) > 0,
+  ).map((categoria) => ({
+    ...categoria,
+    subcategorias: categoria.subcategorias.filter(
+      (subcategoria) => (totaisSubcategorias.get(`${categoria.slug}:${subcategoria.slug}`) ?? 0) > 0,
+    ),
+  }));
 
-    return produtos.length > 0;
-  });
+  const produtosRasga = rasgaResult.error ? [] : prepararProdutos(rasgaResult.data);
 
-  /* ============================================================
-     RASGA PREÇO
-  ============================================================ */
+  const ofertasMarcadas = ofertasResult.error ? [] : prepararProdutos(ofertasResult.data);
 
-  const produtosRasga = removerProdutosDeCategoriasRemovidas((rasga.data ?? []).map(mapear));
-
-  const fonteRasga = ordenarProdutosPorRelevancia(produtosRasga);
-
-  /* ============================================================
-     OFERTAS
-  ============================================================ */
-
-  const ofertasMarcadas = removerProdutosDeCategoriasRemovidas((ofertas.data ?? []).map(mapear));
-
-  const produtosPromocionais = removerProdutosDeCategoriasRemovidas((promocionais.data ?? []).map(mapear));
+  const produtosPromocionais = promocionaisResult.error ? [] : prepararProdutos(promocionaisResult.data);
 
   const idsOfertas = new Set<string>();
-
   const fonteOferta: Produto[] = [];
 
-  for (const produto of ofertasMarcadas) {
+  for (const produto of [...ofertasMarcadas, ...produtosPromocionais]) {
     if (!idsOfertas.has(produto.id)) {
       idsOfertas.add(produto.id);
-
       fonteOferta.push(produto);
     }
   }
-
-  for (const produto of produtosPromocionais) {
-    if (!idsOfertas.has(produto.id)) {
-      idsOfertas.add(produto.id);
-
-      fonteOferta.push(produto);
-    }
-  }
-
-  const ofertasOrdenadas = ordenarProdutosPorRelevancia(fonteOferta).slice(0, 10);
-
-  /* ============================================================
-     RETORNO
-  ============================================================ */
 
   return {
     categorias,
-
-    produtos: produtosOrdenados,
-
+    produtos,
     vitrines: {
-      rasgaPreco: fonteRasga,
-
-      ofertas: ofertasOrdenadas,
+      rasgaPreco: produtosRasga,
+      ofertas: ordenarProdutosPorRelevancia(fonteOferta).slice(0, 10),
     },
   };
 });
 
-/* ============================================================
-   PAGINAÇÃO DE PRODUTOS
-============================================================ */
-
 export type PaginaProdutos = {
   itens: Produto[];
-
   total: number;
 };
 
@@ -218,124 +159,56 @@ export const listarProdutos = createServerFn({
 })
   .inputValidator((dados: { categoria: string; sub?: string; ordem?: string; pagina?: number }) => dados)
   .handler(async ({ data }): Promise<PaginaProdutos> => {
-    /*
-     * Bloqueia categorias removidas.
-     */
-
     if (categoriaFoiRemovida(data.categoria)) {
-      return {
-        itens: [],
-        total: 0,
-      };
+      return { itens: [], total: 0 };
     }
 
     const supabase = publicClient();
-
-    const porPagina = 40;
-
     const pagina = Math.max(1, data.pagina ?? 1);
-
-    /*
-     * Verifica se a categoria solicitada
-     * é uma categoria virtual/comercial do site.
-     */
+    const porPagina = 40;
 
     const categoriaVirtual = ESTRUTURA_CATEGORIAS_SITE.some((categoria) => categoria.slug === data.categoria);
 
-    /*
-     * Para categorias comerciais, precisamos
-     * buscar os produtos disponíveis e depois
-     * classificá-los pela lógica do catalog.ts.
-     */
-
     let query = supabase.from("produtos").select(COLUNAS).eq("disponivel", true);
-
-    /*
-     * Caso seja uma categoria antiga do banco,
-     * mantém compatibilidade com o filtro original.
-     */
 
     if (!categoriaVirtual) {
       query = query.eq("categoria_slug", data.categoria);
-
-      if (data.sub) {
-        query = query.eq("subcategoria_slug", data.sub);
-      }
+      if (data.sub) query = query.eq("subcategoria_slug", data.sub);
     }
 
-    /*
-     * FILTRO DE OFERTAS
-     */
+    if (data.ordem === "ofertas") query = query.eq("oferta", true);
 
-    if (data.ordem === "ofertas") {
-      query = query.eq("oferta", true);
+    const resultado = await query;
+
+    if (resultado.error) {
+      throw new Error(`Não foi possível listar os produtos: ${resultado.error.message}`);
     }
 
-    const { data: linhas } = await query;
-
-    let produtos = removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear));
-
-    /*
-     * Aplica a classificação comercial
-     * definida no catalog.ts.
-     */
+    let produtos = prepararProdutos(resultado.data);
 
     if (categoriaVirtual) {
-      produtos = produtosDaCategoriaSite(produtos, data.categoria, data.sub);
+      produtos = produtos.filter((produto) => {
+        const classificacao = classificarProdutoNoSite(produto);
+        return classificacao.categoria === data.categoria && (!data.sub || classificacao.subcategoria === data.sub);
+      });
     }
 
-    /* ============================================================
-         ORDENAÇÃO
-      ============================================================ */
-
     if (data.ordem === "menor-preco") {
-      produtos = [...produtos].sort((a, b) => {
-        const aImagem = Boolean(a.imagem?.trim());
-
-        const bImagem = Boolean(b.imagem?.trim());
-
-        if (aImagem !== bImagem) {
-          return Number(bImagem) - Number(aImagem);
-        }
-
-        return a.preco - b.preco;
-      });
+      produtos = [...produtos].sort((a, b) => a.preco - b.preco);
     } else if (data.ordem === "maior-preco") {
-      produtos = [...produtos].sort((a, b) => {
-        const aImagem = Boolean(a.imagem?.trim());
-
-        const bImagem = Boolean(b.imagem?.trim());
-
-        if (aImagem !== bImagem) {
-          return Number(bImagem) - Number(aImagem);
-        }
-
-        return b.preco - a.preco;
-      });
+      produtos = [...produtos].sort((a, b) => b.preco - a.preco);
     } else {
       produtos = ordenarProdutosPorRelevancia(produtos);
     }
 
-    /* ============================================================
-         PAGINAÇÃO
-      ============================================================ */
-
     const total = produtos.length;
-
     const inicio = (pagina - 1) * porPagina;
 
-    const fim = inicio + porPagina;
-
     return {
-      itens: produtos.slice(inicio, fim),
-
+      itens: produtos.slice(inicio, inicio + porPagina),
       total,
     };
   });
-
-/* ============================================================
-   BUSCAR PRODUTOS
-============================================================ */
 
 export const buscarProdutos = createServerFn({
   method: "GET",
@@ -343,121 +216,57 @@ export const buscarProdutos = createServerFn({
   .inputValidator((dados: { q: string; limite?: number }) => dados)
   .handler(async ({ data }): Promise<Produto[]> => {
     const termo = data.q.trim();
-
-    if (termo.length < 2) {
-      return [];
-    }
+    if (termo.length < 2) return [];
 
     const supabase = publicClient();
-
     const like = `%${termo.replace(/[%,]/g, " ")}%`;
 
-    const { data: linhas } = await supabase
+    const resultado = await supabase
       .from("produtos")
       .select(COLUNAS)
       .eq("disponivel", true)
       .or(`nome.ilike.${like},codigo.ilike.${like},principio_ativo.ilike.${like}`);
 
-    const produtos = removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear));
+    if (resultado.error) return [];
 
-    const produtosOrdenados = ordenarProdutosPorRelevancia(produtos);
-
-    return produtosOrdenados.slice(0, data.limite ?? 60);
+    return prepararProdutos(resultado.data).slice(0, data.limite ?? 60);
   });
-
-/* ============================================================
-   PRODUTO INDIVIDUAL
-============================================================ */
 
 export const obterProduto = createServerFn({
   method: "GET",
 })
   .inputValidator((dados: { id: string }) => dados)
-  .handler(
-    async ({
-      data,
-    }): Promise<{
-      produto: Produto;
-      relacionados: Produto[];
-    } | null> => {
-      const supabase = publicClient();
+  .handler(async ({ data }): Promise<{ produto: Produto; relacionados: Produto[] } | null> => {
+    const supabase = publicClient();
 
-      /*
-       * PRODUTO PRINCIPAL
-       */
+    const resultado = await supabase.from("produtos").select(COLUNAS).eq("id", data.id).maybeSingle();
 
-      const { data: linha } = await supabase.from("produtos").select(COLUNAS).eq("id", data.id).maybeSingle();
+    if (resultado.error || !resultado.data) return null;
 
-      if (!linha) {
-        return null;
-      }
+    const produto = mapear(resultado.data);
+    if (categoriaFoiRemovida(produto.categoria)) return null;
 
-      const produto = mapear(linha);
+    const relacionadosResult = await supabase
+      .from("produtos")
+      .select(COLUNAS)
+      .eq("disponivel", true)
+      .neq("id", produto.id);
 
-      /*
-       * Impede produtos de categorias removidas.
-       */
+    const todosRelacionados = relacionadosResult.error ? [] : prepararProdutos(relacionadosResult.data);
 
-      if (categoriaFoiRemovida(produto.categoria)) {
-        return null;
-      }
+    const classificacaoAtual = classificarProdutoNoSite(produto);
 
-      /*
-       * Para produtos relacionados,
-       * buscamos os produtos disponíveis.
-       *
-       * Depois tentamos priorizar produtos
-       * da mesma categoria comercial.
-       */
+    let relacionados = todosRelacionados.filter((item) => {
+      const classificacao = classificarProdutoNoSite(item);
+      return classificacao.categoria === classificacaoAtual.categoria;
+    });
 
-      const { data: relacionadosBanco } = await supabase
-        .from("produtos")
-        .select(COLUNAS)
-        .eq("disponivel", true)
-        .neq("id", linha.id);
+    if (relacionados.length === 0) {
+      relacionados = todosRelacionados.filter((item) => item.categoria === produto.categoria);
+    }
 
-      const todosRelacionados = removerProdutosDeCategoriasRemovidas((relacionadosBanco ?? []).map(mapear));
-
-      /*
-       * Descobre a categoria comercial
-       * do produto atual.
-       */
-
-      const categoriaComercial = ESTRUTURA_CATEGORIAS_SITE.find(
-        (categoria) => produtosDaCategoriaSite([produto], categoria.slug).length > 0,
-      );
-
-      let relacionados = todosRelacionados;
-
-      /*
-       * Se o produto possuir uma categoria
-       * comercial identificada, prioriza
-       * produtos dessa mesma categoria.
-       */
-
-      if (categoriaComercial) {
-        const mesmaCategoria = produtosDaCategoriaSite(todosRelacionados, categoriaComercial.slug);
-
-        if (mesmaCategoria.length > 0) {
-          relacionados = mesmaCategoria;
-        }
-      } else {
-        /*
-         * Compatibilidade com categorias
-         * antigas do banco.
-         */
-
-        relacionados = todosRelacionados.filter(
-          (produtoRelacionado) => produtoRelacionado.categoria === produto.categoria,
-        );
-      }
-
-      relacionados = ordenarProdutosPorRelevancia(relacionados).slice(0, 5);
-
-      return {
-        produto,
-
-        relacionados,
-      };
-    },
-  );
+    return {
+      produto,
+      relacionados: ordenarProdutosPorRelevancia(relacionados).slice(0, 5),
+    };
+  });
