@@ -671,7 +671,7 @@ export const sincronizarLote = createServerFn({
             image_status: "not_found",
             image_candidato_url: null,
             image_last_synced_at: new Date().toISOString(),
-            image_error: aplicado.erros.length ? aplicado.erros.slice(-1)[0] : null,
+            image_error: aplicado.erros.length ? (aplicado.erros[aplicado.erros.length - 1] ?? null) : null,
           })
           .eq("id", produto.id);
 
