@@ -62,9 +62,7 @@ function imagemValida(url: string) {
 function removerDuplicados(candidatos: Candidato[]) {
   const vistos = new Set<string>();
   return candidatos.filter((c) => {
-    const chave = String(c.imageUrl ?? "")
-      .split("?")[0]
-      .toLowerCase();
+    const chave = (String(c.imageUrl ?? "").split("?")[0] ?? "").toLowerCase();
     if (!chave || vistos.has(chave)) return false;
     vistos.add(chave);
     return true;
