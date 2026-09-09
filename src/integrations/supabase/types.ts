@@ -89,6 +89,39 @@ export type Database = {
         }
         Relationships: []
       }
+      image_sources: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          nome: string
+          prioridade: number
+          tipo: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome: string
+          prioridade?: number
+          tipo?: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome?: string
+          prioridade?: number
+          tipo?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       imagem_sync_logs: {
         Row: {
           confidence: number | null
@@ -243,6 +276,47 @@ export type Database = {
           unidade?: string | null
         }
         Relationships: []
+      }
+      produto_imagens: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string
+          is_primary: boolean
+          produto_id: string
+          source_name: string | null
+          source_type: string
+          source_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url: string
+          is_primary?: boolean
+          produto_id: string
+          source_name?: string | null
+          source_type?: string
+          source_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string
+          is_primary?: boolean
+          produto_id?: string
+          source_name?: string | null
+          source_type?: string
+          source_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produto_imagens_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       produtos: {
         Row: {

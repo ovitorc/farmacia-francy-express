@@ -6,31 +6,52 @@ const LIMITE_TOTAL = 50;
 const TEMPO_LIMITE_MS = 15000;
 const PAUSA_ENTRE_ETAPAS_MS = 400;
 
-const SITES = [
-  {
-    id: "pague_menos",
-    nome: "Pague Menos",
-    dominio: "paguemenos.com.br",
-    base: "https://www.paguemenos.com.br",
-    busca: (q: string) => `https://www.paguemenos.com.br/busca?q=${encodeURIComponent(q)}`,
-  },
-  {
-    id: "farmacia_permanente",
-    nome: "Farmácia Permanente",
-    dominio: "farmaciapermanente.com.br",
-    base: "https://www.farmaciapermanente.com.br",
-    busca: (q: string) => `https://www.farmaciapermanente.com.br/busca?q=${encodeURIComponent(q)}`,
-  },
-  {
-    id: "droga_raia",
-    nome: "Droga Raia",
-    dominio: "drogaraia.com.br",
-    base: "https://www.drogaraia.com.br",
-    busca: (q: string) => `https://www.drogaraia.com.br/search?text=${encodeURIComponent(q)}`,
-  },
-] as const;
+type Site = {
+  id: string;
+  nome: string;
+  dominio: string;
+  base: string;
+  busca: (q: string) => string;
+};
 
-type Site = (typeof SITES)[number];
+/** Descrição simples de uma fonte vinda do banco (ou das fontes padrão). */
+export type FonteBusca = { id: string; nome: string; url: string };
+
+const CAMINHOS_BUSCA: Record<string, (base: string, q: string) => string> = {
+  "drogaraia.com.br": (base, q) => `${base}/search?text=${encodeURIComponent(q)}`,
+};
+
+export function montarSite(fonte: FonteBusca): Site | null {
+  let base: string;
+  let dominio: string;
+
+  try {
+    const u = new URL(fonte.url.trim().startsWith("http") ? fonte.url.trim() : `https://${fonte.url.trim()}`);
+    base = u.origin;
+    dominio = u.hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+
+  const caminho = CAMINHOS_BUSCA[dominio];
+
+  return {
+    id: fonte.id,
+    nome: fonte.nome,
+    dominio,
+    base,
+    busca: (q: string) => (caminho ? caminho(base, q) : `${base}/busca?q=${encodeURIComponent(q)}`),
+  };
+}
+
+/** Fontes padrão do sistema, preservadas mesmo que o banco não responda. */
+export const FONTES_PADRAO: FonteBusca[] = [
+  { id: "pague_menos", nome: "Pague Menos", url: "https://www.paguemenos.com.br" },
+  { id: "farmacia_permanente", nome: "Farmácia Permanente", url: "https://www.farmaciapermanente.com.br" },
+  { id: "droga_raia", nome: "Droga Raia", url: "https://www.drogaraia.com.br" },
+];
+
+const SITES: Site[] = FONTES_PADRAO.map((f) => montarSite(f)!).filter(Boolean);
 
 export type ImageProvider = {
   id: string;
@@ -162,9 +183,9 @@ async function buscarNoSite(site: Site, termo: string, ean?: string) {
     .slice(0, LIMITE_POR_SITE);
 }
 
-async function buscarTodosOsSites(termo: string, ean?: string) {
-  // Aguarda as três fontes; nenhuma fonte encerra a pesquisa das outras.
-  const grupos = await Promise.all(SITES.map((site) => buscarNoSite(site, termo, ean)));
+async function buscarTodosOsSites(sites: Site[], termo: string, ean?: string) {
+  // Aguarda todas as fontes; nenhuma fonte encerra a pesquisa das outras.
+  const grupos = await Promise.all(sites.map((site) => buscarNoSite(site, termo, ean)));
   // Intercala as fontes para evitar que Pague Menos ocupe todos os primeiros resultados.
   const resultado: Candidato[] = [];
   for (let i = 0; resultado.length < LIMITE_TOTAL; i++) {
@@ -201,7 +222,10 @@ export const providersAtivos = () => PROVIDERS;
 
 export async function buscarAte50Imagens(
   produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
+  fontes?: FonteBusca[],
 ): Promise<Candidato[]> {
+  const sites = (fontes && fontes.length ? fontes.map(montarSite).filter((s): s is Site => !!s) : SITES) as Site[];
+  if (sites.length === 0) return [];
   const termos: Array<{ termo: string; ean?: string }> = [];
   const ean = normalizarEan(produto.codigo_barras);
   if (ean) termos.push({ termo: ean, ean });
@@ -220,7 +244,7 @@ export async function buscarAte50Imagens(
   const acumulado: Candidato[] = [];
   for (let i = 0; i < termos.length && acumulado.length < LIMITE_TOTAL; i++) {
     const etapa = termos[i]!;
-    const encontrados = await buscarTodosOsSites(etapa.termo, etapa.ean);
+    const encontrados = await buscarTodosOsSites(sites, etapa.termo, etapa.ean);
     acumulado.push(...encontrados);
     if (i < termos.length - 1) await sleep(PAUSA_ENTRE_ETAPAS_MS);
   }
