@@ -12,49 +12,28 @@ export type Categoria = {
 
 export type Produto = {
   id: string;
-
-  /** Código interno usado no pedido enviado ao WhatsApp */
   codigo: string;
-
   nome: string;
-
-  /** Slug da categoria */
   categoria: string;
-
-  /** Slug da subcategoria */
   subcategoria: string;
-
   descricao: string;
-
   preco: number;
-
   precoPromocional?: number | undefined;
-
   imagem?: string | undefined;
-
   disponivel: boolean;
-
   oferta: boolean;
-
   rasgaPreco?: boolean | undefined;
-
   informacoes?: string[] | undefined;
 };
 
 export type Catalogo = {
   categorias: Categoria[];
-
   produtos: Produto[];
-
   vitrines?: {
     rasgaPreco: Produto[];
     ofertas: Produto[];
   };
 };
-
-/* ============================================================
-   CATEGORIAS QUE NÃO DEVEM APARECER NO SITE
-   ============================================================ */
 
 export const CATEGORIAS_REMOVIDAS = [
   "pet",
@@ -65,10 +44,6 @@ export const CATEGORIAS_REMOVIDAS = [
   "animais",
 ];
 
-/* ============================================================
-   UTILITÁRIOS
-   ============================================================ */
-
 export const slugify = (n: string) =>
   n
     .toLowerCase()
@@ -77,6 +52,289 @@ export const slugify = (n: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
+  {
+    nome: "Medicamentos",
+    slug: "medicamentos",
+    icone: "💊",
+    subcategorias: [
+      ["Medicamentos de Marca", "medicamentos-de-marca"],
+      ["Genéricos", "genericos"],
+      ["Similares", "similares"],
+      ["Uso Contínuo", "uso-continuo"],
+      ["Antibióticos", "antibioticos"],
+      ["Anticoncepcionais", "anticoncepcionais"],
+      ["Dermatológicos", "dermatologicos"],
+      ["Oftálmicos", "oftalmicos"],
+      ["Nasais", "nasais"],
+      ["Otológicos", "otologicos"],
+      ["Injetáveis", "injetaveis"],
+      ["Comprimidos e Cápsulas", "comprimidos-capsulas"],
+      ["Cremes e Pomadas", "cremes-pomadas"],
+      ["Gotas", "gotas"],
+      ["Spray", "spray"],
+      ["Pastilhas", "pastilhas"],
+      ["Supositórios", "supositorios"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "MIPs",
+    slug: "mips",
+    icone: "🩺",
+    subcategorias: [
+      ["Dor e Febre", "dor-e-febre"],
+      ["Gripe e Resfriado", "gripe-e-resfriado"],
+      ["Alergia", "alergia"],
+      ["Digestão", "digestao"],
+      ["Dermatológicos", "dermatologicos"],
+      ["Oftálmicos", "oftalmicos"],
+      ["Nasais", "nasais"],
+      ["Cremes e Pomadas", "cremes-pomadas"],
+      ["Gotas", "gotas"],
+      ["Spray", "spray"],
+      ["Pastilhas", "pastilhas"],
+      ["Outros MIPs", "outros-mips"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "Perfumaria",
+    slug: "perfumaria",
+    icone: "🧴",
+    subcategorias: [
+      ["Perfumaria", "perfumaria"],
+      ["Perfumaria Importada", "perfumaria-importada"],
+      ["Higiene Pessoal", "higiene-pessoal"],
+      ["Higiene Bucal", "higiene-bucal"],
+      ["Dermocosméticos", "dermocosmeticos"],
+      ["Salão e Beleza", "salao-e-beleza"],
+      ["Cremes e Pomadas", "cremes-pomadas"],
+      ["Solar", "solar"],
+      ["Protetor Solar", "protetor-solar"],
+      ["Preservativos", "preservativos"],
+      ["Acessórios", "acessorios"],
+      ["Eletrônicos", "eletronicos"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "Mamãe e Bebê",
+    slug: "mamae-e-bebe",
+    icone: "🍼",
+    subcategorias: [
+      ["Fraldas e Lenços", "fraldas-lencos"],
+      ["Higiene Infantil", "higiene-infantil"],
+      ["Chupetas, Mamadeiras e Copos", "chupetas-mamadeiras-copos"],
+      ["Infantil", "infantil"],
+      ["Leite", "leite"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "Conveniência",
+    slug: "conveniencia",
+    icone: "🍫",
+    subcategorias: [
+      ["Alimentos", "alimentos"],
+      ["Boboniere", "boboniere"],
+      ["Líquidos", "liquidos"],
+      ["Leite", "leite"],
+      ["Adoçantes", "adocantes"],
+      ["Naturais", "naturais"],
+      ["Chips", "chips"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "Vitaminas e Suplementos",
+    slug: "vitaminas-e-suplementos",
+    icone: "💪",
+    subcategorias: [
+      ["Polivitamínicos", "polivitaminicos"],
+      ["Suplementos", "suplementos"],
+      ["Nutrição Esportiva", "nutricao-esportiva"],
+      ["Academia", "academia"],
+      ["Naturais", "naturais"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+
+  {
+    nome: "Saúde e Bem-estar",
+    slug: "saude-e-bem-estar",
+    icone: "🏥",
+    subcategorias: [
+      ["Médico-Hospitalar", "medico-hospitalar"],
+      ["Ortopédicos", "ortopedicos"],
+      ["Oficinais", "oficinais"],
+      ["Naturais", "naturais"],
+      ["Acessórios", "acessorios"],
+    ].map(([nome, slug]) => ({ nome, slug })),
+  },
+];
+
+function textoProduto(p: Produto) {
+  return `${p.categoria} ${p.subcategoria} ${p.nome} ${p.descricao}`.toLowerCase();
+}
+
+const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(termo));
+
+export function classificarProdutoNoSite(produto: Produto): { categoria: string; subcategoria: string } {
+  const t = textoProduto(produto);
+
+  const medicamento = contem(
+    t,
+    "medic",
+    "generico",
+    "genérico",
+    "similar",
+    "marcas",
+    "antibiot",
+    "anticoncepcional",
+    "oftalm",
+    "nasal",
+    "otolog",
+    "injet",
+    "comprim",
+    "capsula",
+    "cápsula",
+    "supositor",
+  );
+
+  const perfumaria = contem(
+    t,
+    "perfum",
+    "higiene",
+    "dermocosmet",
+    "salao",
+    "salão",
+    "protetor solar",
+    "preservativo",
+    "acessor",
+    "eletron",
+  );
+
+  if (contem(t, "fralda", "lenco", "lenço", "chupeta", "mamadeira", "copos", "higiene infanti")) {
+    return {
+      categoria: "mamae-e-bebe",
+      subcategoria: contem(t, "fralda", "lenco", "lenço")
+        ? "fraldas-lencos"
+        : contem(t, "chupeta", "mamadeira", "copos")
+          ? "chupetas-mamadeiras-copos"
+          : "higiene-infantil",
+    };
+  }
+
+  if (
+    contem(t, "conveniencia", "conveniência", "boboniere", "alimentos", "liquidos", "líquidos", "adocante", "chips")
+  ) {
+    return {
+      categoria: "conveniencia",
+      subcategoria: contem(t, "boboniere")
+        ? "boboniere"
+        : contem(t, "alimentos")
+          ? "alimentos"
+          : contem(t, "adocante")
+            ? "adocantes"
+            : contem(t, "chips")
+              ? "chips"
+              : "liquidos",
+    };
+  }
+
+  if (contem(t, "polivitamin", "suplement", "nutriçao esport", "nutrição esport", "academia")) {
+    return {
+      categoria: "vitaminas-e-suplementos",
+      subcategoria: contem(t, "nutri")
+        ? "nutricao-esportiva"
+        : contem(t, "academia")
+          ? "academia"
+          : contem(t, "polivit")
+            ? "polivitaminicos"
+            : "suplementos",
+    };
+  }
+
+  if (contem(t, "hospital", "ortopedic", "oficinais")) {
+    return {
+      categoria: "saude-e-bem-estar",
+      subcategoria: contem(t, "ortopedic") ? "ortopedicos" : contem(t, "oficinais") ? "oficinais" : "medico-hospitalar",
+    };
+  }
+
+  if (perfumaria) {
+    let sub = "perfumaria";
+
+    if (contem(t, "import")) sub = "perfumaria-importada";
+    else if (contem(t, "higiene bucal", "oral")) sub = "higiene-bucal";
+    else if (contem(t, "higiene")) sub = "higiene-pessoal";
+    else if (contem(t, "dermocosmet")) sub = "dermocosmeticos";
+    else if (contem(t, "salao", "salão", "beleza")) sub = "salao-e-beleza";
+    else if (contem(t, "protetor solar")) sub = "protetor-solar";
+    else if (contem(t, "solar")) sub = "solar";
+    else if (contem(t, "preservativo")) sub = "preservativos";
+    else if (contem(t, "acessor")) sub = "acessorios";
+    else if (contem(t, "eletron")) sub = "eletronicos";
+    else if (contem(t, "cremes", "pomadas")) sub = "cremes-pomadas";
+
+    return {
+      categoria: "perfumaria",
+      subcategoria: sub,
+    };
+  }
+
+  if (medicamento && contem(t, "analges", "antigrip", "antialerg", "digest", "dor", "febre", "gripe", "resfriado")) {
+    let sub = "outros-mips";
+
+    if (contem(t, "analges", "dor", "febre")) sub = "dor-e-febre";
+    else if (contem(t, "antigrip", "gripe", "resfriado")) sub = "gripe-e-resfriado";
+    else if (contem(t, "antialerg", "alerg")) sub = "alergia";
+    else if (contem(t, "digest")) sub = "digestao";
+
+    return {
+      categoria: "mips",
+      subcategoria: sub,
+    };
+  }
+
+  if (medicamento) {
+    let sub = "medicamentos-de-marca";
+
+    if (contem(t, "generico", "genérico")) sub = "genericos";
+    else if (contem(t, "similar")) sub = "similares";
+    else if (contem(t, "antibiot")) sub = "antibioticos";
+    else if (contem(t, "anticoncepcional")) sub = "anticoncepcionais";
+    else if (contem(t, "dermatolog")) sub = "dermatologicos";
+    else if (contem(t, "oftalm")) sub = "oftalmicos";
+    else if (contem(t, "nasal")) sub = "nasais";
+    else if (contem(t, "otolog")) sub = "otologicos";
+    else if (contem(t, "injet")) sub = "injetaveis";
+    else if (contem(t, "comprim", "capsula", "cápsula")) sub = "comprimidos-capsulas";
+    else if (contem(t, "spray", "aerosol")) sub = "spray";
+    else if (contem(t, "gotas")) sub = "gotas";
+    else if (contem(t, "pastilhas")) sub = "pastilhas";
+    else if (contem(t, "supositor")) sub = "supositorios";
+
+    return {
+      categoria: "medicamentos",
+      subcategoria: sub,
+    };
+  }
+
+  return {
+    categoria: "perfumaria",
+    subcategoria: "perfumaria",
+  };
+}
+
+export function produtosDaCategoriaSite(produtos: Produto[], categoria: string, sub?: string) {
+  return produtos.filter((produto) => {
+    const c = classificarProdutoNoSite(produto);
+
+    return c.categoria === categoria && (!sub || c.subcategoria === sub);
+  });
+}
+
 export const precoFinal = (p: Produto) => p.precoPromocional ?? p.preco;
 
 export const formatarPreco = (valor: number) =>
@@ -84,10 +342,6 @@ export const formatarPreco = (valor: number) =>
     style: "currency",
     currency: "BRL",
   });
-
-/* ============================================================
-   IDENTIFICAÇÃO DE IMAGEM
-   ============================================================ */
 
 export function produtoTemImagem(produto: Produto): boolean {
   if (!produto.imagem) {
@@ -109,10 +363,6 @@ export function produtoTemImagem(produto: Produto): boolean {
   return true;
 }
 
-/* ============================================================
-   VERIFICAR CATEGORIA REMOVIDA
-   ============================================================ */
-
 export function categoriaFoiRemovida(slug: string): boolean {
   const categoria = slugify(slug);
 
@@ -120,284 +370,25 @@ export function categoriaFoiRemovida(slug: string): boolean {
     return true;
   }
 
-  /*
-   * Proteção adicional caso o banco utilize um nome diferente
-   * para a categoria de produtos para animais.
-   */
-
   return categoria.includes("pet") || categoria.includes("animal");
 }
 
-/* ============================================================
-   ORDENAR PRODUTOS POR RELEVÂNCIA
-   ============================================================ */
-
-/**
- * PRIORIDADE:
- *
- * 1. Produto disponível
- * 2. Produto com imagem
- * 3. Produto em oferta
- * 4. Produto com preço promocional
- * 5. Ordem original
- *
- * IMPORTANTE:
- *
- * Não organizamos alfabeticamente.
- *
- * Produtos que possuem imagem sempre recebem prioridade.
- */
-
-export function ordenarProdutosPorRelevancia(produtos: Produto[]): Produto[] {
+export function ordenarProdutosPorRelevancia(produtos: Produto[]) {
   return [...produtos].sort((a, b) => {
-    /*
-     * DISPONIBILIDADE
-     */
+    const aImagem = produtoTemImagem(a) ? 1 : 0;
+    const bImagem = produtoTemImagem(b) ? 1 : 0;
 
-    if (a.disponivel !== b.disponivel) {
-      return Number(b.disponivel) - Number(a.disponivel);
+    if (aImagem !== bImagem) {
+      return bImagem - aImagem;
     }
 
-    /*
-     * IMAGEM
-     */
+    const aOferta = a.oferta ? 1 : 0;
+    const bOferta = b.oferta ? 1 : 0;
 
-    const aTemImagem = produtoTemImagem(a);
-    const bTemImagem = produtoTemImagem(b);
-
-    if (aTemImagem !== bTemImagem) {
-      return Number(bTemImagem) - Number(aTemImagem);
+    if (aOferta !== bOferta) {
+      return bOferta - aOferta;
     }
 
-    /*
-     * OFERTA
-     */
-
-    if (a.oferta !== b.oferta) {
-      return Number(b.oferta) - Number(a.oferta);
-    }
-
-    /*
-     * PREÇO PROMOCIONAL
-     */
-
-    const aTemPromocao = a.precoPromocional !== undefined && a.precoPromocional < a.preco;
-
-    const bTemPromocao = b.precoPromocional !== undefined && b.precoPromocional < b.preco;
-
-    if (aTemPromocao !== bTemPromocao) {
-      return Number(bTemPromocao) - Number(aTemPromocao);
-    }
-
-    /*
-     * Mantém a ordem original do banco quando
-     * todos os critérios forem iguais.
-     */
-
-    return 0;
+    return a.nome.localeCompare(b.nome, "pt-BR");
   });
 }
-
-/* ============================================================
-   DADOS DE RELEVÂNCIA DA CATEGORIA
-   ============================================================ */
-
-export type RelevanciaCategoria = {
-  quantidadeProdutos: number;
-  quantidadeComImagem: number;
-  percentualComImagem: number;
-};
-
-export function calcularRelevanciaCategoria(categoriaSlug: string, produtos: Produto[]): RelevanciaCategoria {
-  const produtosDaCategoria = produtos.filter((produto) => produto.categoria === categoriaSlug);
-
-  const quantidadeProdutos = produtosDaCategoria.length;
-
-  const quantidadeComImagem = produtosDaCategoria.filter(produtoTemImagem).length;
-
-  const percentualComImagem = quantidadeProdutos > 0 ? quantidadeComImagem / quantidadeProdutos : 0;
-
-  return {
-    quantidadeProdutos,
-    quantidadeComImagem,
-    percentualComImagem,
-  };
-}
-
-/* ============================================================
-   ORDENAR CATEGORIAS POR RELEVÂNCIA
-   ============================================================ */
-
-/**
- * PRIORIDADE DAS CATEGORIAS:
- *
- * 1. Maior quantidade absoluta de produtos COM IMAGEM
- * 2. Maior percentual de produtos COM IMAGEM
- * 3. Maior quantidade total de produtos
- *
- * NÃO EXISTE ORDENAÇÃO ALFABÉTICA.
- */
-
-export function ordenarCategoriasPorRelevancia(categorias: Categoria[], produtos: Produto[]): Categoria[] {
-  return [...categorias]
-    .filter((categoria) => !categoriaFoiRemovida(categoria.slug))
-    .sort((a, b) => {
-      const relevanciaA = calcularRelevanciaCategoria(a.slug, produtos);
-
-      const relevanciaB = calcularRelevanciaCategoria(b.slug, produtos);
-
-      /*
-       * QUANTIDADE COM IMAGEM
-       */
-
-      if (relevanciaA.quantidadeComImagem !== relevanciaB.quantidadeComImagem) {
-        return relevanciaB.quantidadeComImagem - relevanciaA.quantidadeComImagem;
-      }
-
-      /*
-       * PORCENTAGEM COM IMAGEM
-       */
-
-      if (relevanciaA.percentualComImagem !== relevanciaB.percentualComImagem) {
-        return relevanciaB.percentualComImagem - relevanciaA.percentualComImagem;
-      }
-
-      /*
-       * QUANTIDADE TOTAL DE PRODUTOS
-       */
-
-      if (relevanciaA.quantidadeProdutos !== relevanciaB.quantidadeProdutos) {
-        return relevanciaB.quantidadeProdutos - relevanciaA.quantidadeProdutos;
-      }
-
-      /*
-       * Mantém a ordem original.
-       */
-
-      return 0;
-    });
-}
-
-/* ============================================================
-   ORDENAR SUBCATEGORIAS POR RELEVÂNCIA
-   ============================================================ */
-
-export function ordenarSubcategoriasPorRelevancia(
-  subcategorias: Subcategory[],
-  categoriaSlug: string,
-  produtos: Produto[],
-): Subcategory[] {
-  return [...subcategorias].sort((a, b) => {
-    const produtosA = produtos.filter(
-      (produto) => produto.categoria === categoriaSlug && produto.subcategoria === a.slug,
-    );
-
-    const produtosB = produtos.filter(
-      (produto) => produto.categoria === categoriaSlug && produto.subcategoria === b.slug,
-    );
-
-    const imagensA = produtosA.filter(produtoTemImagem).length;
-
-    const imagensB = produtosB.filter(produtoTemImagem).length;
-
-    /*
-     * QUANTIDADE DE PRODUTOS COM IMAGEM
-     */
-
-    if (imagensA !== imagensB) {
-      return imagensB - imagensA;
-    }
-
-    /*
-     * PERCENTUAL DE PRODUTOS COM IMAGEM
-     */
-
-    const percentualA = produtosA.length > 0 ? imagensA / produtosA.length : 0;
-
-    const percentualB = produtosB.length > 0 ? imagensB / produtosB.length : 0;
-
-    if (percentualA !== percentualB) {
-      return percentualB - percentualA;
-    }
-
-    /*
-     * QUANTIDADE TOTAL
-     */
-
-    if (produtosA.length !== produtosB.length) {
-      return produtosB.length - produtosA.length;
-    }
-
-    /*
-     * Mantém a ordem original.
-     */
-
-    return 0;
-  });
-}
-
-/* ============================================================
-   FILTRAR PRODUTOS PET
-   ============================================================ */
-
-export function removerProdutosDeCategoriasRemovidas(produtos: Produto[]): Produto[] {
-  return produtos.filter((produto) => !categoriaFoiRemovida(produto.categoria));
-}
-
-/* ============================================================
-   LOCALIZAR CATEGORIA
-   ============================================================ */
-
-export const acharCategoria = (categorias: Categoria[], slug: string) =>
-  categorias.find((categoria) => categoria.slug === slug);
-
-/* ============================================================
-   LOCALIZAR PRODUTO
-   ============================================================ */
-
-export const acharProduto = (produtos: Produto[], id: string) => produtos.find((produto) => produto.id === id);
-
-/* ============================================================
-   BUSCA LOCAL
-   ============================================================ */
-
-export function filtrarBusca(catalogo: Catalogo, termo: string): Produto[] {
-  const q = slugify(termo.trim());
-
-  if (!q) {
-    return [];
-  }
-
-  const resultados = catalogo.produtos.filter((produto) => {
-    /*
-     * Nunca retorna produtos de categorias removidas.
-     */
-
-    if (categoriaFoiRemovida(produto.categoria)) {
-      return false;
-    }
-
-    const categoria = acharCategoria(catalogo.categorias, produto.categoria);
-
-    const subcategoria = categoria?.subcategorias.find((sub) => sub.slug === produto.subcategoria);
-
-    const alvo = slugify(
-      `${produto.nome}
-           ${produto.codigo}
-           ${categoria?.nome ?? ""}
-           ${subcategoria?.nome ?? ""}`,
-    );
-
-    return q.split("-").every((parte) => alvo.includes(parte));
-  });
-
-  return ordenarProdutosPorRelevancia(resultados);
-}
-
-/* ============================================================
-   LINKS
-   ============================================================ */
-
-export const WHATSAPP_URL = "https://wa.me/558321781349";
-
-export const INSTAGRAM_URL = "https://www.instagram.com/farmaciasfrancy/";
