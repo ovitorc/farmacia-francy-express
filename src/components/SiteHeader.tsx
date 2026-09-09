@@ -81,7 +81,6 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
             TRABALHE CONOSCO
           </Link>
 
-
           {/* CATEGORIAS */}
           {categorias.map((c) => {
             const aberta = expandida === c.slug;
@@ -227,7 +226,7 @@ export function SiteHeader() {
         ======================================== */}
 
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
-          {/* PRIMEIRA LINHA (MOBILE): MENU | LOGO | CARRINHO */}
+          {/* PRIMEIRA LINHA MOBILE: MENU | LOGO | CARRINHO */}
           <div className="flex items-center justify-between gap-3 md:contents">
             {/* MENU */}
             <button
@@ -267,8 +266,12 @@ export function SiteHeader() {
             </Link>
           </div>
 
-          {/* SEGUNDA LINHA (MOBILE): BARRA DE PESQUISA */}
-          <div className="flex w-full min-w-0 items-center md:order-3">
+          {/* ========================================
+              BARRA DE PESQUISA + LINKS
+          ======================================== */}
+
+          <div className="flex w-full min-w-0 flex-col gap-2 md:order-3 md:flex-1 md:flex-row md:items-center md:gap-3">
+            {/* BARRA DE PESQUISA */}
             <div className="relative min-w-0 flex-1">
               <form onSubmit={enviar}>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -329,6 +332,28 @@ export function SiteHeader() {
               )}
             </div>
 
+            {/* ========================================
+                TRABALHE CONOSCO + FARMÁCIA POPULAR
+                MESMO NÍVEL DA PESQUISA
+            ======================================== */}
+
+            <div className="flex shrink-0 items-center gap-2">
+              {/* TRABALHE CONOSCO */}
+              <Link
+                to="/trabalhe-conosco"
+                className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-100"
+              >
+                Trabalhe Conosco
+              </Link>
+
+              {/* FARMÁCIA POPULAR */}
+              <Link
+                to="/farmacia-popular"
+                className="whitespace-nowrap rounded-full bg-brand-red px-3 py-2 text-xs font-semibold text-brand-red-foreground transition-transform hover:scale-105"
+              >
+                Farmácia Popular
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -357,23 +382,6 @@ export function SiteHeader() {
                 {c.nome}
               </Link>
             ))}
-
-            {/* TRABALHE CONOSCO */}
-            <Link
-              to="/trabalhe-conosco"
-              className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-1 font-semibold transition-opacity hover:opacity-100"
-            >
-              Trabalhe Conosco
-            </Link>
-
-            {/* FARMÁCIA POPULAR - SOMENTE TEXTO */}
-            <Link
-              to="/farmacia-popular"
-              className="whitespace-nowrap rounded-full bg-brand-red px-3 py-1 font-semibold text-brand-red-foreground transition-transform hover:scale-105"
-            >
-              Farmácia Popular
-            </Link>
-
           </div>
         </div>
       </header>
