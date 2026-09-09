@@ -170,8 +170,9 @@ async function buscarTodosOsSites(termo: string, ean?: string) {
   for (let i = 0; resultado.length < LIMITE_TOTAL; i++) {
     let adicionou = false;
     for (const grupo of grupos) {
-      if (grupo[i]) {
-        resultado.push(grupo[i]);
+      const item = grupo[i];
+      if (item) {
+        resultado.push(item);
         adicionou = true;
       }
       if (resultado.length >= LIMITE_TOTAL) break;
@@ -218,7 +219,7 @@ export async function buscarAte50Imagens(
 
   const acumulado: Candidato[] = [];
   for (let i = 0; i < termos.length && acumulado.length < LIMITE_TOTAL; i++) {
-    const etapa = termos[i];
+    const etapa = termos[i]!;
     const encontrados = await buscarTodosOsSites(etapa.termo, etapa.ean);
     acumulado.push(...encontrados);
     if (i < termos.length - 1) await sleep(PAUSA_ENTRE_ETAPAS_MS);
