@@ -222,7 +222,10 @@ export const providersAtivos = () => PROVIDERS;
 
 export async function buscarAte50Imagens(
   produto: ProdutoRef & { codigo_barras?: string | null; descricao?: string | null },
+  fontes?: FonteBusca[],
 ): Promise<Candidato[]> {
+  const sites = (fontes && fontes.length ? fontes.map(montarSite).filter((s): s is Site => !!s) : SITES) as Site[];
+  if (sites.length === 0) return [];
   const termos: Array<{ termo: string; ean?: string }> = [];
   const ean = normalizarEan(produto.codigo_barras);
   if (ean) termos.push({ termo: ean, ean });
