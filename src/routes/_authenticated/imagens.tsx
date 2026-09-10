@@ -17,6 +17,14 @@ import {
   excluirImagensProdutos,
   enviarImagemProduto,
   processarProdutoImagem,
+  listarFontesImagens,
+  salvarFonteImagem,
+  alternarFonteImagem,
+  excluirFonteImagem,
+  listarImagensProduto,
+  adicionarImagemPorLink,
+  definirImagemPrincipal,
+  excluirImagemGaleria,
 } from "@/lib/images.functions";
 
 import { Button } from "@/components/ui/button";
@@ -95,6 +103,22 @@ function ImagensPage() {
 
   const fnProcessar = useServerFn(processarProdutoImagem);
 
+  const fnFontes = useServerFn(listarFontesImagens);
+
+  const fnSalvarFonte = useServerFn(salvarFonteImagem);
+
+  const fnAlternarFonte = useServerFn(alternarFonteImagem);
+
+  const fnExcluirFonte = useServerFn(excluirFonteImagem);
+
+  const fnGaleria = useServerFn(listarImagensProduto);
+
+  const fnAdicionarLink = useServerFn(adicionarImagemPorLink);
+
+  const fnPrincipal = useServerFn(definirImagemPrincipal);
+
+  const fnExcluirGaleria = useServerFn(excluirImagemGaleria);
+
   const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
 
   const [busca, setBusca] = useState("");
@@ -133,6 +157,102 @@ function ImagensPage() {
   const [processando, setProcessando] = useState(false);
 
   const [totalProcessar, setTotalProcessar] = useState(0);
+
+  // Fontes de pesquisa (padrão + personalizadas).
+  const [fontesSel, setFontesSel] = useState<string[]>([]);
+
+  const [fonteEditando, setFonteEditando] = useState<any | null>(null);
+
+  const [fonteNome, setFonteNome] = useState("");
+
+  const [fonteUrl, setFonteUrl] = useState("");
+
+  const [fontePrioridade, setFontePrioridade] = useState("100");
+
+  const [linkImagem, setLinkImagem] = useState("");
+
+  const [salvandoLink, setSalvandoLink] = useState(false);
+
+  const fontes = useQuery({
+    queryKey: ["imagens", "fontes"],
+
+    queryFn: () => fnFontes({}),
+  });
+
+  const listaFontes = (fontes.data?.fontes ?? []) as any[];
+
+  const fontesAtivasIds = listaFontes.filter((f) => f.ativo).map((f) => f.id as string);
+
+  // Sem seleção explícita, usa todas as fontes ativas.
+  const fonteIds = fontesSel.length ? fontesSel : fontesAtivasIds;
+
+  const galeria = useQuery({
+    queryKey: ["imagens", "galeria", selecionado?.id],
+
+    enabled: !!selecionado?.id,
+
+    queryFn: () => fnGaleria({ data: { produtoId: selecionado.id } }),
+  });
+
+  const salvarFonte = async () => {
+    if (fonteNome.trim().length < 2 || fonteUrl.trim().length < 4) {
+      toast.error("Informe o nome e o endereço do site.");
+
+      return;
+    }
+
+    try {
+      await fnSalvarFonte({
+        data: {
+          ...(fonteEditando ? { id: fonteEditando.id as string } : {}),
+          nome: fonteNome.trim(),
+          url: fonteUrl.trim(),
+          ativo: fonteEditando ? Boolean(fonteEditando.ativo) : true,
+          prioridade: Number.parseInt(fontePrioridade, 10) || 100,
+        },
+      });
+
+      toast.success(fonteEditando ? "Fonte atualizada." : "Fonte adicionada.");
+
+      setFonteEditando(null);
+
+      setFonteNome("");
+
+      setFonteUrl("");
+
+      setFontePrioridade("100");
+
+      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Falha ao salvar a fonte.");
+    }
+  };
+
+  const adicionarPorLink = async () => {
+    if (!selecionado || !linkImagem.trim()) {
+      return;
+    }
+
+    setSalvandoLink(true);
+
+    try {
+      const r = await fnAdicionarLink({ data: { produtoId: selecionado.id, imageUrl: linkImagem.trim() } });
+
+      if (r.duplicada) {
+        toast.info("Essa imagem já está na galeria deste produto.");
+      } else {
+        toast.success("Imagem adicionada à galeria. Defina como principal para publicá-la.");
+      }
+
+      setLinkImagem("");
+
+      void qc.invalidateQueries({ queryKey: ["imagens", "galeria"] });
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível usar esse link.");
+    } finally {
+      setSalvandoLink(false);
+    }
+  };
 
   const estat = useQuery({
     queryKey: ["imagens", "estatisticas"],
@@ -260,6 +380,8 @@ function ImagensPage() {
       const r = await fnCandidatos({
         data: {
           produtoId: produto.id,
+
+          fonteIds,
         },
       });
 
@@ -284,6 +406,8 @@ function ImagensPage() {
           produtoId: selecionado.id,
 
           termo: termoManual,
+
+          fonteIds,
         },
       });
 
@@ -397,6 +521,8 @@ function ImagensPage() {
           fabricante: "",
 
           comEan: "qualquer",
+
+          fonteIds,
         },
       });
 
@@ -481,7 +607,7 @@ function ImagensPage() {
         }
 
         try {
-          const r = await fnProcessar({ data: { produtoId: atual.id } });
+          const r = await fnProcessar({ data: { produtoId: atual.id, fonteIds } });
 
           setResultados((lista) => [
             ...lista,
@@ -579,6 +705,135 @@ function ImagensPage() {
           </div>
         ))}
       </div>
+
+      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-primary">Fontes de pesquisa</h2>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Cadastre quantos sites quiser. Marque abaixo quais devem ser usados nas próximas buscas; sem nenhuma marcação,
+          todos os sites ativos são consultados.
+        </p>
+
+        <div className="mt-4 grid gap-2">
+          {listaFontes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma fonte cadastrada.</p>}
+
+          {listaFontes.map((fonte: any) => (
+            <div key={fonte.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
+              <Checkbox
+                checked={fontesSel.includes(fonte.id)}
+                disabled={!fonte.ativo}
+                onCheckedChange={() =>
+                  setFontesSel((atual) =>
+                    atual.includes(fonte.id) ? atual.filter((id) => id !== fonte.id) : [...atual, fonte.id],
+                  )
+                }
+              />
+
+              <div className="min-w-[180px] flex-1">
+                <p className="text-sm font-medium">
+                  {fonte.nome}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {fonte.tipo === "padrao" ? "· padrão" : "· personalizada"} · prioridade {fonte.prioridade}
+                  </span>
+                </p>
+
+                <p className="text-xs break-all text-muted-foreground">{fonte.url}</p>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await fnAlternarFonte({ data: { id: fonte.id, ativo: !fonte.ativo } });
+
+                  void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                }}
+              >
+                {fonte.ativo ? "Desativar" : "Ativar"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setFonteEditando(fonte);
+
+                  setFonteNome(fonte.nome);
+
+                  setFonteUrl(fonte.url);
+
+                  setFontePrioridade(String(fonte.prioridade));
+                }}
+              >
+                Editar
+              </Button>
+
+              {fonte.tipo === "personalizada" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    if (!window.confirm(`Excluir a fonte ${fonte.nome}?`)) return;
+
+                    try {
+                      await fnExcluirFonte({ data: { id: fonte.id } });
+
+                      toast.success("Fonte excluída.");
+
+                      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                    } catch (erro) {
+                      toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
+                    }
+                  }}
+                >
+                  Excluir
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1.5fr_auto_auto]">
+          <div>
+            <Label className="text-xs">Nome do site</Label>
+
+            <Input value={fonteNome} placeholder="Ex.: Drogasil" onChange={(ev) => setFonteNome(ev.target.value)} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Endereço</Label>
+
+            <Input value={fonteUrl} placeholder="https://www.drogasil.com.br" onChange={(ev) => setFonteUrl(ev.target.value)} />
+          </div>
+
+          <div className="w-28">
+            <Label className="text-xs">Prioridade</Label>
+
+            <Input value={fontePrioridade} inputMode="numeric" onChange={(ev) => setFontePrioridade(ev.target.value)} />
+          </div>
+
+          <div className="flex items-end gap-2">
+            <Button onClick={salvarFonte}>{fonteEditando ? "Salvar" : "Adicionar"}</Button>
+
+            {fonteEditando && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFonteEditando(null);
+
+                  setFonteNome("");
+
+                  setFonteUrl("");
+
+                  setFontePrioridade("100");
+                }}
+              >
+                Cancelar
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-primary">Filtros dos produtos</h2>
@@ -1130,6 +1385,86 @@ function ImagensPage() {
                 }
               }}
             />
+          </div>
+
+          <div className="mt-4 rounded-xl border p-3">
+            <Label className="text-xs">Adicionar imagem por link</Label>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Input
+                className="min-w-[220px] flex-1"
+                value={linkImagem}
+                placeholder="https://site.com/foto-do-produto.jpg"
+                onChange={(ev) => setLinkImagem(ev.target.value)}
+              />
+
+              <Button variant="outline" disabled={salvandoLink || !linkImagem.trim()} onClick={adicionarPorLink}>
+                {salvandoLink ? "Conferindo…" : "Adicionar"}
+              </Button>
+            </div>
+
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Aceita JPG, PNG, WEBP e GIF. Links quebrados ou que não sejam imagem são recusados. A imagem só vai ao ar
+              quando você definir como principal.
+            </p>
+
+            {(galeria.data?.imagens ?? []).length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {(galeria.data?.imagens ?? []).map((img: any) => (
+                  <div key={img.id} className="rounded-xl border p-2">
+                    <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
+                      <img src={img.image_url} alt="" className="h-full w-full object-contain" loading="lazy" />
+                    </div>
+
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground" title={img.source_url ?? ""}>
+                      {img.is_primary ? "Principal · " : ""}
+                      {img.source_url ?? img.source_type}
+                    </p>
+
+                    <div className="mt-2 flex gap-1">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={img.is_primary}
+                        onClick={async () => {
+                          try {
+                            await fnPrincipal({ data: { produtoId: selecionado.id, imagemId: img.id } });
+
+                            toast.success("Imagem principal definida.");
+
+                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                          } catch (erro) {
+                            toast.error(erro instanceof Error ? erro.message : "Falha ao definir.");
+                          }
+                        }}
+                      >
+                        Principal
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (!window.confirm("Excluir esta imagem?")) return;
+
+                          try {
+                            await fnExcluirGaleria({ data: { imagemId: img.id } });
+
+                            toast.success("Imagem excluída.");
+
+                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                          } catch (erro) {
+                            toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
+                          }
+                        }}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {carregandoCandidatos ? (

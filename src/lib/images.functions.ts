@@ -272,7 +272,34 @@ function ordenarCandidatos<
   });
 }
 
-async function candidatosPara(produto: any, termoManual?: string) {
+/** Carrega as fontes ativas do banco (opcionalmente só as escolhidas na pesquisa). */
+async function carregarFontes(context: any, fonteIds?: string[]) {
+  const { FONTES_PADRAO } = await import("@/lib/images/providers.server");
+
+  try {
+    let consulta = context.supabase
+      .from("image_sources")
+      .select("id, nome, url, ativo, prioridade")
+      .eq("ativo", true)
+      .order("prioridade", { ascending: true });
+
+    if (fonteIds && fonteIds.length) {
+      consulta = consulta.in("id", fonteIds);
+    }
+
+    const { data, error } = await consulta;
+
+    if (error || !data || data.length === 0) {
+      return FONTES_PADRAO;
+    }
+
+    return data.map((f: any) => ({ id: f.id as string, nome: f.nome as string, url: f.url as string }));
+  } catch {
+    return FONTES_PADRAO;
+  }
+}
+
+async function candidatosPara(produto: any, termoManual?: string, fontes?: Array<{ id: string; nome: string; url: string }>) {
   const { buscarAte50Imagens } = await import("@/lib/images/providers.server");
 
   const produtoBusca = termoManual?.trim()
@@ -282,12 +309,15 @@ async function candidatosPara(produto: any, termoManual?: string) {
       }
     : produto;
 
-  const brutos = await buscarAte50Imagens({
-    nome: produtoBusca.nome,
-    fabricante: produtoBusca.fabricante,
-    codigo_barras: produtoBusca.codigo_barras,
-    descricao: produtoBusca.descricao ?? produtoBusca.descricao_produto ?? null,
-  });
+  const brutos = await buscarAte50Imagens(
+    {
+      nome: produtoBusca.nome,
+      fabricante: produtoBusca.fabricante,
+      codigo_barras: produtoBusca.codigo_barras,
+      descricao: produtoBusca.descricao ?? produtoBusca.descricao_produto ?? null,
+    },
+    fontes,
+  );
 
   const encontrados: Array<
     Candidato & {
@@ -323,6 +353,8 @@ export const buscarCandidatos = createServerFn({
         produtoId: z.string().uuid(),
 
         termo: z.string().optional(),
+
+        fonteIds: z.array(z.string().uuid()).optional(),
       })
       .parse(input),
   )
@@ -343,7 +375,7 @@ export const buscarCandidatos = createServerFn({
 
     return {
       produto,
-      candidatos: await candidatosPara(produto, data.termo),
+      candidatos: await candidatosPara(produto, data.termo, await carregarFontes(context, data.fonteIds)),
     };
   });
 
@@ -513,6 +545,8 @@ export const sincronizarLote = createServerFn({
         fabricante: z.string().default(""),
 
         comEan: z.enum(["qualquer", "sim", "nao"]).default("qualquer"),
+
+        fonteIds: z.array(z.string().uuid()).optional(),
       })
       .parse(input),
   )
@@ -605,7 +639,7 @@ export const sincronizarLote = createServerFn({
       const inicio = new Date().toISOString();
 
       try {
-        const candidatos = await candidatosPara(produto);
+        const candidatos = await candidatosPara(produto, undefined, await carregarFontes(context, data.fonteIds));
 
         // Busca em todas as fontes e nunca aplica automaticamente no lote.
         // Todo candidato válido vai para revisão manual.
@@ -1090,6 +1124,8 @@ export const processarProdutoImagem = createServerFn({
     z
       .object({
         produtoId: z.string().uuid(),
+
+        fonteIds: z.array(z.string().uuid()).optional(),
       })
       .parse(input),
   )
@@ -1110,7 +1146,7 @@ export const processarProdutoImagem = createServerFn({
     const inicio = new Date().toISOString();
 
     try {
-      const candidatos = await candidatosPara(produto);
+      const candidatos = await candidatosPara(produto, undefined, await carregarFontes(context, data.fonteIds));
       let melhorPendente: any = null;
       for (const candidato of candidatos) {
         if (await validarCandidatoImagem(candidato)) {
@@ -1194,4 +1230,268 @@ export const processarProdutoImagem = createServerFn({
 
       return { produtoId: produto.id, nome: produto.nome, status: "error" as const, fonte: null, erro: mensagem };
     }
+  });
+
+/* ==========================================================
+ * FONTES PERSONALIZADAS DE PESQUISA
+ * ========================================================== */
+
+export const listarFontesImagens = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+
+    const { data, error } = await context.supabase
+      .from("image_sources")
+      .select("id, nome, url, tipo, ativo, prioridade")
+      .order("prioridade", { ascending: true })
+      .order("nome", { ascending: true });
+
+    if (error) throw new Error(error.message);
+
+    return { fontes: (data ?? []) as any[] };
+  });
+
+function normalizarUrlFonte(valor: string) {
+  const bruto = valor.trim();
+  const u = new URL(bruto.startsWith("http") ? bruto : `https://${bruto}`);
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Endereço inválido.");
+  return u.origin;
+}
+
+export const salvarFonteImagem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        nome: z.string().trim().min(2).max(80),
+        url: z.string().trim().min(4).max(200),
+        ativo: z.boolean().default(true),
+        prioridade: z.number().int().min(0).max(9999).default(100),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    let url: string;
+    try {
+      url = normalizarUrlFonte(data.url);
+    } catch {
+      throw new Error("Endereço do site inválido. Use algo como https://www.exemplo.com.br");
+    }
+
+    if (data.id) {
+      const { error } = await context.supabase
+        .from("image_sources")
+        .update({ nome: data.nome, url, ativo: data.ativo, prioridade: data.prioridade })
+        .eq("id", data.id);
+
+      if (error) throw new Error(error.message);
+      return { id: data.id };
+    }
+
+    const { data: criada, error } = await context.supabase
+      .from("image_sources")
+      .insert({ nome: data.nome, url, tipo: "personalizada", ativo: data.ativo, prioridade: data.prioridade })
+      .select("id")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { id: (criada as any).id as string };
+  });
+
+export const alternarFonteImagem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ id: z.string().uuid(), ativo: z.boolean() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { error } = await context.supabase.from("image_sources").update({ ativo: data.ativo }).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const excluirFonteImagem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: fonte, error: erroLeitura } = await context.supabase
+      .from("image_sources")
+      .select("id, tipo")
+      .eq("id", data.id)
+      .single();
+
+    if (erroLeitura || !fonte) throw new Error(erroLeitura?.message ?? "Fonte não encontrada.");
+    if ((fonte as any).tipo !== "personalizada") {
+      throw new Error("As fontes padrão não podem ser excluídas. Você pode apenas desativá-las.");
+    }
+
+    const { error } = await context.supabase.from("image_sources").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ==========================================================
+ * GALERIA DE IMAGENS POR PRODUTO
+ * ========================================================== */
+
+export const listarImagensProduto = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ produtoId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: imagens, error } = await context.supabase
+      .from("produto_imagens")
+      .select("id, image_url, source_type, source_name, source_url, is_primary, created_at")
+      .eq("produto_id", data.produtoId)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return { imagens: (imagens ?? []) as any[] };
+  });
+
+export const adicionarImagemPorLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        produtoId: z.string().uuid(),
+        imageUrl: z.string().url().max(2000),
+        fonteNome: z.string().trim().max(80).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: produto, error: erroProduto } = await context.supabase
+      .from("produtos")
+      .select("id, codigo_barras")
+      .eq("id", data.produtoId)
+      .single();
+
+    if (erroProduto || !produto) throw new Error(erroProduto?.message ?? "Produto não encontrado.");
+
+    const { baixarImagem, guardarImagem } = await import("@/lib/images/pipeline.server");
+
+    // Baixa e valida: links quebrados, páginas HTML e formatos não suportados são recusados aqui.
+    const imagem = await baixarImagem(data.imageUrl);
+
+    const chave = ((produto as any).codigo_barras || "").replace(/\D/g, "") || (produto as any).id;
+    const caminhoChave = `${chave}/gal-${imagem.hash.slice(0, 16)}`;
+
+    const { data: existentes } = await context.supabase
+      .from("produto_imagens")
+      .select("id, image_url, source_url")
+      .eq("produto_id", data.produtoId);
+
+    const jaExiste = (existentes ?? []).some(
+      (i: any) =>
+        String(i.image_url ?? "").includes(imagem.hash.slice(0, 16)) ||
+        String(i.source_url ?? "").split("?")[0] === data.imageUrl.split("?")[0],
+    );
+
+    if (jaExiste) {
+      return { duplicada: true, url: null as string | null };
+    }
+
+    const { url } = await guardarImagem(caminhoChave, imagem);
+
+    const { error } = await context.supabase.from("produto_imagens").insert({
+      produto_id: data.produtoId,
+      image_url: url,
+      source_type: "link",
+      source_name: data.fonteNome ?? null,
+      source_url: data.imageUrl,
+      is_primary: false,
+    });
+
+    if (error) throw new Error(error.message);
+
+    return { duplicada: false, url };
+  });
+
+export const definirImagemPrincipal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ produtoId: z.string().uuid(), imagemId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: imagem, error: erroImagem } = await context.supabase
+      .from("produto_imagens")
+      .select("id, image_url, source_name, source_url")
+      .eq("id", data.imagemId)
+      .eq("produto_id", data.produtoId)
+      .single();
+
+    if (erroImagem || !imagem) throw new Error(erroImagem?.message ?? "Imagem não encontrada.");
+
+    await context.supabase.from("produto_imagens").update({ is_primary: false }).eq("produto_id", data.produtoId);
+    await context.supabase.from("produto_imagens").update({ is_primary: true }).eq("id", data.imagemId);
+
+    const { error } = await context.supabase
+      .from("produtos")
+      .update({
+        imagem: (imagem as any).image_url,
+        image_status: "approved",
+        image_source: (imagem as any).source_name ?? "link_manual",
+        image_source_url: (imagem as any).source_url ?? null,
+        image_confidence: 100,
+        image_error: null,
+        image_candidato_url: null,
+        image_last_synced_at: new Date().toISOString(),
+      })
+      .eq("id", data.produtoId);
+
+    if (error) throw new Error(error.message);
+    return { url: (imagem as any).image_url as string };
+  });
+
+export const excluirImagemGaleria = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ imagemId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: imagem, error: erroImagem } = await context.supabase
+      .from("produto_imagens")
+      .select("id, produto_id, image_url, is_primary")
+      .eq("id", data.imagemId)
+      .single();
+
+    if (erroImagem || !imagem) throw new Error(erroImagem?.message ?? "Imagem não encontrada.");
+
+    const url = String((imagem as any).image_url ?? "");
+    const prefixo = "/api/public/img/";
+
+    if (url.startsWith(prefixo)) {
+      const caminho = url.slice(prefixo.length).split("?")[0];
+
+      if (caminho && !caminho.includes("..")) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        await supabaseAdmin.storage.from("produtos").remove([caminho]);
+      }
+    }
+
+    const { error } = await context.supabase.from("produto_imagens").delete().eq("id", data.imagemId);
+    if (error) throw new Error(error.message);
+
+    if ((imagem as any).is_primary) {
+      await context.supabase
+        .from("produtos")
+        .update({ imagem: null, image_status: "pending", image_last_synced_at: new Date().toISOString() })
+        .eq("id", (imagem as any).produto_id);
+    }
+
+    return { ok: true };
   });
