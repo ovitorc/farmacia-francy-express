@@ -17,6 +17,14 @@ import {
   excluirImagensProdutos,
   enviarImagemProduto,
   processarProdutoImagem,
+  listarFontesImagens,
+  salvarFonteImagem,
+  alternarFonteImagem,
+  excluirFonteImagem,
+  listarImagensProduto,
+  adicionarImagemPorLink,
+  definirImagemPrincipal,
+  excluirImagemGaleria,
 } from "@/lib/images.functions";
 
 import { Button } from "@/components/ui/button";
@@ -95,6 +103,22 @@ function ImagensPage() {
 
   const fnProcessar = useServerFn(processarProdutoImagem);
 
+  const fnFontes = useServerFn(listarFontesImagens);
+
+  const fnSalvarFonte = useServerFn(salvarFonteImagem);
+
+  const fnAlternarFonte = useServerFn(alternarFonteImagem);
+
+  const fnExcluirFonte = useServerFn(excluirFonteImagem);
+
+  const fnGaleria = useServerFn(listarImagensProduto);
+
+  const fnAdicionarLink = useServerFn(adicionarImagemPorLink);
+
+  const fnPrincipal = useServerFn(definirImagemPrincipal);
+
+  const fnExcluirGaleria = useServerFn(excluirImagemGaleria);
+
   const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
 
   const [busca, setBusca] = useState("");
@@ -133,6 +157,102 @@ function ImagensPage() {
   const [processando, setProcessando] = useState(false);
 
   const [totalProcessar, setTotalProcessar] = useState(0);
+
+  // Fontes de pesquisa (padrão + personalizadas).
+  const [fontesSel, setFontesSel] = useState<string[]>([]);
+
+  const [fonteEditando, setFonteEditando] = useState<any | null>(null);
+
+  const [fonteNome, setFonteNome] = useState("");
+
+  const [fonteUrl, setFonteUrl] = useState("");
+
+  const [fontePrioridade, setFontePrioridade] = useState("100");
+
+  const [linkImagem, setLinkImagem] = useState("");
+
+  const [salvandoLink, setSalvandoLink] = useState(false);
+
+  const fontes = useQuery({
+    queryKey: ["imagens", "fontes"],
+
+    queryFn: () => fnFontes({}),
+  });
+
+  const listaFontes = (fontes.data?.fontes ?? []) as any[];
+
+  const fontesAtivasIds = listaFontes.filter((f) => f.ativo).map((f) => f.id as string);
+
+  // Sem seleção explícita, usa todas as fontes ativas.
+  const fonteIds = fontesSel.length ? fontesSel : fontesAtivasIds;
+
+  const galeria = useQuery({
+    queryKey: ["imagens", "galeria", selecionado?.id],
+
+    enabled: !!selecionado?.id,
+
+    queryFn: () => fnGaleria({ data: { produtoId: selecionado.id } }),
+  });
+
+  const salvarFonte = async () => {
+    if (fonteNome.trim().length < 2 || fonteUrl.trim().length < 4) {
+      toast.error("Informe o nome e o endereço do site.");
+
+      return;
+    }
+
+    try {
+      await fnSalvarFonte({
+        data: {
+          ...(fonteEditando ? { id: fonteEditando.id as string } : {}),
+          nome: fonteNome.trim(),
+          url: fonteUrl.trim(),
+          ativo: fonteEditando ? Boolean(fonteEditando.ativo) : true,
+          prioridade: Number.parseInt(fontePrioridade, 10) || 100,
+        },
+      });
+
+      toast.success(fonteEditando ? "Fonte atualizada." : "Fonte adicionada.");
+
+      setFonteEditando(null);
+
+      setFonteNome("");
+
+      setFonteUrl("");
+
+      setFontePrioridade("100");
+
+      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Falha ao salvar a fonte.");
+    }
+  };
+
+  const adicionarPorLink = async () => {
+    if (!selecionado || !linkImagem.trim()) {
+      return;
+    }
+
+    setSalvandoLink(true);
+
+    try {
+      const r = await fnAdicionarLink({ data: { produtoId: selecionado.id, imageUrl: linkImagem.trim() } });
+
+      if (r.duplicada) {
+        toast.info("Essa imagem já está na galeria deste produto.");
+      } else {
+        toast.success("Imagem adicionada à galeria. Defina como principal para publicá-la.");
+      }
+
+      setLinkImagem("");
+
+      void qc.invalidateQueries({ queryKey: ["imagens", "galeria"] });
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível usar esse link.");
+    } finally {
+      setSalvandoLink(false);
+    }
+  };
 
   const estat = useQuery({
     queryKey: ["imagens", "estatisticas"],
@@ -260,6 +380,8 @@ function ImagensPage() {
       const r = await fnCandidatos({
         data: {
           produtoId: produto.id,
+
+          fonteIds,
         },
       });
 
@@ -284,6 +406,8 @@ function ImagensPage() {
           produtoId: selecionado.id,
 
           termo: termoManual,
+
+          fonteIds,
         },
       });
 
@@ -397,6 +521,8 @@ function ImagensPage() {
           fabricante: "",
 
           comEan: "qualquer",
+
+          fonteIds,
         },
       });
 
@@ -481,7 +607,7 @@ function ImagensPage() {
         }
 
         try {
-          const r = await fnProcessar({ data: { produtoId: atual.id } });
+          const r = await fnProcessar({ data: { produtoId: atual.id, fonteIds } });
 
           setResultados((lista) => [
             ...lista,
