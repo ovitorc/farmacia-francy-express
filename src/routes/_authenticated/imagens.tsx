@@ -707,6 +707,135 @@ function ImagensPage() {
       </div>
 
       <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-primary">Fontes de pesquisa</h2>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Cadastre quantos sites quiser. Marque abaixo quais devem ser usados nas próximas buscas; sem nenhuma marcação,
+          todos os sites ativos são consultados.
+        </p>
+
+        <div className="mt-4 grid gap-2">
+          {listaFontes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma fonte cadastrada.</p>}
+
+          {listaFontes.map((fonte: any) => (
+            <div key={fonte.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
+              <Checkbox
+                checked={fontesSel.includes(fonte.id)}
+                disabled={!fonte.ativo}
+                onCheckedChange={() =>
+                  setFontesSel((atual) =>
+                    atual.includes(fonte.id) ? atual.filter((id) => id !== fonte.id) : [...atual, fonte.id],
+                  )
+                }
+              />
+
+              <div className="min-w-[180px] flex-1">
+                <p className="text-sm font-medium">
+                  {fonte.nome}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {fonte.tipo === "padrao" ? "· padrão" : "· personalizada"} · prioridade {fonte.prioridade}
+                  </span>
+                </p>
+
+                <p className="text-xs break-all text-muted-foreground">{fonte.url}</p>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await fnAlternarFonte({ data: { id: fonte.id, ativo: !fonte.ativo } });
+
+                  void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                }}
+              >
+                {fonte.ativo ? "Desativar" : "Ativar"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setFonteEditando(fonte);
+
+                  setFonteNome(fonte.nome);
+
+                  setFonteUrl(fonte.url);
+
+                  setFontePrioridade(String(fonte.prioridade));
+                }}
+              >
+                Editar
+              </Button>
+
+              {fonte.tipo === "personalizada" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    if (!window.confirm(`Excluir a fonte ${fonte.nome}?`)) return;
+
+                    try {
+                      await fnExcluirFonte({ data: { id: fonte.id } });
+
+                      toast.success("Fonte excluída.");
+
+                      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                    } catch (erro) {
+                      toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
+                    }
+                  }}
+                >
+                  Excluir
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1.5fr_auto_auto]">
+          <div>
+            <Label className="text-xs">Nome do site</Label>
+
+            <Input value={fonteNome} placeholder="Ex.: Drogasil" onChange={(ev) => setFonteNome(ev.target.value)} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Endereço</Label>
+
+            <Input value={fonteUrl} placeholder="https://www.drogasil.com.br" onChange={(ev) => setFonteUrl(ev.target.value)} />
+          </div>
+
+          <div className="w-28">
+            <Label className="text-xs">Prioridade</Label>
+
+            <Input value={fontePrioridade} inputMode="numeric" onChange={(ev) => setFontePrioridade(ev.target.value)} />
+          </div>
+
+          <div className="flex items-end gap-2">
+            <Button onClick={salvarFonte}>{fonteEditando ? "Salvar" : "Adicionar"}</Button>
+
+            {fonteEditando && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFonteEditando(null);
+
+                  setFonteNome("");
+
+                  setFonteUrl("");
+
+                  setFontePrioridade("100");
+                }}
+              >
+                Cancelar
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-primary">Filtros dos produtos</h2>
 
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1256,6 +1385,86 @@ function ImagensPage() {
                 }
               }}
             />
+          </div>
+
+          <div className="mt-4 rounded-xl border p-3">
+            <Label className="text-xs">Adicionar imagem por link</Label>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Input
+                className="min-w-[220px] flex-1"
+                value={linkImagem}
+                placeholder="https://site.com/foto-do-produto.jpg"
+                onChange={(ev) => setLinkImagem(ev.target.value)}
+              />
+
+              <Button variant="outline" disabled={salvandoLink || !linkImagem.trim()} onClick={adicionarPorLink}>
+                {salvandoLink ? "Conferindo…" : "Adicionar"}
+              </Button>
+            </div>
+
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Aceita JPG, PNG, WEBP e GIF. Links quebrados ou que não sejam imagem são recusados. A imagem só vai ao ar
+              quando você definir como principal.
+            </p>
+
+            {(galeria.data?.imagens ?? []).length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {(galeria.data?.imagens ?? []).map((img: any) => (
+                  <div key={img.id} className="rounded-xl border p-2">
+                    <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
+                      <img src={img.image_url} alt="" className="h-full w-full object-contain" loading="lazy" />
+                    </div>
+
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground" title={img.source_url ?? ""}>
+                      {img.is_primary ? "Principal · " : ""}
+                      {img.source_url ?? img.source_type}
+                    </p>
+
+                    <div className="mt-2 flex gap-1">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={img.is_primary}
+                        onClick={async () => {
+                          try {
+                            await fnPrincipal({ data: { produtoId: selecionado.id, imagemId: img.id } });
+
+                            toast.success("Imagem principal definida.");
+
+                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                          } catch (erro) {
+                            toast.error(erro instanceof Error ? erro.message : "Falha ao definir.");
+                          }
+                        }}
+                      >
+                        Principal
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (!window.confirm("Excluir esta imagem?")) return;
+
+                          try {
+                            await fnExcluirGaleria({ data: { imagemId: img.id } });
+
+                            toast.success("Imagem excluída.");
+
+                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                          } catch (erro) {
+                            toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
+                          }
+                        }}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {carregandoCandidatos ? (
