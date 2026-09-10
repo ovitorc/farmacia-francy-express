@@ -80,102 +80,66 @@ function ImagensPage() {
   const qc = useQueryClient();
 
   const fnEstatisticas = useServerFn(estatisticasImagens);
-
   const fnFiltros = useServerFn(listarFiltrosImagens);
-
   const fnListar = useServerFn(listarProdutosImagens);
-
   const fnCandidatos = useServerFn(buscarCandidatos);
-
   const fnAplicar = useServerFn(aplicarCandidato);
-
   const fnLote = useServerFn(sincronizarLote);
-
   const fnAprovar = useServerFn(aprovarCandidatoPendente);
-
   const fnRejeitar = useServerFn(rejeitarImagem);
-
   const fnExcluirImagem = useServerFn(excluirImagemProduto);
-
   const fnExcluirImagens = useServerFn(excluirImagensProdutos);
-
   const fnEnviar = useServerFn(enviarImagemProduto);
-
   const fnProcessar = useServerFn(processarProdutoImagem);
-
   const fnFontes = useServerFn(listarFontesImagens);
-
   const fnSalvarFonte = useServerFn(salvarFonteImagem);
-
   const fnAlternarFonte = useServerFn(alternarFonteImagem);
-
   const fnExcluirFonte = useServerFn(excluirFonteImagem);
-
   const fnGaleria = useServerFn(listarImagensProduto);
-
   const fnAdicionarLink = useServerFn(adicionarImagemPorLink);
-
   const fnPrincipal = useServerFn(definirImagemPrincipal);
-
   const fnExcluirGaleria = useServerFn(excluirImagemGaleria);
 
   const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
-
   const [busca, setBusca] = useState("");
-
   const [termoBusca, setTermoBusca] = useState("");
-
   const [categoriasSel, setCategoriasSel] = useState<string[]>([]);
-
   const [subcategoriasSel, setSubcategoriasSel] = useState<string[]>([]);
-
   const [pagina, setPagina] = useState(1);
-
   const porPagina = 24;
 
   const [quantidadeLote, setQuantidadeLote] = useState(10);
-
   const [quantidadePersonalizada, setQuantidadePersonalizada] = useState("");
 
   const [selecionado, setSelecionado] = useState<any | null>(null);
-
   const [candidatos, setCandidatos] = useState<any[]>([]);
-
   const [carregandoCandidatos, setCarregandoCandidatos] = useState(false);
-
   const [termoManual, setTermoManual] = useState("");
 
   const [lote, setLote] = useState<any | null>(null);
-
   const [rodandoLote, setRodandoLote] = useState(false);
 
-  // Seleção de produtos (mantida entre filtros, buscas e páginas).
   const [selecao, setSelecao] = useState<Record<string, string>>({});
-
   const [resultados, setResultados] = useState<ResultadoProduto[]>([]);
-
   const [processando, setProcessando] = useState(false);
-
   const [totalProcessar, setTotalProcessar] = useState(0);
 
-  // Fontes de pesquisa (padrão + personalizadas).
   const [fontesSel, setFontesSel] = useState<string[]>([]);
-
   const [fonteEditando, setFonteEditando] = useState<any | null>(null);
-
   const [fonteNome, setFonteNome] = useState("");
-
   const [fonteUrl, setFonteUrl] = useState("");
-
   const [fontePrioridade, setFontePrioridade] = useState("100");
 
   const [linkImagem, setLinkImagem] = useState("");
-
   const [salvandoLink, setSalvandoLink] = useState(false);
+
+  const [imagemVisualizando, setImagemVisualizando] = useState<{
+    url: string;
+    alt?: string;
+  } | null>(null);
 
   const fontes = useQuery({
     queryKey: ["imagens", "fontes"],
-
     queryFn: () => fnFontes({}),
   });
 
@@ -183,21 +147,22 @@ function ImagensPage() {
 
   const fontesAtivasIds = listaFontes.filter((f) => f.ativo).map((f) => f.id as string);
 
-  // Sem seleção explícita, usa todas as fontes ativas.
   const fonteIds = fontesSel.length ? fontesSel : fontesAtivasIds;
 
   const galeria = useQuery({
     queryKey: ["imagens", "galeria", selecionado?.id],
-
     enabled: !!selecionado?.id,
-
-    queryFn: () => fnGaleria({ data: { produtoId: selecionado.id } }),
+    queryFn: () =>
+      fnGaleria({
+        data: {
+          produtoId: selecionado.id,
+        },
+      }),
   });
 
   const salvarFonte = async () => {
     if (fonteNome.trim().length < 2 || fonteUrl.trim().length < 4) {
       toast.error("Informe o nome e o endereço do site.");
-
       return;
     }
 
@@ -215,14 +180,13 @@ function ImagensPage() {
       toast.success(fonteEditando ? "Fonte atualizada." : "Fonte adicionada.");
 
       setFonteEditando(null);
-
       setFonteNome("");
-
       setFonteUrl("");
-
       setFontePrioridade("100");
 
-      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+      void qc.invalidateQueries({
+        queryKey: ["imagens", "fontes"],
+      });
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Falha ao salvar a fonte.");
     }
@@ -236,7 +200,12 @@ function ImagensPage() {
     setSalvandoLink(true);
 
     try {
-      const r = await fnAdicionarLink({ data: { produtoId: selecionado.id, imageUrl: linkImagem.trim() } });
+      const r = await fnAdicionarLink({
+        data: {
+          produtoId: selecionado.id,
+          imageUrl: linkImagem.trim(),
+        },
+      });
 
       if (r.duplicada) {
         toast.info("Essa imagem já está na galeria deste produto.");
@@ -246,7 +215,9 @@ function ImagensPage() {
 
       setLinkImagem("");
 
-      void qc.invalidateQueries({ queryKey: ["imagens", "galeria"] });
+      void qc.invalidateQueries({
+        queryKey: ["imagens", "galeria"],
+      });
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível usar esse link.");
     } finally {
@@ -256,18 +227,15 @@ function ImagensPage() {
 
   const estat = useQuery({
     queryKey: ["imagens", "estatisticas"],
-
     queryFn: () => fnEstatisticas({}),
   });
 
   const filtrosDisponiveis = useQuery({
     queryKey: ["imagens", "filtros"],
-
     queryFn: () => fnFiltros({}),
   });
 
   const categorias = filtrosDisponiveis.data?.categorias ?? [];
-
   const subcategorias = filtrosDisponiveis.data?.subcategorias ?? [];
 
   const subcategoriasFiltradas = useMemo(() => {
@@ -285,25 +253,16 @@ function ImagensPage() {
       fnListar({
         data: {
           filtro,
-
           busca: termoBusca,
-
           comEan: "qualquer",
-
           fabricante: "",
-
           categoria: "",
-
           subcategoria: "",
-
           categorias: categoriasSel,
-
           subcategorias: subcategoriasSel.filter((slug) =>
             subcategoriasFiltradas.some((item: any) => item.slug === slug),
           ),
-
           pagina,
-
           porPagina,
         },
       }),
@@ -329,7 +288,6 @@ function ImagensPage() {
 
   const selecionarQuantidade = (quantidade: number) => {
     setQuantidadeLote(quantidade);
-
     setQuantidadePersonalizada("");
   };
 
@@ -349,38 +307,28 @@ function ImagensPage() {
 
   const aplicarFiltros = () => {
     setTermoBusca(busca);
-
     setPagina(1);
   };
 
   const limparFiltros = () => {
     setBusca("");
-
     setTermoBusca("");
-
     setCategoriasSel([]);
-
     setSubcategoriasSel([]);
-
     setFiltro("sem_imagem");
-
     setPagina(1);
   };
 
   const abrirProduto = async (produto: any) => {
     setSelecionado(produto);
-
     setCandidatos([]);
-
     setTermoManual("");
-
     setCarregandoCandidatos(true);
 
     try {
       const r = await fnCandidatos({
         data: {
           produtoId: produto.id,
-
           fonteIds,
         },
       });
@@ -404,9 +352,7 @@ function ImagensPage() {
       const r = await fnCandidatos({
         data: {
           produtoId: selecionado.id,
-
           termo: termoManual,
-
           fonteIds,
         },
       });
@@ -424,24 +370,17 @@ function ImagensPage() {
       fnAplicar({
         data: {
           produtoId: selecionado.id,
-
           imageUrl: candidato.imageUrl,
-
           source: candidato.source ?? "manual",
-
           sourceUrl: candidato.sourceUrl,
-
           licenca: candidato.licenca,
-
           confianca: Math.round(candidato.confianca ?? 100),
         },
       }),
 
     onSuccess: () => {
       toast.success("Imagem aplicada ao produto.");
-
       setSelecionado(null);
-
       atualizar();
     },
 
@@ -459,7 +398,6 @@ function ImagensPage() {
       };
 
       reader.onerror = reject;
-
       reader.readAsDataURL(file);
     });
 
@@ -467,19 +405,14 @@ function ImagensPage() {
       await fnEnviar({
         data: {
           produtoId,
-
           nomeArquivo: file.name,
-
           tipo: file.type || "image/jpeg",
-
           conteudoBase64: base64,
         },
       });
 
       toast.success("Imagem enviada.");
-
       setSelecionado(null);
-
       atualizar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha no envio.");
@@ -489,39 +422,28 @@ function ImagensPage() {
   const rodarLote = async (escopo: "sem_imagem" | "revisao" | "todos") => {
     if (!Number.isFinite(quantidadeLote) || quantidadeLote < 1) {
       toast.error("Escolha uma quantidade válida.");
-
       return;
     }
 
     if (quantidadeLote > 10000) {
       toast.error("O máximo permitido é 10.000 produtos por vez.");
-
       return;
     }
 
     setRodandoLote(true);
-
     setLote(null);
 
     try {
       const r = await fnLote({
         data: {
           escopo,
-
           tamanho: quantidadeLote,
-
           forcar: false,
-
           categoria: categoriasSel[0] ?? "",
-
           subcategoria: subcategoriasSel[0] ?? "",
-
           busca: termoBusca,
-
           fabricante: "",
-
           comEan: "qualquer",
-
           fonteIds,
         },
       });
@@ -543,11 +465,8 @@ function ImagensPage() {
   };
 
   const e = estat.data;
-
   const itens = lista.data?.itens ?? [];
-
   const total = lista.data?.total ?? 0;
-
   const paginas = Math.max(1, Math.ceil(total / porPagina));
 
   const idsSelecionados = Object.keys(selecao);
@@ -582,18 +501,19 @@ function ImagensPage() {
 
   const limparSelecao = () => setSelecao({});
 
-  /** Processa uma lista de produtos com no máximo 5 buscas simultâneas. */
-  const processarLista = async (produtos: Array<{ id: string; nome: string }>) => {
+  const processarLista = async (
+    produtos: Array<{
+      id: string;
+      nome: string;
+    }>,
+  ) => {
     if (produtos.length === 0) {
       toast.info("Selecione ao menos um produto.");
-
       return;
     }
 
     setProcessando(true);
-
     setResultados([]);
-
     setTotalProcessar(produtos.length);
 
     let indice = 0;
@@ -607,20 +527,45 @@ function ImagensPage() {
         }
 
         try {
-          const r = await fnProcessar({ data: { produtoId: atual.id, fonteIds } });
+          const r = await fnProcessar({
+            data: {
+              produtoId: atual.id,
+              fonteIds,
+            },
+          });
 
           setResultados((lista) => [
             ...lista,
-            { produtoId: atual.id, nome: r.nome ?? atual.nome, status: r.status, fonte: r.fonte },
+            {
+              produtoId: atual.id,
+              nome: r.nome ?? atual.nome,
+              status: r.status,
+              fonte: r.fonte,
+            },
           ]);
         } catch (erro) {
-          setResultados((lista) => [...lista, { produtoId: atual.id, nome: atual.nome, status: "error", fonte: null }]);
+          setResultados((lista) => [
+            ...lista,
+            {
+              produtoId: atual.id,
+              nome: atual.nome,
+              status: "error",
+              fonte: null,
+            },
+          ]);
         }
       }
     };
 
     try {
-      await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, produtos.length) }, trabalhador));
+      await Promise.all(
+        Array.from(
+          {
+            length: Math.min(CONCORRENCIA, produtos.length),
+          },
+          trabalhador,
+        ),
+      );
 
       toast.success("Busca concluída. As imagens encontradas foram enviadas para revisão manual.");
 
@@ -631,17 +576,34 @@ function ImagensPage() {
   };
 
   const buscarSelecionados = () =>
-    processarLista(idsSelecionados.map((id) => ({ id, nome: selecao[id] ?? "Produto" })));
+    processarLista(
+      idsSelecionados.map((id) => ({
+        id,
+        nome: selecao[id] ?? "Produto",
+      })),
+    );
+
   const excluirSelecionados = async () => {
     if (idsSelecionados.length === 0) {
       toast.info("Selecione ao menos um produto.");
       return;
     }
+
     const confirmar = window.confirm(`Excluir as imagens de ${idsSelecionados.length} produto(s) selecionado(s)?`);
-    if (!confirmar) return;
+
+    if (!confirmar) {
+      return;
+    }
+
     try {
-      const r = await fnExcluirImagens({ data: { produtoIds: idsSelecionados } });
+      const r = await fnExcluirImagens({
+        data: {
+          produtoIds: idsSelecionados,
+        },
+      });
+
       toast.success(`${r.excluidas} imagem(ns) removida(s).`);
+
       limparSelecao();
       atualizar();
     } catch (erro) {
@@ -651,7 +613,13 @@ function ImagensPage() {
 
   const naoEncontrados = resultados.filter((r) => r.status === "not_found" || r.status === "error");
 
-  const buscarNaoEncontrados = () => processarLista(naoEncontrados.map((r) => ({ id: r.produtoId, nome: r.nome })));
+  const buscarNaoEncontrados = () =>
+    processarLista(
+      naoEncontrados.map((r) => ({
+        id: r.produtoId,
+        nome: r.nome,
+      })),
+    );
 
   const encontrados = resultados.filter((r) => r.status === "found").length;
 
@@ -737,16 +705,23 @@ function ImagensPage() {
                   </span>
                 </p>
 
-                <p className="text-xs break-all text-muted-foreground">{fonte.url}</p>
+                <p className="break-all text-xs text-muted-foreground">{fonte.url}</p>
               </div>
 
               <Button
                 size="sm"
                 variant="outline"
                 onClick={async () => {
-                  await fnAlternarFonte({ data: { id: fonte.id, ativo: !fonte.ativo } });
+                  await fnAlternarFonte({
+                    data: {
+                      id: fonte.id,
+                      ativo: !fonte.ativo,
+                    },
+                  });
 
-                  void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                  void qc.invalidateQueries({
+                    queryKey: ["imagens", "fontes"],
+                  });
                 }}
               >
                 {fonte.ativo ? "Desativar" : "Ativar"}
@@ -757,11 +732,8 @@ function ImagensPage() {
                 variant="ghost"
                 onClick={() => {
                   setFonteEditando(fonte);
-
                   setFonteNome(fonte.nome);
-
                   setFonteUrl(fonte.url);
-
                   setFontePrioridade(String(fonte.prioridade));
                 }}
               >
@@ -773,14 +745,22 @@ function ImagensPage() {
                   size="sm"
                   variant="ghost"
                   onClick={async () => {
-                    if (!window.confirm(`Excluir a fonte ${fonte.nome}?`)) return;
+                    if (!window.confirm(`Excluir a fonte ${fonte.nome}?`)) {
+                      return;
+                    }
 
                     try {
-                      await fnExcluirFonte({ data: { id: fonte.id } });
+                      await fnExcluirFonte({
+                        data: {
+                          id: fonte.id,
+                        },
+                      });
 
                       toast.success("Fonte excluída.");
 
-                      void qc.invalidateQueries({ queryKey: ["imagens", "fontes"] });
+                      void qc.invalidateQueries({
+                        queryKey: ["imagens", "fontes"],
+                      });
                     } catch (erro) {
                       toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
                     }
@@ -803,7 +783,11 @@ function ImagensPage() {
           <div>
             <Label className="text-xs">Endereço</Label>
 
-            <Input value={fonteUrl} placeholder="https://www.drogasil.com.br" onChange={(ev) => setFonteUrl(ev.target.value)} />
+            <Input
+              value={fonteUrl}
+              placeholder="https://www.drogasil.com.br"
+              onChange={(ev) => setFonteUrl(ev.target.value)}
+            />
           </div>
 
           <div className="w-28">
@@ -820,11 +804,8 @@ function ImagensPage() {
                 variant="ghost"
                 onClick={() => {
                   setFonteEditando(null);
-
                   setFonteNome("");
-
                   setFonteUrl("");
-
                   setFontePrioridade("100");
                 }}
               >
@@ -865,9 +846,7 @@ function ImagensPage() {
                   variant="ghost"
                   onClick={() => {
                     setCategoriasSel([]);
-
                     setSubcategoriasSel([]);
-
                     setPagina(1);
                   }}
                 >
@@ -912,7 +891,6 @@ function ImagensPage() {
                   variant="ghost"
                   onClick={() => {
                     setSubcategoriasSel([]);
-
                     setPagina(1);
                   }}
                 >
@@ -948,7 +926,6 @@ function ImagensPage() {
               value={filtro}
               onValueChange={(valor) => {
                 setFiltro(valor as Filtro);
-
                 setPagina(1);
               }}
             >
@@ -1153,9 +1130,11 @@ function ImagensPage() {
           <Button variant="outline" onClick={buscarSelecionados} disabled={processando}>
             Procurar imagens para revisão ({idsSelecionados.length})
           </Button>
+
           <Button variant="destructive" onClick={excluirSelecionados}>
             Excluir imagens selecionadas ({idsSelecionados.length})
           </Button>
+
           <Button variant="ghost" onClick={limparSelecao}>
             Limpar seleção
           </Button>
@@ -1183,7 +1162,9 @@ function ImagensPage() {
                   selecionarExibidos();
                 } else {
                   setSelecao((atual) => {
-                    const copia = { ...atual };
+                    const copia = {
+                      ...atual,
+                    };
 
                     for (const p of itens as any[]) {
                       delete copia[p.id];
@@ -1219,8 +1200,14 @@ function ImagensPage() {
                   <img
                     src={produto.imagem ?? produto.image_candidato_url}
                     alt={produto.nome}
-                    className="h-full w-full object-contain"
+                    className="h-full w-full cursor-zoom-in object-contain transition-transform duration-200 hover:scale-[1.03]"
                     loading="lazy"
+                    onClick={() =>
+                      setImagemVisualizando({
+                        url: produto.imagem ?? produto.image_candidato_url,
+                        alt: produto.nome,
+                      })
+                    }
                     onError={(ev) => {
                       ev.currentTarget.style.display = "none";
                     }}
@@ -1246,7 +1233,9 @@ function ImagensPage() {
                     onClick={async () => {
                       const confirmar = window.confirm(`Excluir a imagem de "${produto.nome}"?`);
 
-                      if (!confirmar) return;
+                      if (!confirmar) {
+                        return;
+                      }
 
                       try {
                         await fnExcluirImagem({
@@ -1300,7 +1289,6 @@ function ImagensPage() {
                           await fnRejeitar({
                             data: {
                               produtoId: produto.id,
-
                               removerAtual: false,
                             },
                           });
@@ -1413,7 +1401,18 @@ function ImagensPage() {
                 {(galeria.data?.imagens ?? []).map((img: any) => (
                   <div key={img.id} className="rounded-xl border p-2">
                     <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
-                      <img src={img.image_url} alt="" className="h-full w-full object-contain" loading="lazy" />
+                      <img
+                        src={img.image_url}
+                        alt=""
+                        className="h-full w-full cursor-zoom-in object-contain transition-transform duration-200 hover:scale-[1.03]"
+                        loading="lazy"
+                        onClick={() =>
+                          setImagemVisualizando({
+                            url: img.image_url,
+                            alt: selecionado?.nome ?? "Imagem do produto",
+                          })
+                        }
+                      />
                     </div>
 
                     <p className="mt-1 truncate text-[11px] text-muted-foreground" title={img.source_url ?? ""}>
@@ -1428,11 +1427,18 @@ function ImagensPage() {
                         disabled={img.is_primary}
                         onClick={async () => {
                           try {
-                            await fnPrincipal({ data: { produtoId: selecionado.id, imagemId: img.id } });
+                            await fnPrincipal({
+                              data: {
+                                produtoId: selecionado.id,
+                                imagemId: img.id,
+                              },
+                            });
 
                             toast.success("Imagem principal definida.");
 
-                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                            void qc.invalidateQueries({
+                              queryKey: ["imagens"],
+                            });
                           } catch (erro) {
                             toast.error(erro instanceof Error ? erro.message : "Falha ao definir.");
                           }
@@ -1445,14 +1451,22 @@ function ImagensPage() {
                         size="sm"
                         variant="ghost"
                         onClick={async () => {
-                          if (!window.confirm("Excluir esta imagem?")) return;
+                          if (!window.confirm("Excluir esta imagem?")) {
+                            return;
+                          }
 
                           try {
-                            await fnExcluirGaleria({ data: { imagemId: img.id } });
+                            await fnExcluirGaleria({
+                              data: {
+                                imagemId: img.id,
+                              },
+                            });
 
                             toast.success("Imagem excluída.");
 
-                            void qc.invalidateQueries({ queryKey: ["imagens"] });
+                            void qc.invalidateQueries({
+                              queryKey: ["imagens"],
+                            });
                           } catch (erro) {
                             toast.error(erro instanceof Error ? erro.message : "Falha ao excluir.");
                           }
@@ -1476,7 +1490,18 @@ function ImagensPage() {
               {candidatos.map((candidato, indice) => (
                 <div key={indice} className="rounded-xl border p-2">
                   <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/40">
-                    <img src={candidato.imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" />
+                    <img
+                      src={candidato.imageUrl}
+                      alt=""
+                      className="h-full w-full cursor-zoom-in object-contain transition-transform duration-200 hover:scale-[1.03]"
+                      loading="lazy"
+                      onClick={() =>
+                        setImagemVisualizando({
+                          url: candidato.imageUrl,
+                          alt: selecionado?.nome ?? "Imagem candidata",
+                        })
+                      }
+                    />
                   </div>
 
                   <p className="mt-2 text-[11px] text-muted-foreground">
@@ -1494,6 +1519,35 @@ function ImagensPage() {
                   </Button>
                 </div>
               ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!imagemVisualizando}
+        onOpenChange={(aberto) => {
+          if (!aberto) {
+            setImagemVisualizando(null);
+          }
+        }}
+      >
+        <DialogContent
+          showCloseButton={true}
+          className="flex h-[96vh] w-[96vw] max-w-[96vw] items-center justify-center border-0 bg-black/30 p-0 shadow-none backdrop-blur-2xl"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Visualização ampliada da imagem</DialogTitle>
+          </DialogHeader>
+
+          {imagemVisualizando && (
+            <div className="flex h-[94vh] w-[94vw] items-center justify-center">
+              <img
+                src={imagemVisualizando.url}
+                alt={imagemVisualizando.alt ?? "Imagem ampliada"}
+                className="max-h-[94vh] max-w-[94vw] cursor-zoom-out object-contain border border-black bg-white shadow-2xl"
+                onClick={() => setImagemVisualizando(null)}
+              />
             </div>
           )}
         </DialogContent>
