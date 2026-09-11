@@ -280,6 +280,7 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
       ["Tratamentos capilares", "tratamentos-capilares"],
       ["Coloração", "coloracao"],
       ["Cuidados masculinos", "cuidados-masculinos"],
+      ["Cuidados pessoais", "cuidados-pessoais"],
       ["Barba", "barba"],
       ["Depilação", "depilacao"],
       ["Protetores solares", "protetores-solares"],
@@ -796,7 +797,7 @@ function classificarMIP(texto: string): string {
   return "outros-mips";
 }
 
-function classificarProdutoNoSite(produto: Produto): {
+export function classificarProdutoNoSite(produto: Produto): {
   categoria: string;
   subcategoria: string;
 } {
