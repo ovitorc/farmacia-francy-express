@@ -8,7 +8,6 @@ import {
   classificarProdutoNoSite,
   ESTRUTURA_CATEGORIAS_SITE,
   ordenarProdutosPorRelevancia,
-  produtosDaCategoriaSite,
   removerProdutosDeCategoriasRemovidas,
   type Catalogo,
   type Produto,
@@ -32,11 +31,17 @@ function publicClient() {
     global: {
       fetch: (input, init) => {
         const headers = new Headers(init?.headers);
+
         if (key.startsWith("sb_") && headers.get("Authorization") === `Bearer ${key}`) {
           headers.delete("Authorization");
         }
+
         headers.set("apikey", key);
-        return fetch(input, { ...init, headers });
+
+        return fetch(input, {
+          ...init,
+          headers,
+        });
       },
     },
   });
@@ -70,14 +75,6 @@ function prepararProdutos(linhas: LinhaProduto[] | null) {
   return ordenarProdutosPorRelevancia(removerProdutosDeCategoriasRemovidas((linhas ?? []).map(mapear)));
 }
 
-/* ============================================================
-   CATÁLOGO PRINCIPAL
-
-   IMPORTANTE:
-   Cada produto é classificado uma única vez. A versão anterior
-   recalculava toda a classificação centenas de vezes ao montar o
-   Header, o que podia estourar o tempo do loader e gerar GET / 500.
-============================================================ */
 export const getCatalogo = createServerFn({
   method: "GET",
 }).handler(async (): Promise<Catalogo> => {
@@ -85,8 +82,11 @@ export const getCatalogo = createServerFn({
 
   const [todosProdutosResult, rasgaResult, ofertasResult, promocionaisResult] = await Promise.all([
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true),
+
     supabase.from("produtos").select(COLUNAS).eq("rasga_preco", true).eq("disponivel", true).order("ordem"),
+
     supabase.from("produtos").select(COLUNAS).eq("oferta", true).eq("disponivel", true),
+
     supabase.from("produtos").select(COLUNAS).eq("disponivel", true).not("preco_promocional", "is", null),
   ]);
 
@@ -96,21 +96,24 @@ export const getCatalogo = createServerFn({
 
   const produtos = prepararProdutos(todosProdutosResult.data);
 
-  /* Classifica somente uma vez e monta índices rápidos. */
   const classificados = produtos.map((produto) => ({
     produto,
     classificacao: classificarProdutoNoSite(produto),
   }));
 
   const totaisCategorias = new Map<string, number>();
+
   const totaisSubcategorias = new Map<string, number>();
 
   for (const { classificacao } of classificados) {
-    if (!classificacao.categoria) continue;
+    if (!classificacao.categoria) {
+      continue;
+    }
 
     totaisCategorias.set(classificacao.categoria, (totaisCategorias.get(classificacao.categoria) ?? 0) + 1);
 
     const chave = `${classificacao.categoria}:${classificacao.subcategoria}`;
+
     totaisSubcategorias.set(chave, (totaisSubcategorias.get(chave) ?? 0) + 1);
   }
 
@@ -118,6 +121,7 @@ export const getCatalogo = createServerFn({
     (categoria) => (totaisCategorias.get(categoria.slug) ?? 0) > 0,
   ).map((categoria) => ({
     ...categoria,
+
     subcategorias: categoria.subcategorias.filter(
       (subcategoria) => (totaisSubcategorias.get(`${categoria.slug}:${subcategoria.slug}`) ?? 0) > 0,
     ),
@@ -130,6 +134,7 @@ export const getCatalogo = createServerFn({
   const produtosPromocionais = promocionaisResult.error ? [] : prepararProdutos(promocionaisResult.data);
 
   const idsOfertas = new Set<string>();
+
   const fonteOferta: Produto[] = [];
 
   for (const produto of [...ofertasMarcadas, ...produtosPromocionais]) {
@@ -142,8 +147,10 @@ export const getCatalogo = createServerFn({
   return {
     categorias,
     produtos,
+
     vitrines: {
       rasgaPreco: produtosRasga,
+
       ofertas: ordenarProdutosPorRelevancia(fonteOferta).slice(0, 10),
     },
   };
@@ -160,11 +167,16 @@ export const listarProdutos = createServerFn({
   .inputValidator((dados: { categoria: string; sub?: string; ordem?: string; pagina?: number }) => dados)
   .handler(async ({ data }): Promise<PaginaProdutos> => {
     if (categoriaFoiRemovida(data.categoria)) {
-      return { itens: [], total: 0 };
+      return {
+        itens: [],
+        total: 0,
+      };
     }
 
     const supabase = publicClient();
+
     const pagina = Math.max(1, data.pagina ?? 1);
+
     const porPagina = 40;
 
     const categoriaVirtual = ESTRUTURA_CATEGORIAS_SITE.some((categoria) => categoria.slug === data.categoria);
@@ -173,10 +185,15 @@ export const listarProdutos = createServerFn({
 
     if (!categoriaVirtual) {
       query = query.eq("categoria_slug", data.categoria);
-      if (data.sub) query = query.eq("subcategoria_slug", data.sub);
+
+      if (data.sub) {
+        query = query.eq("subcategoria_slug", data.sub);
+      }
     }
 
-    if (data.ordem === "ofertas") query = query.eq("oferta", true);
+    if (data.ordem === "ofertas") {
+      query = query.eq("oferta", true);
+    }
 
     const resultado = await query;
 
@@ -189,6 +206,7 @@ export const listarProdutos = createServerFn({
     if (categoriaVirtual) {
       produtos = produtos.filter((produto) => {
         const classificacao = classificarProdutoNoSite(produto);
+
         return classificacao.categoria === data.categoria && (!data.sub || classificacao.subcategoria === data.sub);
       });
     }
@@ -202,10 +220,12 @@ export const listarProdutos = createServerFn({
     }
 
     const total = produtos.length;
+
     const inicio = (pagina - 1) * porPagina;
 
     return {
       itens: produtos.slice(inicio, inicio + porPagina),
+
       total,
     };
   });
@@ -216,9 +236,13 @@ export const buscarProdutos = createServerFn({
   .inputValidator((dados: { q: string; limite?: number }) => dados)
   .handler(async ({ data }): Promise<Produto[]> => {
     const termo = data.q.trim();
-    if (termo.length < 2) return [];
+
+    if (termo.length < 2) {
+      return [];
+    }
 
     const supabase = publicClient();
+
     const like = `%${termo.replace(/[%,]/g, " ")}%`;
 
     const resultado = await supabase
@@ -227,7 +251,9 @@ export const buscarProdutos = createServerFn({
       .eq("disponivel", true)
       .or(`nome.ilike.${like},codigo.ilike.${like},principio_ativo.ilike.${like}`);
 
-    if (resultado.error) return [];
+    if (resultado.error) {
+      return [];
+    }
 
     return prepararProdutos(resultado.data).slice(0, data.limite ?? 60);
   });
@@ -236,37 +262,54 @@ export const obterProduto = createServerFn({
   method: "GET",
 })
   .inputValidator((dados: { id: string }) => dados)
-  .handler(async ({ data }): Promise<{ produto: Produto; relacionados: Produto[] } | null> => {
-    const supabase = publicClient();
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      produto: Produto;
+      relacionados: Produto[];
+    } | null> => {
+      const supabase = publicClient();
 
-    const resultado = await supabase.from("produtos").select(COLUNAS).eq("id", data.id).maybeSingle();
+      const resultado = await supabase.from("produtos").select(COLUNAS).eq("id", data.id).maybeSingle();
 
-    if (resultado.error || !resultado.data) return null;
+      if (resultado.error || !resultado.data) {
+        return null;
+      }
 
-    const produto = mapear(resultado.data);
-    if (categoriaFoiRemovida(produto.categoria)) return null;
+      const produto = mapear(resultado.data);
 
-    const relacionadosResult = await supabase
-      .from("produtos")
-      .select(COLUNAS)
-      .eq("disponivel", true)
-      .neq("id", produto.id);
+      if (categoriaFoiRemovida(produto.categoria)) {
+        return null;
+      }
 
-    const todosRelacionados = relacionadosResult.error ? [] : prepararProdutos(relacionadosResult.data);
+      const relacionadosResult = await supabase
+        .from("produtos")
+        .select(COLUNAS)
+        .eq("disponivel", true)
+        .neq("id", produto.id);
 
-    const classificacaoAtual = classificarProdutoNoSite(produto);
+      const todosRelacionados = relacionadosResult.error ? [] : prepararProdutos(relacionadosResult.data);
 
-    let relacionados = todosRelacionados.filter((item) => {
-      const classificacao = classificarProdutoNoSite(item);
-      return classificacao.categoria === classificacaoAtual.categoria;
-    });
+      const classificacaoAtual = classificarProdutoNoSite(produto);
 
-    if (relacionados.length === 0) {
-      relacionados = todosRelacionados.filter((item) => item.categoria === produto.categoria);
-    }
+      let relacionados = todosRelacionados.filter((item) => {
+        const classificacao = classificarProdutoNoSite(item);
 
-    return {
-      produto,
-      relacionados: ordenarProdutosPorRelevancia(relacionados).slice(0, 5),
-    };
-  });
+        return (
+          classificacao.categoria === classificacaoAtual.categoria &&
+          classificacao.subcategoria === classificacaoAtual.subcategoria
+        );
+      });
+
+      if (relacionados.length === 0) {
+        relacionados = todosRelacionados.filter((item) => item.categoria === produto.categoria);
+      }
+
+      return {
+        produto,
+
+        relacionados: ordenarProdutosPorRelevancia(relacionados).slice(0, 5),
+      };
+    },
+  );
