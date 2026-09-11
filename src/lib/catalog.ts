@@ -463,28 +463,30 @@ const terapeuticasMedicamentos = (tipo: string) =>
     ),
   );
 
+const criarGrupoComTerceiroNivel = (nome: string, slug: string, itens: Subcategory[]): Subcategory =>
+  sub(nome, slug, itens);
+
+const subcategoriasLegadas = (slug: string) =>
+  ESTRUTURA_CATEGORIAS_LEGADA.find((categoria) => categoria.slug === slug)?.subcategorias ?? [];
+
+const selecionarSubcategorias = (categoriaSlug: string, slugs: string[]) =>
+  subcategoriasLegadas(categoriaSlug).filter((item) => slugs.includes(item.slug));
+
+const gruposDetalhados = (categoriaSlug: string, grupos: Array<[string, string, string[]]>): Subcategory[] =>
+  grupos.map(([nome, slug, itens]) =>
+    criarGrupoComTerceiroNivel(nome, slug, selecionarSubcategorias(categoriaSlug, itens)),
+  );
+
 export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
   {
     nome: "Medicamentos",
     slug: "medicamentos",
     icone: "💊",
     subcategorias: [
-      sub(
-        "De marca",
-        "marca",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "medicamentos-de-marca")?.subcategorias,
-      ),
-      sub(
-        "Genéricos",
-        "genericos",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "medicamentos-genericos")?.subcategorias,
-      ),
-      sub(
-        "Similares",
-        "similares",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "medicamentos-similares")?.subcategorias,
-      ),
-      sub("MIPs", "mips", ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "mips")?.subcategorias),
+      sub("De marca", "marca", subcategoriasLegadas("medicamentos-de-marca")),
+      sub("Genéricos", "genericos", subcategoriasLegadas("medicamentos-genericos")),
+      sub("Similares", "similares", subcategoriasLegadas("medicamentos-similares")),
+      sub("MIPs", "mips", subcategoriasLegadas("mips")),
     ],
   },
   {
@@ -492,26 +494,60 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "higiene-cuidados-pessoais",
     icone: "🧼",
     subcategorias: [
-      sub(
-        "Higiene pessoal",
-        "higiene-pessoal",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "higiene-pessoal")?.subcategorias,
-      ),
-      sub(
-        "Higiene feminina e íntima",
-        "higiene-feminina-intima",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "higiene-feminina-intima")?.subcategorias,
-      ),
-      sub(
-        "Saúde bucal",
-        "saude-bucal",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "saude-bucal")?.subcategorias,
-      ),
-      sub(
-        "Incontinência e cuidados adultos",
-        "incontinencia-cuidados-adultos",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "incontinencia-cuidados-adultos")?.subcategorias,
-      ),
+      ...gruposDetalhados("higiene-pessoal", [
+        [
+          "Higiene corporal",
+          "higiene-corporal",
+          ["sabonetes", "sabonetes-liquidos", "higiene-corporal", "cuidados-pessoais"],
+        ],
+        ["Desodorantes e antitranspirantes", "desodorantes-antitranspirantes", ["desodorantes", "antitranspirantes"]],
+        ["Higiene das mãos", "higiene-das-maos", ["higiene-maos"]],
+        ["Cuidados masculinos e barbear", "cuidados-masculinos-barbear", ["higiene-masculina", "barbear"]],
+        ["Cuidados com unhas", "cuidados-unhas", ["cuidados-unhas"]],
+        ["Repelentes", "repelentes", ["repelentes"]],
+        ["Algodão, lenços e cuidados diversos", "algodao-lencos", ["algodao-lencos", "outros-produtos-higiene"]],
+      ]),
+      ...gruposDetalhados("higiene-feminina-intima", [
+        [
+          "Absorventes",
+          "absorventes",
+          [
+            "absorventes-menstruais",
+            "absorventes-noturnos",
+            "absorventes-com-abas",
+            "absorventes-sem-abas",
+            "absorventes-internos",
+          ],
+        ],
+        ["Proteção diária", "protecao-diaria", ["protetores-diarios"]],
+        ["Cuidado menstrual", "cuidado-menstrual", ["coletores-menstruais"]],
+        ["Higiene íntima", "higiene-intima", ["sabonetes-intimos", "cuidados-intimos"]],
+        [
+          "Vida sexual e proteção",
+          "vida-sexual-protecao",
+          ["preservativos", "lubrificantes", "outros-cuidados-intimos"],
+        ],
+      ]),
+      ...gruposDetalhados("saude-bucal", [
+        ["Higiene dental", "higiene-dental", ["cremes-dentais", "escovas-dentais", "escovas-infantis"]],
+        ["Limpeza entre os dentes", "limpeza-interdental", ["fio-dental", "escovas-interdentais"]],
+        ["Enxaguantes", "enxaguantes", ["enxaguantes-bucais"]],
+        ["Próteses e acessórios", "proteses-acessorios", ["higiene-proteses", "acessorios-odontologicos"]],
+        ["Clareamento e estética", "clareamento-estetica", ["clareamento-estetica"]],
+      ]),
+      ...gruposDetalhados("incontinencia-cuidados-adultos", [
+        [
+          "Fraldas e proteção",
+          "fraldas-protecao-adultos",
+          ["fraldas-geriatricas", "fraldas-adultas", "absorventes-incontinencia", "protecao-noturna"],
+        ],
+        ["Roupas íntimas descartáveis", "roupas-intimas-descartaveis", ["roupas-intimas-descartaveis"]],
+        [
+          "Cuidados para incontinência",
+          "cuidados-incontinencia",
+          ["produtos-incontinencia", "cuidados-pessoais-adultos"],
+        ],
+      ]),
     ],
   },
   {
@@ -519,11 +555,30 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "bebe-infantil",
     icone: "🍼",
     subcategorias: [
-      sub(
-        "Fraldas e cuidados",
-        "fraldas-cuidados",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "mamae-e-bebe")?.subcategorias,
-      ),
+      ...gruposDetalhados("mamae-e-bebe", [
+        [
+          "Fraldas",
+          "fraldas",
+          ["fraldas-infantis", "fraldas-tipo-shortinho", "fraldas-calca", "fraldas-recem-nascido"],
+        ],
+        ["Lenços e higiene", "lencos-higiene-bebe", ["lencos-umedecidos", "higiene-bebe", "sabonetes-infantis"]],
+        [
+          "Cabelos e cuidados",
+          "cabelos-cuidados-bebe",
+          ["shampoos-infantis", "condicionadores-infantis", "colonias-infantis", "cuidados-pele-bebe"],
+        ],
+        ["Assaduras e pele", "assaduras-pele-bebe", ["pomadas-assaduras", "cuidados-pele-bebe"]],
+        [
+          "Alimentação",
+          "alimentacao-bebe",
+          ["alimentacao-infantil", "leites-formulas-infantis", "mamadeiras", "copos-infantis"],
+        ],
+        [
+          "Acessórios e desenvolvimento",
+          "acessorios-desenvolvimento",
+          ["chupetas", "acessorios-bebe", "brinquedos-infantis"],
+        ],
+      ]),
     ],
   },
   {
@@ -531,11 +586,31 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "beleza-perfumaria",
     icone: "🧴",
     subcategorias: [
-      sub(
-        "Perfumaria e cosméticos",
-        "perfumaria-cosmeticos",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "perfumaria-cosmeticos")?.subcategorias,
-      ),
+      ...gruposDetalhados("perfumaria-cosmeticos", [
+        ["Perfumes e fragrâncias", "perfumes-fragrancias", ["perfumes", "perfumes-importados", "deo-colonias"]],
+        ["Cuidados corporais", "cuidados-corporais", ["hidratantes-corporais", "cuidados-pessoais"]],
+        [
+          "Rosto e dermocosméticos",
+          "rosto-dermocosmeticos",
+          [
+            "cuidados-faciais",
+            "produtos-anti-idade",
+            "limpeza-facial",
+            "dermocosmeticos",
+            "tratamentos-dermatologicos-cosmeticos",
+          ],
+        ],
+        ["Maquiagem", "maquiagem", ["maquiagem"]],
+        [
+          "Cabelos",
+          "cabelos",
+          ["produtos-capilares", "shampoos", "condicionadores", "tratamentos-capilares", "coloracao"],
+        ],
+        ["Cuidados masculinos", "cuidados-masculinos", ["cuidados-masculinos", "barba"]],
+        ["Depilação e cuidados corporais", "depilacao-cuidados", ["depilacao"]],
+        ["Proteção solar", "protecao-solar", ["protetores-solares", "pos-sol"]],
+        ["Salão e acessórios de beleza", "salao-acessorios", ["produtos-salao", "acessorios-beleza"]],
+      ]),
     ],
   },
   {
@@ -543,21 +618,45 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "saude-bem-estar",
     icone: "❤️",
     subcategorias: [
-      sub(
-        "Vitaminas e suplementos",
-        "vitaminas-suplementos",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "vitaminas-suplementos")?.subcategorias,
-      ),
-      sub(
-        "Primeiros socorros e hospitalar",
-        "saude-primeiros-socorros-hospitalar",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "saude-primeiros-socorros-hospitalar")?.subcategorias,
-      ),
-      sub(
-        "Ortopedia e cuidados especiais",
-        "ortopedia-cuidados-especiais",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "ortopedia-cuidados-especiais")?.subcategorias,
-      ),
+      ...gruposDetalhados("vitaminas-suplementos", [
+        ["Vitaminas", "vitaminas", ["multivitaminicos", "vitamina-c", "vitamina-d", "complexo-b"]],
+        ["Minerais", "minerais", ["minerais", "calcio", "magnesio", "ferro"]],
+        ["Ômega e nutrientes", "omega-nutrientes", ["omega-3", "suplementos-alimentares", "produtos-naturais"]],
+        [
+          "Esporte e performance",
+          "esporte-performance",
+          ["proteinas", "whey-protein", "creatina", "nutricao-esportiva", "academia"],
+        ],
+      ]),
+      ...gruposDetalhados("saude-primeiros-socorros-hospitalar", [
+        [
+          "Curativos e proteção",
+          "curativos-protecao",
+          ["curativos", "gaze", "algodao", "ataduras", "esparadrapos-fitas"],
+        ],
+        ["Antissepsia e cuidados", "antissepsia-cuidados", ["antissepticos", "alcool", "cicatrizantes"]],
+        [
+          "Materiais para procedimentos",
+          "materiais-procedimentos",
+          ["seringas", "agulhas", "lancetas", "cateteres", "equipos", "coletores"],
+        ],
+        ["Monitoramento da saúde", "monitoramento-saude", ["termometros", "aparelhos-pressao", "medidores"]],
+        [
+          "Hospitalar e mobilidade",
+          "hospitalar-mobilidade",
+          ["produtos-hospitalares", "cadeiras-rodas", "outros-saude"],
+        ],
+      ]),
+      ...gruposDetalhados("ortopedia-cuidados-especiais", [
+        [
+          "Suportes e estabilização",
+          "suportes-estabilizacao",
+          ["joelheiras", "tornozeleiras", "munhequeiras", "cotoveleiras", "suportes"],
+        ],
+        ["Compressão e cintas", "compressao-cintas", ["cintas", "meias-compressao"]],
+        ["Mobilidade", "mobilidade", ["bengalas", "produtos-ortopedicos", "mobilidade"]],
+        ["Cuidados especiais", "cuidados-especiais", ["cuidados-especiais"]],
+      ]),
     ],
   },
   {
@@ -565,21 +664,12 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "conveniencia-alimentos",
     icone: "🛒",
     subcategorias: [
-      sub("Doces e snacks", "doces-snacks", [
-        ...(ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "conveniencia-alimentos")?.subcategorias ?? []).filter(
-          (x) => ["chocolates", "balas", "doces", "biscoitos", "snacks", "chips"].includes(x.slug),
-        ),
-      ]),
-      sub("Bebidas", "bebidas", [
-        ...(ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "conveniencia-alimentos")?.subcategorias ?? []).filter(
-          (x) => ["bebidas", "aguas", "sucos"].includes(x.slug),
-        ),
-      ]),
-      sub("Alimentos e funcionais", "alimentos-funcionais", [
-        ...(ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "conveniencia-alimentos")?.subcategorias ?? []).filter(
-          (x) =>
-            ["leites", "adocantes", "alimentos-naturais", "produtos-funcionais", "outros-alimentos"].includes(x.slug),
-        ),
+      ...gruposDetalhados("conveniencia-alimentos", [
+        ["Chocolates e doces", "chocolates-doces", ["chocolates", "balas", "doces"]],
+        ["Biscoitos e snacks", "biscoitos-snacks", ["biscoitos", "snacks", "chips"]],
+        ["Bebidas", "bebidas", ["bebidas", "aguas", "sucos"]],
+        ["Leites e alimentos", "leites-alimentos", ["leites", "adocantes", "alimentos-naturais"]],
+        ["Alimentos funcionais", "alimentos-funcionais", ["produtos-funcionais", "outros-alimentos"]],
       ]),
     ],
   },
@@ -588,20 +678,12 @@ export const ESTRUTURA_CATEGORIAS_SITE: Categoria[] = [
     slug: "utilidades-acessorios",
     icone: "🔌",
     subcategorias: [
-      sub(
-        "Acessórios e utilidades",
-        "acessorios-utilidades",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "utilidades-acessorios-eletronicos")?.subcategorias?.filter(
-          (x) => ["acessorios", "acessorios-beleza", "pequenos-itens-utilidade", "produtos-diversos"].includes(x.slug),
-        ),
-      ),
-      sub(
-        "Eletrônicos e pilhas",
-        "eletronicos-pilhas",
-        ESTRUTURA_CATEGORIAS_LEGADA.find((c) => c.slug === "utilidades-acessorios-eletronicos")?.subcategorias?.filter(
-          (x) => ["eletronicos", "pilhas"].includes(x.slug),
-        ),
-      ),
+      ...gruposDetalhados("utilidades-acessorios-eletronicos", [
+        ["Acessórios", "acessorios", ["acessorios", "acessorios-beleza"]],
+        ["Eletrônicos", "eletronicos", ["eletronicos"]],
+        ["Pilhas", "pilhas", ["pilhas"]],
+        ["Utilidades diversas", "utilidades-diversas", ["pequenos-itens-utilidade", "produtos-diversos"]],
+      ]),
     ],
   },
 ];
@@ -1960,6 +2042,17 @@ function classificarProdutoNoSiteInterna(produto: Produto): {
   };
 }
 
+function grupoDaSubcategoria(categoriaSlug: string, subcategoriaSlug: string): string {
+  const categoria = ESTRUTURA_CATEGORIAS_SITE.find((item) => item.slug === categoriaSlug);
+  if (!categoria) return subcategoriaSlug;
+
+  const grupo = categoria.subcategorias.find((item) =>
+    item.subcategorias?.some((terceiro) => terceiro.slug === subcategoriaSlug),
+  );
+
+  return grupo?.slug ?? subcategoriaSlug;
+}
+
 function mapearClassificacaoParaNovaEstrutura(classificacao: { categoria: string; subcategoria: string }) {
   const c = classificacao.categoria;
   const s = classificacao.subcategoria;
@@ -1979,47 +2072,34 @@ function mapearClassificacaoParaNovaEstrutura(classificacao: { categoria: string
     return { categoria: "medicamentos", subcategoria: mapa[c], subsubcategoria: s };
   }
 
-  const simples: Record<string, string> = {
-    "higiene-pessoal": "higiene-pessoal",
-    "higiene-feminina-intima": "higiene-feminina-intima",
-    "saude-bucal": "saude-bucal",
-    "incontinencia-cuidados-adultos": "incontinencia-cuidados-adultos",
-    "mamae-e-bebe": "fraldas-cuidados",
-    "perfumaria-cosmeticos": "perfumaria-cosmeticos",
-    "vitaminas-suplementos": "vitaminas-suplementos",
-    "saude-primeiros-socorros-hospitalar": "saude-primeiros-socorros-hospitalar",
-    "ortopedia-cuidados-especiais": "ortopedia-cuidados-especiais",
+  const mapaCategorias: Record<string, string> = {
+    "higiene-pessoal": "higiene-cuidados-pessoais",
+    "higiene-feminina-intima": "higiene-cuidados-pessoais",
+    "saude-bucal": "higiene-cuidados-pessoais",
+    "incontinencia-cuidados-adultos": "higiene-cuidados-pessoais",
+    "mamae-e-bebe": "bebe-infantil",
+    "perfumaria-cosmeticos": "beleza-perfumaria",
+    "vitaminas-suplementos": "saude-bem-estar",
+    "saude-primeiros-socorros-hospitalar": "saude-bem-estar",
+    "ortopedia-cuidados-especiais": "saude-bem-estar",
+    "conveniencia-alimentos": "conveniencia-alimentos",
+    "utilidades-acessorios-eletronicos": "utilidades-acessorios",
   };
 
-  if (simples[c]) {
-    const categoria = [
-      "higiene-pessoal",
-      "higiene-feminina-intima",
-      "saude-bucal",
-      "incontinencia-cuidados-adultos",
-    ].includes(c)
-      ? "higiene-cuidados-pessoais"
-      : c === "mamae-e-bebe"
-        ? "bebe-infantil"
-        : c === "perfumaria-cosmeticos"
-          ? "beleza-perfumaria"
-          : "saude-bem-estar";
-    return { categoria, subcategoria: simples[c], subsubcategoria: s };
+  const categoria = mapaCategorias[c];
+  if (!categoria) {
+    return {
+      categoria: "beleza-perfumaria",
+      subcategoria: "perfumaria-cosmeticos",
+      subsubcategoria: s,
+    };
   }
 
-  if (c === "conveniencia-alimentos") {
-    const doces = ["chocolates", "balas", "doces", "biscoitos", "snacks", "chips"];
-    const bebidas = ["bebidas", "aguas", "sucos"];
-    const subcategoria = doces.includes(s) ? "doces-snacks" : bebidas.includes(s) ? "bebidas" : "alimentos-funcionais";
-    return { categoria: c, subcategoria, subsubcategoria: s };
-  }
-
-  if (c === "utilidades-acessorios-eletronicos") {
-    const subcategoria = ["eletronicos", "pilhas"].includes(s) ? "eletronicos-pilhas" : "acessorios-utilidades";
-    return { categoria: "utilidades-acessorios", subcategoria, subsubcategoria: s };
-  }
-
-  return { categoria: "beleza-perfumaria", subcategoria: "perfumaria-cosmeticos", subsubcategoria: s };
+  return {
+    categoria,
+    subcategoria: grupoDaSubcategoria(categoria, s),
+    subsubcategoria: s,
+  };
 }
 
 export function classificarProdutoNoSite(produto: Produto): {
