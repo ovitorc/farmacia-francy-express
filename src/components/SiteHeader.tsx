@@ -111,6 +111,7 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
 export function SiteHeader() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [termo, setTermo] = useState("");
+  const [termoBusca, setTermoBusca] = useState("");
   const [focado, setFocado] = useState(false);
   const [pop, setPop] = useState(false);
 
@@ -130,6 +131,14 @@ export function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setTermoBusca(termo.trim());
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [termo]);
+
+  useEffect(() => {
     if (primeiro.current) {
       primeiro.current = false;
       return;
@@ -142,7 +151,7 @@ export function SiteHeader() {
     return () => clearTimeout(t);
   }, [totalItens]);
 
-  const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termo.trim(), 6));
+  const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termoBusca, 6));
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
