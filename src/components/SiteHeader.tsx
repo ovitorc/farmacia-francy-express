@@ -85,7 +85,7 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
         <ChevronDown className="size-3" />
       </Link>
 
-      <div className="pointer-events-none invisible absolute left-0 top-full z-50 w-[min(920px,calc(100vw-32px))] translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-xl transition-all group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+      <div className="pointer-events-none invisible absolute left-0 top-full z-[90] w-[min(980px,calc(100vw-32px))] translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-xl transition-all group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
           {categoria.subcategorias.map((subcategoria) => {
             const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
@@ -149,13 +149,13 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
       <div
         aria-hidden={!aberto}
         onClick={fechar}
-        className={`fixed inset-0 z-50 bg-foreground/40 transition-opacity ${
+        className={`fixed inset-0 z-[100] bg-foreground/40 transition-opacity ${
           aberto ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
 
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform ${
+        className={`fixed left-0 top-0 z-[110] flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform ${
           aberto ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -248,7 +248,7 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full max-w-full overflow-visible bg-primary text-primary-foreground">
+      <header className="sticky top-0 z-[80] w-full max-w-full overflow-visible bg-primary text-primary-foreground">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
           <div className="flex shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
