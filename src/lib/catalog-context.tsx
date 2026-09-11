@@ -68,7 +68,13 @@ export const produtoQueryOptions = (id: string) =>
    LISTAGEM DE PRODUTOS
    ============================================================ */
 
-export const listaQueryOptions = (params: { categoria: string; sub?: string; ordem?: string; pagina?: number }) =>
+export const listaQueryOptions = (params: {
+  categoria: string;
+  sub?: string;
+  sub2?: string;
+  ordem?: string;
+  pagina?: number;
+}) =>
   queryOptions({
     queryKey: ["produtos", params],
 

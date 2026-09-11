@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Menu, Search, ShoppingCart, X, ChevronDown } from "lucide-react";
+import { Menu, Search, ShoppingCart, X, ChevronDown, ChevronRight } from "lucide-react";
 
 import { useCart } from "@/lib/cart";
-import { formatarPreco, precoFinal } from "@/lib/catalog";
+import { formatarPreco, precoFinal, type Subcategory, type Categoria } from "@/lib/catalog";
 import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
@@ -14,8 +14,134 @@ function Logo({ className = "h-11" }: { className?: string }) {
   return <img src={logoUrl} alt="Farmácias Francy" className={`${className} w-auto object-contain`} />;
 }
 
+function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: () => void }) {
+  const [aberta, setAberta] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-1">
+      {categoria.subcategorias.map((subcategoria) => {
+        const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+        const estaAberta = aberta === subcategoria.slug;
+
+        return (
+          <div key={subcategoria.slug} className="relative">
+            <div className="flex items-center rounded-lg hover:bg-accent">
+              <Link
+                to="/categoria/$slug"
+                params={{ slug: categoria.slug }}
+                search={{ sub: subcategoria.slug, sub2: "", ordem: "relevancia", pagina: 1 }}
+                onClick={fechar}
+                className="min-w-0 flex-1 px-3 py-2 text-sm"
+              >
+                {subcategoria.nome}
+              </Link>
+
+              {temTerceiroNivel && (
+                <button
+                  type="button"
+                  aria-label={`Abrir ${subcategoria.nome}`}
+                  onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
+                  className="p-2"
+                >
+                  <ChevronRight className={`size-4 transition-transform ${estaAberta ? "rotate-90" : ""}`} />
+                </button>
+              )}
+            </div>
+
+            {temTerceiroNivel && estaAberta && (
+              <div className="ml-3 border-l border-border pl-2">
+                {subcategoria.subcategorias?.map((terceiro) => (
+                  <Link
+                    key={terceiro.slug}
+                    to="/categoria/$slug"
+                    params={{ slug: categoria.slug }}
+                    search={{ sub: subcategoria.slug, sub2: terceiro.slug, ordem: "relevancia", pagina: 1 }}
+                    onClick={fechar}
+                    className="block rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    {terceiro.nome}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
+  const [aberta, setAberta] = useState<string | null>(null);
+
+  return (
+    <div className="group relative shrink-0">
+      <Link
+        to="/categoria/$slug"
+        params={{ slug: categoria.slug }}
+        className="flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold hover:bg-primary-foreground/10"
+      >
+        <span>{categoria.nome}</span>
+        <ChevronDown className="size-3" />
+      </Link>
+
+      <div className="pointer-events-none invisible absolute left-0 top-full z-50 w-[min(920px,calc(100vw-32px))] translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-xl transition-all group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+          {categoria.subcategorias.map((subcategoria) => {
+            const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+            const estaAberta = aberta === subcategoria.slug;
+
+            return (
+              <div
+                key={subcategoria.slug}
+                className="min-w-0 rounded-lg border border-transparent p-1 hover:border-border"
+              >
+                <div className="flex items-center">
+                  <Link
+                    to="/categoria/$slug"
+                    params={{ slug: categoria.slug }}
+                    search={{ sub: subcategoria.slug, sub2: "", ordem: "relevancia", pagina: 1 }}
+                    className="min-w-0 flex-1 px-2 py-1.5 text-sm font-semibold hover:text-primary"
+                  >
+                    {subcategoria.nome}
+                  </Link>
+                  {temTerceiroNivel && (
+                    <button
+                      type="button"
+                      onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
+                      className="p-1.5"
+                      aria-label={`Mostrar ${subcategoria.nome}`}
+                    >
+                      <ChevronRight className={`size-3.5 ${estaAberta ? "rotate-90" : ""}`} />
+                    </button>
+                  )}
+                </div>
+
+                {temTerceiroNivel && estaAberta && (
+                  <div className="mt-1 max-h-48 overflow-y-auto border-l border-border pl-2">
+                    {subcategoria.subcategorias?.map((terceiro) => (
+                      <Link
+                        key={terceiro.slug}
+                        to="/categoria/$slug"
+                        params={{ slug: categoria.slug }}
+                        search={{ sub: subcategoria.slug, sub2: terceiro.slug, ordem: "relevancia", pagina: 1 }}
+                        className="block rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      >
+                        {terceiro.nome}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
-  const [expandida, setExpandida] = useState<string | null>(null);
   const { categorias } = useCatalogo();
 
   return (
@@ -35,7 +161,6 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
       >
         <div className="flex items-center justify-between bg-primary px-4 py-4">
           <Logo className="h-9" />
-
           <button onClick={fechar} aria-label="Fechar menu" className="p-2 text-primary-foreground">
             <X className="size-5" />
           </button>
@@ -58,50 +183,20 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
             TRABALHE CONOSCO
           </Link>
 
-          {categorias.map((c) => {
-            const aberta = expandida === c.slug;
-
-            return (
-              <div key={c.slug} className="border-b border-sidebar-border/60">
-                <div className="flex items-center">
-                  <Link
-                    to="/categoria/$slug"
-                    params={{ slug: c.slug }}
-                    onClick={fechar}
-                    className="flex-1 px-3 py-3 text-sm font-medium"
-                  >
-                    <span className="mr-2">{c.icone}</span>
-                    {c.nome}
-                  </Link>
-
-                  <button onClick={() => setExpandida(aberta ? null : c.slug)} className="p-2">
-                    <ChevronDown className={`size-4 transition-transform ${aberta ? "rotate-180" : ""}`} />
-                  </button>
-                </div>
-
-                {aberta && (
-                  <ul className="pb-2">
-                    {c.subcategorias.map((sub) => (
-                      <li key={sub.slug}>
-                        <Link
-                          to="/categoria/$slug"
-                          params={{ slug: c.slug }}
-                          search={{
-                            sub: sub.slug,
-                            ordem: "relevancia",
-                          }}
-                          onClick={fechar}
-                          className="block px-7 py-2 text-sm text-muted-foreground"
-                        >
-                          {sub.nome}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
+          {categorias.map((categoria) => (
+            <div key={categoria.slug} className="border-b border-sidebar-border/60 py-1">
+              <Link
+                to="/categoria/$slug"
+                params={{ slug: categoria.slug }}
+                onClick={fechar}
+                className="flex items-center gap-2 px-3 py-3 text-sm font-semibold"
+              >
+                <span>{categoria.icone}</span>
+                {categoria.nome}
+              </Link>
+              <CategoryLinks categoria={categoria} fechar={fechar} />
+            </div>
+          ))}
         </nav>
       </aside>
     </>
@@ -117,13 +212,10 @@ export function SiteHeader() {
 
   const { totalItens } = useCart();
   const { categorias } = useCatalogo();
-
   const primeiro = useRef(true);
   const navigate = useNavigate();
 
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     setMenuAberto(false);
@@ -131,10 +223,7 @@ export function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setTermoBusca(termo.trim());
-    }, 250);
-
+    const timer = setTimeout(() => setTermoBusca(termo.trim()), 250);
     return () => clearTimeout(timer);
   }, [termo]);
 
@@ -143,11 +232,8 @@ export function SiteHeader() {
       primeiro.current = false;
       return;
     }
-
     setPop(true);
-
     const t = setTimeout(() => setPop(false), 400);
-
     return () => clearTimeout(t);
   }, [totalItens]);
 
@@ -155,22 +241,16 @@ export function SiteHeader() {
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (termo.trim()) {
-      navigate({
-        to: "/busca",
-        search: {
-          q: termo.trim(),
-        },
-      });
+      navigate({ to: "/busca", search: { q: termo.trim() } });
     }
   };
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
-          <div className="flex items-center justify-between gap-3 md:contents">
+      <header className="sticky top-0 z-40 w-full max-w-full overflow-visible bg-primary text-primary-foreground">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+          <div className="flex shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
               <Menu className="size-5" />
             </button>
@@ -181,7 +261,6 @@ export function SiteHeader() {
 
             <Link to="/carrinho" className="relative shrink-0 p-2 md:order-4">
               <ShoppingCart className="size-5" />
-
               {totalItens > 0 && (
                 <span
                   className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold ${
@@ -194,11 +273,10 @@ export function SiteHeader() {
             </Link>
           </div>
 
-          <div className="flex w-full min-w-0 items-center gap-2 md:order-3 md:flex-1">
+          <div className="flex min-w-0 w-full items-center gap-2 md:order-3 md:flex-1">
             <div className="relative min-w-0 flex-1">
               <form onSubmit={enviar}>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
                 <input
                   value={termo}
                   onChange={(e) => setTermo(e.target.value)}
@@ -212,16 +290,20 @@ export function SiteHeader() {
               {focado && sugestoes.length > 0 && (
                 <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-card">
                   <ul>
-                    {sugestoes.map((p) => (
-                      <li key={p.id}>
-                        <Link to="/produto/$id" params={{ id: p.id }} className="flex items-center gap-3 px-3 py-2">
+                    {sugestoes.map((produto) => (
+                      <li key={produto.id}>
+                        <Link
+                          to="/produto/$id"
+                          params={{ id: produto.id }}
+                          className="flex items-center gap-3 px-3 py-2"
+                        >
                           <div className="size-10">
-                            <ProductImage produto={p} />
+                            <ProductImage produto={produto} />
                           </div>
-
-                          <span className="line-clamp-1 flex-1 text-sm">{p.nome}</span>
-
-                          <span className="text-sm font-semibold text-primary">{formatarPreco(precoFinal(p))}</span>
+                          <span className="line-clamp-1 flex-1 text-sm">{produto.nome}</span>
+                          <span className="text-sm font-semibold text-primary">
+                            {formatarPreco(precoFinal(produto))}
+                          </span>
                         </Link>
                       </li>
                     ))}
@@ -230,14 +312,13 @@ export function SiteHeader() {
               )}
             </div>
 
-            <div className="hidden shrink-0 items-center gap-2 xl:flex">
+            <div className="hidden shrink-0 items-center gap-2 lg:flex">
               <Link
                 to="/trabalhe-conosco"
                 className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-2 text-xs font-semibold"
               >
                 Trabalhe Conosco
               </Link>
-
               <Link
                 to="/farmacia-popular"
                 className="whitespace-nowrap rounded-full bg-brand-red px-3 py-2 text-xs font-semibold"
@@ -248,51 +329,16 @@ export function SiteHeader() {
           </div>
         </div>
 
-        <div className="hidden border-t border-primary-foreground/10 md:block">
-          <nav className="mx-auto flex max-w-7xl items-center justify-start gap-1 overflow-x-auto px-4 py-1.5 text-xs font-medium">
-            <button onClick={() => setMenuAberto(true)} className="whitespace-nowrap px-3 py-2">
-              ☰ Todas as categorias
+        <div className="hidden w-full border-t border-primary-foreground/10 md:block">
+          <nav className="mx-auto flex w-full max-w-7xl items-center gap-1 overflow-hidden px-4 py-1.5 text-xs font-medium">
+            <button
+              onClick={() => setMenuAberto(true)}
+              className="shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 hover:bg-primary-foreground/10"
+            >
+              ☰ Categorias
             </button>
-
-            {categorias.map((c) => (
-              <div key={c.slug} className="group relative">
-                <Link
-                  to="/categoria/$slug"
-                  params={{ slug: c.slug }}
-                  className="flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-2 hover:bg-primary-foreground/10"
-                >
-                  {c.nome}
-
-                  <ChevronDown className="size-3" />
-                </Link>
-
-                <div className="pointer-events-none absolute left-0 top-full z-50 w-64 translate-y-1 rounded-b-xl border border-border bg-popover p-2 text-popover-foreground opacity-0 shadow-xl transition-all group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
-                  <Link
-                    to="/categoria/$slug"
-                    params={{ slug: c.slug }}
-                    className="block border-b px-3 py-2 text-sm font-semibold text-primary"
-                  >
-                    Ver todos em {c.nome}
-                  </Link>
-
-                  <div className="grid max-h-[420px] overflow-y-auto">
-                    {c.subcategorias.map((sub) => (
-                      <Link
-                        key={sub.slug}
-                        to="/categoria/$slug"
-                        params={{ slug: c.slug }}
-                        search={{
-                          sub: sub.slug,
-                          ordem: "relevancia",
-                        }}
-                        className="rounded-lg px-3 py-2 text-sm hover:bg-accent"
-                      >
-                        {sub.nome}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            {categorias.map((categoria) => (
+              <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
             ))}
           </nav>
         </div>

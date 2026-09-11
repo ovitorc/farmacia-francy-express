@@ -14,6 +14,7 @@ import { catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
 
 type Busca = {
   sub?: string;
+  sub2?: string;
   ordem?: string;
   pagina?: number;
 };
@@ -25,6 +26,8 @@ type Busca = {
 export const Route = createFileRoute("/categoria/$slug")({
   validateSearch: (raw: Record<string, unknown>): Busca => ({
     sub: typeof raw["sub"] === "string" ? raw["sub"] : "",
+
+    sub2: typeof raw["sub2"] === "string" ? raw["sub2"] : "",
 
     ordem: typeof raw["ordem"] === "string" ? raw["ordem"] : "relevancia",
 
@@ -181,6 +184,8 @@ function CategoriaPage() {
 
   const sub = busca.sub ?? "";
 
+  const sub2 = busca.sub2 ?? "";
+
   const ordem = busca.ordem ?? "relevancia";
 
   const pagina = busca.pagina ?? 1;
@@ -196,6 +201,8 @@ function CategoriaPage() {
       categoria: categoria.slug,
 
       sub,
+
+      sub2,
 
       ordem,
 
@@ -253,49 +260,70 @@ function CategoriaPage() {
           SUBCATEGORIAS
           ====================================================== */}
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Link
-          to="/categoria/$slug"
-          params={{
-            slug: categoria.slug,
-          }}
-          search={{
-            sub: "",
-
-            ordem,
-
-            pagina: 1,
-          }}
-          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-            sub === "" ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"
-          }`}
-        >
-          Todos
-        </Link>
-
-        {categoria.subcategorias.map((subcategoria) => (
+      <div className="mt-5 rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-wrap gap-2">
           <Link
-            key={subcategoria.slug}
             to="/categoria/$slug"
-            params={{
-              slug: categoria.slug,
-            }}
-            search={{
-              sub: subcategoria.slug,
-
-              ordem,
-
-              pagina: 1,
-            }}
+            params={{ slug: categoria.slug }}
+            search={{ sub: "", sub2: "", ordem, pagina: 1 }}
             className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-              sub === subcategoria.slug
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border hover:border-primary"
+              sub === "" ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary"
             }`}
           >
-            {subcategoria.nome}
+            Todos
           </Link>
-        ))}
+
+          {categoria.subcategorias.map((grupo) => (
+            <Link
+              key={grupo.slug}
+              to="/categoria/$slug"
+              params={{ slug: categoria.slug }}
+              search={{ sub: grupo.slug, sub2: "", ordem, pagina: 1 }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                sub === grupo.slug
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border hover:border-primary"
+              }`}
+            >
+              {grupo.nome}
+            </Link>
+          ))}
+        </div>
+
+        {sub && categoria.subcategorias.find((grupo) => grupo.slug === sub)?.subcategorias?.length ? (
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-2 text-xs font-semibold text-muted-foreground">Refine por:</p>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to="/categoria/$slug"
+                params={{ slug: categoria.slug }}
+                search={{ sub, sub2: "", ordem, pagina: 1 }}
+                className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                  sub2 === "" ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary"
+                }`}
+              >
+                Todos
+              </Link>
+              {categoria.subcategorias
+                .find((grupo) => grupo.slug === sub)
+                ?.subcategorias?.map((item) => (
+                  <Link
+                    key={item.slug}
+                    to="/categoria/$slug"
+                    params={{ slug: categoria.slug }}
+                    search={{ sub, sub2: item.slug, ordem, pagina: 1 }}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                      sub2 === item.slug
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:border-primary"
+                    }`}
+                  >
+                    {item.nome}
+                  </Link>
+                ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* ======================================================
@@ -315,7 +343,7 @@ function CategoriaPage() {
               }}
               search={{
                 sub,
-
+                sub2,
                 ordem: opcao.valor,
 
                 pagina: 1,
@@ -360,9 +388,8 @@ function CategoriaPage() {
                   }}
                   search={{
                     sub,
-
+                    sub2,
                     ordem,
-
                     pagina: pagina - 1,
                   }}
                   className="rounded-md border border-border px-3 py-1.5 text-xs hover:border-primary"
@@ -383,9 +410,8 @@ function CategoriaPage() {
                   }}
                   search={{
                     sub,
-
+                    sub2,
                     ordem,
-
                     pagina: pagina + 1,
                   }}
                   className="rounded-md border border-border px-3 py-1.5 text-xs hover:border-primary"
