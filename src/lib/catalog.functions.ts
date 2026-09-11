@@ -67,10 +67,49 @@ function mapear(produto: LinhaProduto): Produto {
     oferta: produto.oferta ?? false,
     rasgaPreco: produto.rasga_preco ?? false,
     informacoes: Array.isArray(produto.informacoes) ? produto.informacoes : [],
+    fabricante: textoSeguro(produto.fabricante),
+    principioAtivo: textoSeguro(produto.principio_ativo),
+    registroMs: textoSeguro(produto.registro_ms),
+    estoque: Number(produto.estoque ?? 0),
+    unidade: textoSeguro(produto.unidade),
   };
 }
 
-const COLUNAS = "*";
+const COLUNAS = [
+  "id",
+  "codigo",
+  "nome",
+  "descricao",
+  "categoria_slug",
+  "subcategoria_slug",
+  "preco",
+  "preco_promocional",
+  "imagem",
+  "disponivel",
+  "oferta",
+  "rasga_preco",
+  "informacoes",
+  "ordem",
+  "estoque",
+  "codigo_barras",
+  "fabricante",
+  "principio_ativo",
+  "registro_ms",
+  "farmacia_popular",
+  "preco_farmacia_popular",
+  "unidade",
+  "image_status",
+  "image_source",
+  "image_source_url",
+  "image_confidence",
+  "image_last_synced_at",
+  "image_width",
+  "image_height",
+  "image_format",
+  "image_error",
+  "image_candidato_url",
+  "image_license",
+].join(",");
 
 const TAMANHO_LOTE_BANCO = 1000;
 
@@ -82,13 +121,15 @@ async function buscarTodosProdutos(
   let inicio = 0;
 
   while (true) {
-    let query: any = supabase.from("produtos").select(COLUNAS).or("disponivel.eq.true,disponivel.is.null");
+    let query: any = supabase
+      .from("produtos")
+      .select(COLUNAS)
+      .or("disponivel.eq.true,disponivel.is.null")
+      .order("id", { ascending: true });
 
     if (configurador) {
       query = configurador(query);
     }
-
-    query = query.order("id", { ascending: true });
 
     const resultado = await query.range(inicio, inicio + TAMANHO_LOTE_BANCO - 1);
 
@@ -97,7 +138,6 @@ async function buscarTodosProdutos(
     }
 
     const lote = (resultado.data ?? []) as LinhaProduto[];
-
     todos.push(...lote);
 
     if (lote.length < TAMANHO_LOTE_BANCO) {
@@ -119,14 +159,12 @@ export const getCatalogo = createServerFn({
 }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
 
-  const [todosProdutos, produtosRasgaRaw, ofertasMarcadasRaw, produtosPromocionaisRaw] = await Promise.all([
-    buscarTodosProdutos(supabase),
-    buscarTodosProdutos(supabase, (query) => query.eq("rasga_preco", true).order("ordem")),
-    buscarTodosProdutos(supabase, (query) => query.eq("oferta", true)),
-    buscarTodosProdutos(supabase, (query) => query.not("preco_promocional", "is", null)),
-  ]);
-
+  const todosProdutos = await buscarTodosProdutos(supabase);
   const produtos = prepararProdutos(todosProdutos);
+
+  const produtosRasgaRaw = todosProdutos.filter((produto) => produto.rasga_preco === true);
+  const ofertasMarcadasRaw = todosProdutos.filter((produto) => produto.oferta === true);
+  const produtosPromocionaisRaw = todosProdutos.filter((produto) => produto.preco_promocional != null);
 
   const classificados = produtos.map((produto) => ({
     produto,
@@ -367,6 +405,9 @@ function campoDeBuscaDoProduto(produto: Produto) {
       produto.nome,
       produto.descricao,
       produto.codigo,
+      produto.fabricante,
+      produto.principioAtivo,
+      produto.registroMs,
       produto.categoria,
       produto.subcategoria,
       produto.informacoes?.join(" "),
@@ -453,37 +494,7 @@ export const buscarProdutos = createServerFn({
 
     const supabase = publicClient();
 
-    const variantes = Array.from(
-      new Set(
-        tokens
-          .flatMap(variantesDoToken)
-          .map(sanitizarParaOr)
-          .filter((valor) => valor.length >= 2),
-      ),
-    );
-
-    const campos = [
-      "nome",
-      "descricao",
-      "principio_ativo",
-      "fabricante",
-      "codigo",
-      "codigo_barras",
-      "categoria_slug",
-      "subcategoria_slug",
-    ];
-
-    const filtros = variantes.flatMap((variante) => campos.map((campo) => `${campo}.ilike.%${variante}%`));
-
-    const candidatosRaw = await buscarTodosProdutos(supabase, (query) => {
-      if (filtros.length > 0) {
-        query = query.or(filtros.join(","));
-      }
-
-      return query;
-    });
-
-    const candidatos = prepararProdutos(candidatosRaw);
+    const candidatos = prepararProdutos(await buscarTodosProdutos(supabase));
 
     const exatos = candidatos
       .filter((produto) => produtoCombinaComBusca(produto, tokens))
@@ -493,7 +504,10 @@ export const buscarProdutos = createServerFn({
       }))
       .sort((a, b) => b.pontos - a.pontos);
 
-    return exatos.slice(0, data.limite ?? 60).map((item) => item.produto);
+    const limite = data.limite;
+    const resultados = limite && limite > 0 ? exatos.slice(0, limite) : exatos;
+
+    return resultados.map((item) => item.produto);
   });
 
 export const obterProduto = createServerFn({
@@ -521,9 +535,34 @@ export const obterProduto = createServerFn({
         return null;
       }
 
-      const relacionadosRaw = await buscarTodosProdutos(supabase, (query) => query.neq("id", produto.id));
+      let relacionadosQuery = supabase
+        .from("produtos")
+        .select(COLUNAS)
+        .or("disponivel.eq.true,disponivel.is.null")
+        .neq("id", produto.id)
+        .order("id", { ascending: true });
 
-      const todosRelacionados = prepararProdutos(relacionadosRaw);
+      const primeiraPaginaRelacionados = await relacionadosQuery.range(0, TAMANHO_LOTE_BANCO - 1);
+      if (primeiraPaginaRelacionados.error) {
+        return { produto, relacionados: [] };
+      }
+
+      const todosRelacionadosRaw = [...((primeiraPaginaRelacionados.data ?? []) as LinhaProduto[])];
+      let loteRelacionados = (primeiraPaginaRelacionados.data ?? []) as LinhaProduto[];
+      let inicioRelacionados = TAMANHO_LOTE_BANCO;
+
+      while (loteRelacionados.length === TAMANHO_LOTE_BANCO) {
+        const paginaRelacionados = await relacionadosQuery.range(
+          inicioRelacionados,
+          inicioRelacionados + TAMANHO_LOTE_BANCO - 1,
+        );
+        if (paginaRelacionados.error) break;
+        loteRelacionados = (paginaRelacionados.data ?? []) as LinhaProduto[];
+        todosRelacionadosRaw.push(...loteRelacionados);
+        inicioRelacionados += TAMANHO_LOTE_BANCO;
+      }
+
+      const todosRelacionados = prepararProdutos(todosRelacionadosRaw);
 
       const classificacaoAtual = classificarProdutoNoSite(produto);
 
