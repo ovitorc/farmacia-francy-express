@@ -30,7 +30,7 @@ export const Route = createFileRoute("/busca")({
 function BuscaPage() {
   const { q } = Route.useSearch();
   const termo = q ?? "";
-  const { data: resultados = [], isPending } = useQuery(buscaQueryOptions(termo, 60));
+  const { data: resultados = [], isPending } = useQuery(buscaQueryOptions(termo, 10000));
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
