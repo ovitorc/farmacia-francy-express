@@ -58,7 +58,17 @@ export const slugify = (valor: string) =>
 
 const normalizar = (valor: string) => slugify(valor).replace(/-/g, " ");
 
-const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(normalizar(termo)));
+const cacheTermosNormalizados = new Map<string, string>();
+
+const normalizarTermo = (termo: string) => {
+  const existente = cacheTermosNormalizados.get(termo);
+  if (existente !== undefined) return existente;
+  const normalizado = normalizar(termo);
+  cacheTermosNormalizados.set(termo, normalizado);
+  return normalizado;
+};
+
+const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(normalizarTermo(termo)));
 
 const textoDoProduto = (produto: Produto) =>
   normalizar([produto.nome, produto.descricao, ...(produto.informacoes ?? [])].filter(Boolean).join(" "));
