@@ -6,6 +6,7 @@ import type { Database } from "@/integrations/supabase/types";
 import {
   categoriaFoiRemovida,
   classificarProdutoNoSite,
+  slugify,
   ESTRUTURA_CATEGORIAS_SITE,
   ordenarProdutosPorRelevancia,
   removerProdutosDeCategoriasRemovidas,
@@ -230,32 +231,244 @@ export const listarProdutos = createServerFn({
     };
   });
 
+const PALAVRAS_IGNORADAS_BUSCA = new Set([
+  "a",
+  "as",
+  "o",
+  "os",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "de",
+  "da",
+  "das",
+  "do",
+  "dos",
+  "e",
+  "em",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "por",
+  "para",
+  "com",
+  "sem",
+  "que",
+]);
+
+const SINONIMOS_BUSCA: Record<string, string[]> = {
+  absorvente: ["absorvente", "abs", "intimus", "sempre livre", "sempre-livre", "always"],
+  absorventes: ["absorvente", "abs", "intimus", "sempre livre", "sempre-livre", "always"],
+  fralda: ["fralda", "fraldas"],
+  fraldas: ["fralda", "fraldas"],
+  infantil: ["infantil", "bebe", "bebê", "baby", "crianca", "criança", "mamae", "mamãe"],
+  bebe: ["bebe", "bebê", "baby", "infantil", "crianca", "criança"],
+  bebê: ["bebe", "bebê", "baby", "infantil", "crianca", "criança"],
+  geriatrica: ["geriatrica", "geriátrica", "geriatrico", "geriátrico", "adulto", "incontinencia", "incontinência"],
+  geriátrica: ["geriatrica", "geriátrica", "geriatrico", "geriátrico", "adulto", "incontinencia", "incontinência"],
+  adulto: ["adulto", "geriatrica", "geriátrica", "incontinencia", "incontinência"],
+  generico: ["generico", "genérico", "genericos", "genéricos"],
+  genérico: ["generico", "genérico", "genericos", "genéricos"],
+  similar: ["similar", "similares"],
+  marca: ["marca", "marcas"],
+  remedio: ["remedio", "remédio", "medicamento", "medicamentos"],
+  remedios: ["remedio", "remédio", "medicamento", "medicamentos"],
+  medicamento: ["medicamento", "medicamentos", "remedio", "remédio"],
+  medicamentos: ["medicamento", "medicamentos", "remedio", "remédio"],
+  protetor: ["protetor", "protecao", "proteção"],
+  protetora: ["protetor", "protecao", "proteção"],
+  solar: ["solar", "protetor solar", "filtro solar"],
+};
+
+function normalizarBusca(valor: string) {
+  return slugify(valor).replace(/-/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function tokensDaBusca(valor: string) {
+  return normalizarBusca(valor)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !PALAVRAS_IGNORADAS_BUSCA.has(token));
+}
+
+function variantesDoToken(token: string) {
+  const variantes = SINONIMOS_BUSCA[token] ?? [token];
+
+  return Array.from(new Set(variantes.map(normalizarBusca).filter(Boolean)));
+}
+
+function campoDeBuscaDoProduto(produto: Produto) {
+  const classificacao = classificarProdutoNoSite(produto);
+
+  const aliasesCategoria: Record<string, string> = {
+    "mamae-e-bebe": "mamae bebe baby infantil crianca criança",
+    "incontinencia-cuidados-adultos": "adulto geriatrico geriátrico incontinencia incontinência",
+    "higiene-feminina-intima": "feminino feminina intimo íntimo menstrual menstruacao menstruação",
+    "medicamentos-genericos": "generico genérico genericos genéricos",
+    "medicamentos-similares": "similar similares",
+    "medicamentos-de-marca": "marca marcas original referencia referência",
+    "perfumaria-cosmeticos": "perfumaria cosmetico cosmético beleza",
+    "saude-bucal": "bucal dental dentes odontologia",
+    "vitaminas-suplementos": "vitamina suplemento nutricao nutrição",
+    "saude-primeiros-socorros-hospitalar": "saude saúde hospitalar primeiros socorros",
+    "ortopedia-cuidados-especiais": "ortopedia ortopedico ortopédico",
+  };
+
+  const aliasesSubcategoria: Record<string, string> = {
+    "fraldas-infantis": "fralda infantil bebe bebê baby criança crianca",
+    "fraldas-shortinho": "fralda infantil bebe bebê baby criança crianca shortinho",
+    "fraldas-calca": "fralda infantil bebe bebê baby criança crianca calca calça",
+    "fraldas-recem-nascido": "fralda infantil bebe bebê recém nascido rn",
+    "fraldas-geriatricas": "fralda geriatrica geriátrica geriatrico geriátrico adulto incontinencia incontinência",
+    "absorventes-menstruais": "absorvente feminino feminina menstrual menstruação menstruacao",
+    "absorventes-noturnos": "absorvente feminino feminina menstrual noturno noturna",
+    "absorventes-internos": "absorvente feminino feminina interno menstrual tampao tampão",
+    "protetores-diarios": "absorvente protetor diario diário feminino",
+    antibioticos: "antibiotico antibiótico antibióticos antibioticos",
+    "analgesicos-antitermicos": "analgesico analgésico antitermico antitérmico dor febre",
+    "cardiovasculares-pressao": "pressao pressão hipertensao hipertensão coracao coração cardiovascular",
+    "diabetes-metabolismo": "diabetes diabetico diabético glicose",
+    "colesterol-triglicerideos": "colesterol triglicerideo triglicerídeo",
+  };
+
+  return normalizarBusca(
+    [
+      produto.nome,
+      produto.descricao,
+      produto.codigo,
+      produto.categoria,
+      produto.subcategoria,
+      produto.informacoes?.join(" "),
+      classificacao.categoria,
+      classificacao.subcategoria,
+      aliasesCategoria[classificacao.categoria],
+      aliasesSubcategoria[classificacao.subcategoria],
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function produtoCombinaComBusca(produto: Produto, tokens: string[]) {
+  const haystack = campoDeBuscaDoProduto(produto);
+
+  return tokens.every((token) => variantesDoToken(token).some((variante) => haystack.includes(variante)));
+}
+
+function pontuacaoDaBusca(produto: Produto, tokens: string[], frase: string) {
+  const haystack = campoDeBuscaDoProduto(produto);
+  const nome = normalizarBusca(produto.nome);
+  let pontos = 0;
+  let tokensEncontrados = 0;
+
+  for (const token of tokens) {
+    const variantes = variantesDoToken(token);
+    const encontrado = variantes.find((variante) => haystack.includes(variante));
+
+    if (encontrado) {
+      tokensEncontrados += 1;
+      pontos += 20;
+
+      if (nome.includes(encontrado)) {
+        pontos += 25;
+      }
+
+      if (nome.startsWith(encontrado)) {
+        pontos += 8;
+      }
+    }
+  }
+
+  if (normalizarBusca(produto.nome).includes(normalizarBusca(frase))) {
+    pontos += 50;
+  }
+
+  if (produto.imagem) {
+    pontos += 2;
+  }
+
+  if (produto.oferta) {
+    pontos += 1;
+  }
+
+  pontos += tokensEncontrados * 10;
+
+  return pontos;
+}
+
+function sanitizarParaOr(termo: string) {
+  return termo
+    .replace(/[%,()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export const buscarProdutos = createServerFn({
   method: "GET",
 })
   .inputValidator((dados: { q: string; limite?: number }) => dados)
   .handler(async ({ data }): Promise<Produto[]> => {
-    const termo = data.q.trim();
+    const frase = data.q.trim();
 
-    if (termo.length < 2) {
+    if (frase.length < 2) {
+      return [];
+    }
+
+    const tokens = tokensDaBusca(frase);
+
+    if (tokens.length === 0) {
       return [];
     }
 
     const supabase = publicClient();
 
-    const like = `%${termo.replace(/[%,]/g, " ")}%`;
+    const variantes = Array.from(
+      new Set(
+        tokens
+          .flatMap(variantesDoToken)
+          .map(sanitizarParaOr)
+          .filter((valor) => valor.length >= 2),
+      ),
+    );
 
-    const resultado = await supabase
-      .from("produtos")
-      .select(COLUNAS)
-      .eq("disponivel", true)
-      .or(`nome.ilike.${like},codigo.ilike.${like},principio_ativo.ilike.${like}`);
+    const campos = [
+      "nome",
+      "descricao",
+      "principio_ativo",
+      "fabricante",
+      "codigo",
+      "codigo_barras",
+      "categoria_slug",
+      "subcategoria_slug",
+    ];
+
+    const filtros = variantes.flatMap((variante) => campos.map((campo) => `${campo}.ilike.%${variante}%`));
+
+    let query = supabase.from("produtos").select(COLUNAS).eq("disponivel", true);
+
+    if (filtros.length > 0) {
+      query = query.or(filtros.join(","));
+    }
+
+    const resultado = await query.limit(500);
 
     if (resultado.error) {
       return [];
     }
 
-    return prepararProdutos(resultado.data).slice(0, data.limite ?? 60);
+    const candidatos = prepararProdutos(resultado.data);
+
+    const exatos = candidatos
+      .filter((produto) => produtoCombinaComBusca(produto, tokens))
+      .map((produto) => ({
+        produto,
+        pontos: pontuacaoDaBusca(produto, tokens, frase),
+      }))
+      .sort((a, b) => b.pontos - a.pontos);
+
+    return exatos.slice(0, data.limite ?? 60).map((item) => item.produto);
   });
 
 export const obterProduto = createServerFn({
