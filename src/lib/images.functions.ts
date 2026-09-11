@@ -1232,6 +1232,64 @@ export const processarProdutoImagem = createServerFn({
     }
   });
 
+export const listarHistoricoImagens = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        status: z.string().default("todos"),
+        fonte: z.string().default("todas"),
+        busca: z.string().default(""),
+        pagina: z.number().int().min(1).default(1),
+        porPagina: z.number().int().min(1).max(100).default(20),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const inicio = (data.pagina - 1) * data.porPagina;
+    const fim = inicio + data.porPagina - 1;
+    let query = context.supabase
+      .from("imagem_sync_logs")
+      .select("id, produto_id, ean, status, source, image_url, confidence, error, started_at, finished_at", {
+        count: "exact",
+      });
+
+    if (data.status !== "todos") query = query.eq("status", data.status);
+    if (data.fonte !== "todas") query = query.eq("source", data.fonte);
+
+    const busca = data.busca.replace(/[%,]/g, " ").trim();
+    if (busca) query = query.or(`ean.ilike.%${busca}%,source.ilike.%${busca}%,status.ilike.%${busca}%`);
+
+    const { data: logs, error, count } = await query
+      .order("started_at", { ascending: false })
+      .range(inicio, fim);
+
+    if (error) throw new Error(error.message);
+
+    const produtoIds = [...new Set((logs ?? []).map((log) => log.produto_id).filter((id): id is string => !!id))];
+    const nomes = new Map<string, { nome: string; codigo: string }>();
+
+    if (produtoIds.length > 0) {
+      const { data: produtos, error: produtosError } = await context.supabase
+        .from("produtos")
+        .select("id, nome, codigo")
+        .in("id", produtoIds);
+
+      if (produtosError) throw new Error(produtosError.message);
+      for (const produto of produtos ?? []) nomes.set(produto.id, { nome: produto.nome, codigo: produto.codigo });
+    }
+
+    const itens = (logs ?? []).map((log) => ({
+      ...log,
+      produto_nome: log.produto_id ? nomes.get(log.produto_id)?.nome ?? "Produto removido" : "Produto não informado",
+      produto_codigo: log.produto_id ? nomes.get(log.produto_id)?.codigo ?? null : null,
+    }));
+
+    return { itens, total: count ?? 0 };
+  });
+
 /* ==========================================================
  * FONTES PERSONALIZADAS DE PESQUISA
  * ========================================================== */
