@@ -40,9 +40,7 @@ function BuscaPage() {
         </Link>{" "}
         / Busca
       </p>
-      <h1 className="mt-2 text-2xl font-bold text-primary sm:text-3xl">
-        Resultados para “{termo}”
-      </h1>
+      <h1 className="mt-2 text-2xl font-bold text-primary sm:text-3xl">Resultados para “{termo}”</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {isPending ? "Buscando..." : `${resultados.length} produto(s) encontrado(s)`}
       </p>
@@ -56,8 +54,8 @@ function BuscaPage() {
       ) : (
         !isPending && (
           <p className="py-16 text-center text-sm text-muted-foreground">
-            Não encontramos esse item no catálogo online. Fale com a gente pelo WhatsApp que
-            verificamos a disponibilidade na loja.
+            Não encontramos esse item no catálogo online. Fale com a gente pelo WhatsApp que verificamos a
+            disponibilidade na loja.
           </p>
         )
       )}
