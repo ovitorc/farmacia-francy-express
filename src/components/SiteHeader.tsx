@@ -169,7 +169,7 @@ export function SiteHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground">
-        <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 overflow-hidden px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
           <div className="flex items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
               <Menu className="size-5" />
@@ -230,7 +230,7 @@ export function SiteHeader() {
               )}
             </div>
 
-            <div className="hidden shrink-0 items-center gap-2 lg:flex">
+            <div className="hidden shrink-0 items-center gap-2 xl:flex">
               <Link
                 to="/trabalhe-conosco"
                 className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-2 text-xs font-semibold"
@@ -249,7 +249,7 @@ export function SiteHeader() {
         </div>
 
         <div className="hidden border-t border-primary-foreground/10 md:block">
-          <nav className="mx-auto flex max-w-7xl min-w-0 items-center justify-start gap-1 overflow-x-auto px-4 py-1.5 text-xs font-medium">
+          <nav className="mx-auto flex max-w-7xl items-center justify-start gap-1 overflow-x-auto px-4 py-1.5 text-xs font-medium">
             <button onClick={() => setMenuAberto(true)} className="whitespace-nowrap px-3 py-2">
               ☰ Todas as categorias
             </button>
