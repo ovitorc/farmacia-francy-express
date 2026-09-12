@@ -70,9 +70,13 @@ function mapear(produto: LinhaProduto): Produto {
   };
 }
 
-const COLUNAS = "*";
+const COLUNAS =
+  "id, codigo, nome, categoria_slug, subcategoria_slug, descricao, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
 
-const TAMANHO_LOTE_BANCO = 1000;
+const COLUNAS_BUSCA =
+  "id, codigo, nome, categoria_slug, subcategoria_slug, descricao, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
+
+const TAMANHO_LOTE_BANCO = 500;
 
 async function buscarTodosProdutos(
   supabase: ReturnType<typeof publicClient>,
@@ -88,9 +92,7 @@ async function buscarTodosProdutos(
       .or("disponivel.eq.true,disponivel.is.null")
       .order("id", { ascending: true });
 
-    if (configurador) {
-      query = configurador(query);
-    }
+    if (configurador) query = configurador(query);
 
     const resultado = await query.range(inicio, inicio + TAMANHO_LOTE_BANCO - 1);
 
@@ -101,14 +103,28 @@ async function buscarTodosProdutos(
     const lote = (resultado.data ?? []) as LinhaProduto[];
     todos.push(...lote);
 
-    if (lote.length < TAMANHO_LOTE_BANCO) {
-      break;
-    }
-
+    if (lote.length < TAMANHO_LOTE_BANCO) break;
     inicio += TAMANHO_LOTE_BANCO;
   }
 
   return todos;
+}
+
+async function buscarProdutosLimitados(
+  supabase: ReturnType<typeof publicClient>,
+  configurador?: (query: any) => any,
+  limite = 24,
+): Promise<LinhaProduto[]> {
+  let query: any = supabase.from("produtos").select(COLUNAS).or("disponivel.eq.true,disponivel.is.null").limit(limite);
+
+  if (configurador) query = configurador(query);
+
+  const resultado = await query;
+  if (resultado.error) {
+    throw new Error(`Não foi possível carregar os produtos: ${resultado.error.message}`);
+  }
+
+  return (resultado.data ?? []) as LinhaProduto[];
 }
 
 function prepararProdutos(linhas: LinhaProduto[] | null) {
@@ -120,79 +136,22 @@ export const getCatalogo = createServerFn({
 }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
 
-  const [todosProdutos, produtosRasgaRaw, ofertasMarcadasRaw, produtosPromocionaisRaw] = await Promise.all([
-    buscarTodosProdutos(supabase),
-    buscarTodosProdutos(supabase, (query) => query.eq("rasga_preco", true).order("ordem")),
-    buscarTodosProdutos(supabase, (query) => query.eq("oferta", true)),
-    buscarTodosProdutos(supabase, (query) => query.not("preco_promocional", "is", null)),
+  const [destaquesRaw, rasgaRaw, ofertasRaw] = await Promise.all([
+    buscarProdutosLimitados(supabase, (query) => query.order("id", { ascending: true }), 20),
+    buscarProdutosLimitados(supabase, (query) => query.eq("rasga_preco", true).order("ordem", { ascending: true }), 24),
+    buscarProdutosLimitados(
+      supabase,
+      (query) => query.or("oferta.eq.true,preco_promocional.not.is.null").order("id", { ascending: true }),
+      24,
+    ),
   ]);
 
-  const produtos = prepararProdutos(todosProdutos);
-
-  const classificados = produtos.map((produto) => ({
-    produto,
-    classificacao: classificarProdutoNoSite(produto),
-  }));
-
-  const totaisCategorias = new Map<string, number>();
-
-  const totaisSubcategorias = new Map<string, number>();
-  const totaisSubsubcategorias = new Map<string, number>();
-
-  for (const { classificacao } of classificados) {
-    if (!classificacao.categoria) {
-      continue;
-    }
-
-    totaisCategorias.set(classificacao.categoria, (totaisCategorias.get(classificacao.categoria) ?? 0) + 1);
-
-    const chave = `${classificacao.categoria}:${classificacao.subcategoria}`;
-    totaisSubcategorias.set(chave, (totaisSubcategorias.get(chave) ?? 0) + 1);
-
-    const chave3 = `${chave}:${classificacao.subsubcategoria}`;
-    totaisSubsubcategorias.set(chave3, (totaisSubsubcategorias.get(chave3) ?? 0) + 1);
-  }
-
-  const categorias = ESTRUTURA_CATEGORIAS_SITE.filter(
-    (categoria) => (totaisCategorias.get(categoria.slug) ?? 0) > 0,
-  ).map((categoria) => ({
-    ...categoria,
-
-    subcategorias: categoria.subcategorias
-      .filter((subcategoria) => (totaisSubcategorias.get(`${categoria.slug}:${subcategoria.slug}`) ?? 0) > 0)
-      .map((subcategoria) => ({
-        ...subcategoria,
-        subcategorias: subcategoria.subcategorias?.filter(
-          (item) => (totaisSubsubcategorias.get(`${categoria.slug}:${subcategoria.slug}:${item.slug}`) ?? 0) > 0,
-        ),
-      })),
-  }));
-
-  const produtosRasga = prepararProdutos(produtosRasgaRaw);
-
-  const ofertasMarcadas = prepararProdutos(ofertasMarcadasRaw);
-
-  const produtosPromocionais = prepararProdutos(produtosPromocionaisRaw);
-
-  const idsOfertas = new Set<string>();
-
-  const fonteOferta: Produto[] = [];
-
-  for (const produto of [...ofertasMarcadas, ...produtosPromocionais]) {
-    if (!idsOfertas.has(produto.id)) {
-      idsOfertas.add(produto.id);
-      fonteOferta.push(produto);
-    }
-  }
-
   return {
-    categorias,
-    produtos,
-
+    categorias: ESTRUTURA_CATEGORIAS_SITE.filter((categoria) => !categoriaFoiRemovida(categoria.slug)),
+    produtos: prepararProdutos(destaquesRaw),
     vitrines: {
-      rasgaPreco: produtosRasga,
-
-      ofertas: ordenarProdutosPorRelevancia(fonteOferta).slice(0, 10),
+      rasgaPreco: prepararProdutos(rasgaRaw),
+      ofertas: ordenarProdutosPorRelevancia(prepararProdutos(ofertasRaw)).slice(0, 10),
     },
   };
 });
@@ -205,72 +164,57 @@ export type PaginaProdutos = {
 export const listarProdutos = createServerFn({
   method: "GET",
 })
-  .inputValidator((dados: { categoria: string; sub?: string; ordem?: string; pagina?: number }) => dados)
+  .inputValidator(
+    (dados: { categoria: string; sub?: string; sub2?: string; ordem?: string; pagina?: number; porPagina?: number }) =>
+      dados,
+  )
   .handler(async ({ data }): Promise<PaginaProdutos> => {
-    if (categoriaFoiRemovida(data.categoria)) {
-      return {
-        itens: [],
-        total: 0,
-      };
-    }
+    if (categoriaFoiRemovida(data.categoria)) return { itens: [], total: 0 };
 
     const supabase = publicClient();
-
     const pagina = Math.max(1, data.pagina ?? 1);
-
-    const porPagina = 40;
-
+    const porPagina = Math.min(40, Math.max(1, data.porPagina ?? 20));
     const categoriaVirtual = ESTRUTURA_CATEGORIAS_SITE.some((categoria) => categoria.slug === data.categoria);
 
-    let produtosRaw: LinhaProduto[];
+    if (!categoriaVirtual) {
+      let query: any = supabase
+        .from("produtos")
+        .select(COLUNAS, { count: "exact" })
+        .or("disponivel.eq.true,disponivel.is.null");
 
-    produtosRaw = await buscarTodosProdutos(supabase, (query) => {
-      if (!categoriaVirtual) {
-        query = query.eq("categoria_slug", data.categoria);
+      query = query.eq("categoria_slug", data.categoria);
+      if (data.sub) query = query.eq("subcategoria_slug", data.sub);
+      if (data.ordem === "ofertas") query = query.eq("oferta", true);
 
-        if (data.sub) {
-          query = query.eq("subcategoria_slug", data.sub);
-        }
-      }
+      if (data.ordem === "menor-preco") query = query.order("preco", { ascending: true });
+      else if (data.ordem === "maior-preco") query = query.order("preco", { ascending: false });
+      else query = query.order("imagem", { ascending: false, nullsFirst: false }).order("nome", { ascending: true });
 
-      if (data.ordem === "ofertas") {
-        query = query.eq("oferta", true);
-      }
+      const inicio = (pagina - 1) * porPagina;
+      const { data: linhas, count, error } = await query.range(inicio, inicio + porPagina - 1);
+      if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
 
-      return query;
+      return { itens: prepararProdutos((linhas ?? []) as LinhaProduto[]), total: count ?? 0 };
+    }
+
+    // Categorias virtuais usam a classificação existente do projeto.
+    // O catálogo completo só é percorrido aqui, quando realmente necessário, e nunca na abertura do site.
+    const produtosRaw = await buscarTodosProdutos(supabase);
+    let produtos = prepararProdutos(produtosRaw).filter((produto) => {
+      const classificacao = classificarProdutoNoSite(produto);
+      return (
+        classificacao.categoria === data.categoria &&
+        (!data.sub || classificacao.subcategoria === data.sub) &&
+        (!data.sub2 || classificacao.subsubcategoria === data.sub2)
+      );
     });
 
-    let produtos = prepararProdutos(produtosRaw);
-
-    if (categoriaVirtual) {
-      produtos = produtos.filter((produto) => {
-        const classificacao = classificarProdutoNoSite(produto);
-
-        return (
-          classificacao.categoria === data.categoria &&
-          (!data.sub || classificacao.subcategoria === data.sub) &&
-          (!data.sub2 || classificacao.subsubcategoria === data.sub2)
-        );
-      });
-    }
-
-    if (data.ordem === "menor-preco") {
-      produtos = [...produtos].sort((a, b) => a.preco - b.preco);
-    } else if (data.ordem === "maior-preco") {
-      produtos = [...produtos].sort((a, b) => b.preco - a.preco);
-    } else {
-      produtos = ordenarProdutosPorRelevancia(produtos);
-    }
-
-    const total = produtos.length;
+    if (data.ordem === "ofertas") produtos = produtos.filter((produto) => produto.oferta);
+    if (data.ordem === "menor-preco") produtos = [...produtos].sort((a, b) => a.preco - b.preco);
+    else if (data.ordem === "maior-preco") produtos = [...produtos].sort((a, b) => b.preco - a.preco);
 
     const inicio = (pagina - 1) * porPagina;
-
-    return {
-      itens: produtos.slice(inicio, inicio + porPagina),
-
-      total,
-    };
+    return { itens: produtos.slice(inicio, inicio + porPagina), total: produtos.length };
   });
 
 const PALAVRAS_IGNORADAS_BUSCA = new Set([
@@ -488,12 +432,19 @@ export const buscarProdutos = createServerFn({
 
     const filtros = variantes.flatMap((variante) => campos.map((campo) => `${campo}.ilike.%${variante}%`));
 
-    const candidatosRaw = await buscarTodosProdutos(supabase, (query) => {
-      if (filtros.length > 0) {
-        query = query.or(filtros.join(","));
-      }
-      return query;
-    });
+    let candidatosQuery: any = supabase
+      .from("produtos")
+      .select(COLUNAS_BUSCA)
+      .or("disponivel.eq.true,disponivel.is.null");
+
+    if (filtros.length > 0) candidatosQuery = candidatosQuery.or(filtros.join(","));
+
+    const candidatosResult = await candidatosQuery.limit(300);
+    if (candidatosResult.error) {
+      throw new Error(`Não foi possível pesquisar produtos: ${candidatosResult.error.message}`);
+    }
+
+    const candidatosRaw = (candidatosResult.data ?? []) as LinhaProduto[];
 
     const candidatos = prepararProdutos(candidatosRaw);
 
