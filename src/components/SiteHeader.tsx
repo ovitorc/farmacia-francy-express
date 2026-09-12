@@ -91,35 +91,35 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
         params={{ slug: categoria.slug }}
         className="flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold hover:bg-primary-foreground/10"
       >
-        <span>{categoria.nome}</span>
-        <ChevronDown className="size-3" />
+        {" "}
+        <span>{categoria.nome}</span> <ChevronDown className="size-3" />{" "}
       </Link>
 
       <div
         className="
-          pointer-events-none
-          invisible
-          absolute
-          left-0
-          top-full
-          z-[9999]
-          w-[min(980px,calc(100vw-32px))]
-          translate-y-1
-          rounded-xl
-          border
-          border-border
-          bg-popover
-          p-3
-          text-popover-foreground
-          opacity-0
-          shadow-2xl
-          transition-all
-          duration-150
-          group-hover:pointer-events-auto
-          group-hover:visible
-          group-hover:translate-y-0
-          group-hover:opacity-100
-        "
+      pointer-events-none
+      invisible
+      absolute
+      left-0
+      top-full
+      z-[9999]
+      w-[min(980px,calc(100vw-32px))]
+      translate-y-1
+      rounded-xl
+      border
+      border-border
+      bg-popover
+      p-3
+      text-popover-foreground
+      opacity-0
+      shadow-2xl
+      transition-all
+      duration-150
+      group-hover:pointer-events-auto
+      group-hover:visible
+      group-hover:translate-y-0
+      group-hover:opacity-100
+    "
       >
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
           {categoria.subcategorias.map((subcategoria) => {
@@ -310,11 +310,15 @@ export function SiteHeader() {
 
   return (
     <>
+      {" "}
       <header className="sticky top-0 z-[1000] w-full max-w-full overflow-visible bg-primary text-primary-foreground">
+        {" "}
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+          {" "}
           <div className="flex shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
-              <Menu className="size-5" />
+              {" "}
+              <Menu className="size-5" />{" "}
             </button>
 
             <Link to="/" className="shrink-0 md:order-2">
@@ -335,7 +339,6 @@ export function SiteHeader() {
               )}
             </Link>
           </div>
-
           <div className="flex min-w-0 w-full items-center gap-2 md:order-3 md:flex-1">
             <div className="relative min-w-0 flex-1">
               <form onSubmit={enviar}>
@@ -395,7 +398,6 @@ export function SiteHeader() {
             </div>
           </div>
         </div>
-
         <div className="hidden w-full border-t border-primary-foreground/10 md:block">
           <nav className="mx-auto flex w-full max-w-7xl items-center gap-1 overflow-visible px-4 py-1.5 text-xs font-medium">
             <button
@@ -411,7 +413,6 @@ export function SiteHeader() {
           </nav>
         </div>
       </header>
-
       <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
     </>
   );
