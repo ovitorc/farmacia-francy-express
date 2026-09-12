@@ -132,8 +132,9 @@ function ImagensPage() {
   const [subcategoriasSel, setSubcategoriasSel] = useState<string[]>([]);
 
   const [pagina, setPagina] = useState(1);
+  const [paginaInput, setPaginaInput] = useState("1");
 
-  const porPagina = 24;
+  const porPagina = 20;
 
   const [quantidadeLote, setQuantidadeLote] = useState(10);
 
@@ -363,12 +364,14 @@ function ImagensPage() {
     setCategoriasSel((atual) => (atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug]));
 
     setPagina(1);
+    setPaginaInput("1");
   };
 
   const alternarSubcategoria = (slug: string) => {
     setSubcategoriasSel((atual) => (atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug]));
 
     setPagina(1);
+    setPaginaInput("1");
   };
 
   const selecionarQuantidade = (quantidade: number) => {
@@ -395,6 +398,7 @@ function ImagensPage() {
     setTermoBusca(busca);
 
     setPagina(1);
+    setPaginaInput("1");
   };
 
   const limparFiltros = () => {
@@ -409,6 +413,7 @@ function ImagensPage() {
     setFiltro("sem_imagem");
 
     setPagina(1);
+    setPaginaInput("1");
   };
 
   const abrirProduto = async (produto: any) => {
@@ -593,6 +598,12 @@ function ImagensPage() {
   const total = lista.data?.total ?? 0;
 
   const paginas = Math.max(1, Math.ceil(total / porPagina));
+
+  const irParaPagina = (valor: string | number) => {
+    const numero = Math.min(paginas, Math.max(1, Number.parseInt(String(valor), 10) || 1));
+    setPagina(numero);
+    setPaginaInput(String(numero));
+  };
 
   const idsSelecionados = Object.keys(selecao);
 
@@ -921,7 +932,9 @@ function ImagensPage() {
               setHistoricoPagina(1);
             }}
           >
-            <SelectTrigger><SelectValue placeholder="Situação" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Situação" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todas as situações</SelectItem>
               <SelectItem value="manual_review">Em revisão</SelectItem>
@@ -937,11 +950,15 @@ function ImagensPage() {
               setHistoricoPagina(1);
             }}
           >
-            <SelectTrigger><SelectValue placeholder="Fonte" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Fonte" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as fontes</SelectItem>
               {listaFontes.map((fonte: any) => (
-                <SelectItem key={fonte.id} value={fonte.nome}>{fonte.nome}</SelectItem>
+                <SelectItem key={fonte.id} value={fonte.nome}>
+                  {fonte.nome}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -970,22 +987,40 @@ function ImagensPage() {
             </thead>
             <tbody className="divide-y">
               {historico.isLoading && (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Carregando histórico…</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                    Carregando histórico…
+                  </td>
+                </tr>
               )}
               {!historico.isLoading && (historico.data?.itens.length ?? 0) === 0 && (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Nenhum registro encontrado.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                    Nenhum registro encontrado.
+                  </td>
+                </tr>
               )}
               {historico.data?.itens.map((item) => (
                 <tr key={item.id} className="align-top">
                   <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                    {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.started_at))}
+                    {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
+                      new Date(item.started_at),
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <p className="max-w-64 font-medium">{item.produto_nome}</p>
                     <p className="text-xs text-muted-foreground">{item.ean || item.produto_codigo || "Sem código"}</p>
                   </td>
                   <td className="px-3 py-3">
-                    {item.status === "manual_review" ? "Em revisão" : item.status === "approved" ? "Aprovada" : item.status === "not_found" ? "Não encontrada" : item.status === "error" ? "Erro" : item.status}
+                    {item.status === "manual_review"
+                      ? "Em revisão"
+                      : item.status === "approved"
+                        ? "Aprovada"
+                        : item.status === "not_found"
+                          ? "Não encontrada"
+                          : item.status === "error"
+                            ? "Erro"
+                            : item.status}
                   </td>
                   <td className="px-3 py-3">{NOMES_FONTES[item.source ?? ""] ?? item.source ?? "—"}</td>
                   <td className="px-3 py-3">{item.confidence == null ? "—" : `${item.confidence}%`}</td>
@@ -1033,6 +1068,7 @@ function ImagensPage() {
                     setCategoriasSel(categorias.map((c: any) => c.slug));
 
                     setPagina(1);
+                    setPaginaInput("1");
                   }}
                 >
                   Todas
@@ -1047,6 +1083,7 @@ function ImagensPage() {
                     setSubcategoriasSel([]);
 
                     setPagina(1);
+                    setPaginaInput("1");
                   }}
                 >
                   Limpar
@@ -1080,6 +1117,7 @@ function ImagensPage() {
                     setSubcategoriasSel(subcategoriasFiltradas.map((s: any) => s.slug));
 
                     setPagina(1);
+                    setPaginaInput("1");
                   }}
                 >
                   Todas
@@ -1092,6 +1130,7 @@ function ImagensPage() {
                     setSubcategoriasSel([]);
 
                     setPagina(1);
+                    setPaginaInput("1");
                   }}
                 >
                   Limpar
@@ -1128,6 +1167,7 @@ function ImagensPage() {
                 setFiltro(valor as Filtro);
 
                 setPagina(1);
+                setPaginaInput("1");
               }}
             >
               <SelectTrigger className="mt-2">
@@ -1509,17 +1549,35 @@ function ImagensPage() {
         </div>
       </section>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <Button variant="outline" disabled={pagina <= 1} onClick={() => setPagina((numero) => numero - 1)}>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-3">
+        <Button variant="outline" size="sm" disabled={pagina <= 1} onClick={() => irParaPagina(1)}>
+          Primeira
+        </Button>
+        <Button variant="outline" size="sm" disabled={pagina <= 1} onClick={() => irParaPagina(pagina - 1)}>
           Anterior
         </Button>
-
+        <span className="text-sm text-muted-foreground">Página</span>
+        <Input
+          value={paginaInput}
+          onChange={(e) => setPaginaInput(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") irParaPagina(paginaInput);
+          }}
+          className="w-20 text-center"
+          inputMode="numeric"
+          aria-label="Número da página"
+        />
+        <Button size="sm" onClick={() => irParaPagina(paginaInput)}>
+          Ir
+        </Button>
         <span className="text-sm text-muted-foreground">
-          Página {pagina} de {paginas} · {total} produtos
+          de {paginas} · {total} produtos
         </span>
-
-        <Button variant="outline" disabled={pagina >= paginas} onClick={() => setPagina((numero) => numero + 1)}>
+        <Button variant="outline" size="sm" disabled={pagina >= paginas} onClick={() => irParaPagina(pagina + 1)}>
           Próxima
+        </Button>
+        <Button variant="outline" size="sm" disabled={pagina >= paginas} onClick={() => irParaPagina(paginas)}>
+          Última
         </Button>
       </div>
 
