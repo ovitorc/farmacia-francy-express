@@ -299,7 +299,11 @@ async function carregarFontes(context: any, fonteIds?: string[]) {
   }
 }
 
-async function candidatosPara(produto: any, termoManual?: string, fontes?: Array<{ id: string; nome: string; url: string }>) {
+async function candidatosPara(
+  produto: any,
+  termoManual?: string,
+  fontes?: Array<{ id: string; nome: string; url: string }>,
+) {
   const { buscarAte50Imagens } = await import("@/lib/images/providers.server");
 
   const produtoBusca = termoManual?.trim()
@@ -1262,9 +1266,7 @@ export const listarHistoricoImagens = createServerFn({ method: "GET" })
     const busca = data.busca.replace(/[%,]/g, " ").trim();
     if (busca) query = query.or(`ean.ilike.%${busca}%,source.ilike.%${busca}%,status.ilike.%${busca}%`);
 
-    const { data: logs, error, count } = await query
-      .order("started_at", { ascending: false })
-      .range(inicio, fim);
+    const { data: logs, error, count } = await query.order("started_at", { ascending: false }).range(inicio, fim);
 
     if (error) throw new Error(error.message);
 
@@ -1283,8 +1285,8 @@ export const listarHistoricoImagens = createServerFn({ method: "GET" })
 
     const itens = (logs ?? []).map((log) => ({
       ...log,
-      produto_nome: log.produto_id ? nomes.get(log.produto_id)?.nome ?? "Produto removido" : "Produto não informado",
-      produto_codigo: log.produto_id ? nomes.get(log.produto_id)?.codigo ?? null : null,
+      produto_nome: log.produto_id ? (nomes.get(log.produto_id)?.nome ?? "Produto removido") : "Produto não informado",
+      produto_codigo: log.produto_id ? (nomes.get(log.produto_id)?.codigo ?? null) : null,
     }));
 
     return { itens, total: count ?? 0 };
@@ -1362,9 +1364,7 @@ export const salvarFonteImagem = createServerFn({ method: "POST" })
 
 export const alternarFonteImagem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ id: z.string().uuid(), ativo: z.boolean() }).parse(input),
-  )
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid(), ativo: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
