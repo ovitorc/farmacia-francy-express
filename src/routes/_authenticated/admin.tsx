@@ -1,12 +1,11 @@
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { buscaQueryOptions, catalogoQueryOptions, listaQueryOptions } from "@/lib/catalog-context";
-import { formatarPreco, type Produto } from "@/lib/catalog";
+import { ESTRUTURA_CATEGORIAS_SITE, formatarPreco, type Produto } from "@/lib/catalog";
 
 import {
   salvarProduto,
@@ -21,6 +20,7 @@ import {
   alterarOrdemBanner,
   listarConfiguracoes,
   salvarConfiguracao,
+  listarProdutosAdmin,
 } from "@/lib/admin.functions";
 
 import { CHAVE_INTERVALO_ABSORVENTES } from "@/lib/farmacia-popular.functions";
@@ -36,7 +36,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { ImportarEstoque } from "@/components/ImportarEstoque";
-
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
@@ -152,8 +151,6 @@ function AdminPage() {
      PRODUTOS
      ========================================================== */
 
-  const { data: catalogo } = useQuery(catalogoQueryOptions);
-
   const { data: perfil } = useQuery({
     queryKey: ["sou-admin"],
     queryFn: () => souAdmin(),
@@ -166,6 +163,8 @@ function AdminPage() {
 
   const [termo, setTermo] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
+  const [pagina, setPagina] = useState(1);
+  const [paginaInput, setPaginaInput] = useState("1");
 
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
 
@@ -214,40 +213,48 @@ function AdminPage() {
      CATEGORIAS
      ========================================================== */
 
-  const categorias = catalogo?.categorias ?? [];
-  const destaques = catalogo?.produtos ?? [];
+  const categorias = ESTRUTURA_CATEGORIAS_SITE.filter((categoria) => categoria.slug !== "pet");
 
   /* ==========================================================
-     BUSCA
+     PRODUTOS PAGINADOS
      ========================================================== */
 
-  const termoBusca = termo.trim();
+  const termoBusca = useDeferredValue(termo.trim());
 
-  const { data: resultadoBusca } = useQuery({
-    ...buscaQueryOptions(termoBusca, 60),
-    enabled: termoBusca.length > 1,
-  });
-
-  const { data: pagina } = useQuery({
-    ...listaQueryOptions({
-      categoria: filtroCategoria,
-    }),
-    enabled: termoBusca.length <= 1 && filtroCategoria !== "todas",
+  const produtosQuery = useQuery({
+    queryKey: ["admin-produtos", pagina, termoBusca, filtroCategoria],
+    queryFn: () =>
+      listarProdutosAdmin({
+        data: {
+          pagina,
+          porPagina: 20,
+          busca: termoBusca,
+          categoria: filtroCategoria,
+        },
+      }),
+    staleTime: 15_000,
+    enabled: Boolean(perfil?.admin),
   });
 
   const lista = useMemo(() => {
-    if (termoBusca.length > 1) {
-      const base = resultadoBusca ?? [];
+    return (produtosQuery.data?.itens ?? []).map((p: any) => ({
+      ...p,
+      categoria: p.categoria_slug ?? "",
+      subcategoria: p.subcategoria_slug ?? "",
+      precoPromocional: p.preco_promocional == null ? undefined : Number(p.preco_promocional),
+      rasgaPreco: Boolean(p.rasga_preco),
+      informacoes: [],
+    })) as Array<Produto & Record<string, any>>;
+  }, [produtosQuery.data]);
 
-      return filtroCategoria === "todas" ? base : base.filter((p) => p.categoria === filtroCategoria);
-    }
+  const totalProdutos = produtosQuery.data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalProdutos / 20));
 
-    if (filtroCategoria !== "todas") {
-      return pagina?.itens ?? [];
-    }
-
-    return destaques;
-  }, [termoBusca, resultadoBusca, pagina, destaques, filtroCategoria]);
+  const irParaPagina = (valor: string | number) => {
+    const numero = Math.min(totalPaginas, Math.max(1, Number.parseInt(String(valor), 10) || 1));
+    setPagina(numero);
+    setPaginaInput(String(numero));
+  };
 
   /* ==========================================================
      SUBCATEGORIAS
@@ -261,11 +268,11 @@ function AdminPage() {
 
   async function atualizarTudo() {
     await queryClient.invalidateQueries({
-      queryKey: ["catalogo"],
+      queryKey: ["admin-produtos"],
     });
 
     await queryClient.invalidateQueries({
-      queryKey: ["busca"],
+      queryKey: ["catalogo"],
     });
 
     await queryClient.invalidateQueries({
@@ -797,14 +804,12 @@ function AdminPage() {
             <Link to="/imagens">Imagens dos produtos</Link>
           </Button>
 
-
           <Button variant="outline" onClick={sair}>
             Sair
           </Button>
 
           <Button onClick={abrirNovo}>Novo produto</Button>
         </div>
-
       </div>
 
       <ConfigFarmaciaPopular />
@@ -924,7 +929,7 @@ function AdminPage() {
           <div>
             <h2 className="text-xl font-bold text-primary">Produtos</h2>
 
-            <p className="text-sm text-muted-foreground">{lista.length} produto(s) listado(s)</p>
+            <p className="text-sm text-muted-foreground">{totalProdutos} produto(s) · 20 por página</p>
           </div>
         </div>
 
@@ -932,11 +937,22 @@ function AdminPage() {
           <Input
             placeholder="Buscar por nome ou código"
             value={termo}
-            onChange={(e) => setTermo(e.target.value)}
+            onChange={(e) => {
+              setTermo(e.target.value);
+              setPagina(1);
+              setPaginaInput("1");
+            }}
             className="max-w-xs"
           />
 
-          <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+          <Select
+            value={filtroCategoria}
+            onValueChange={(valor) => {
+              setFiltroCategoria(valor);
+              setPagina(1);
+              setPaginaInput("1");
+            }}
+          >
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Categoria" />
             </SelectTrigger>
@@ -1004,6 +1020,41 @@ function AdminPage() {
           ) : null}
         </div>
       </section>
+
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-3">
+        <Button variant="outline" size="sm" disabled={pagina <= 1} onClick={() => irParaPagina(1)}>
+          Primeira
+        </Button>
+        <Button variant="outline" size="sm" disabled={pagina <= 1} onClick={() => irParaPagina(pagina - 1)}>
+          Anterior
+        </Button>
+        <span className="text-sm text-muted-foreground">Página</span>
+        <Input
+          value={paginaInput}
+          onChange={(e) => setPaginaInput(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") irParaPagina(paginaInput);
+          }}
+          className="w-20 text-center"
+          inputMode="numeric"
+          aria-label="Número da página"
+        />
+        <Button size="sm" onClick={() => irParaPagina(paginaInput)}>
+          Ir
+        </Button>
+        <span className="text-sm text-muted-foreground">de {totalPaginas}</span>
+        <Button variant="outline" size="sm" disabled={pagina >= totalPaginas} onClick={() => irParaPagina(pagina + 1)}>
+          Próxima
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pagina >= totalPaginas}
+          onClick={() => irParaPagina(totalPaginas)}
+        >
+          Última
+        </Button>
+      </div>
 
       {/* ======================================================
           MODAL — BANNER
