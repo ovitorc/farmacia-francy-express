@@ -22,7 +22,7 @@ export const catalogoQueryOptions = queryOptions({
 
   queryFn: () => getCatalogo(),
 
-  staleTime: 30_000,
+  staleTime: 300_000,
 });
 
 /* ============================================================
