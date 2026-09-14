@@ -62,7 +62,7 @@ type Filtro = "todos" | "sem_imagem" | "com_imagem" | "manual_review" | "not_fou
 
 const QUANTIDADES_RAPIDAS = [5, 10, 15, 20, 25, 30, 50, 100];
 
-const CONCORRENCIA = 2;
+const CONCORRENCIA = 5;
 
 const NOMES_FONTES: Record<string, string> = {
   pague_menos: "Pague Menos",
@@ -185,6 +185,7 @@ function ImagensPage() {
   const [historicoBusca, setHistoricoBusca] = useState("");
   const [historicoTermo, setHistoricoTermo] = useState("");
   const [historicoPagina, setHistoricoPagina] = useState(1);
+  const [historicoPaginaInput, setHistoricoPaginaInput] = useState("1");
 
   useEffect(() => {
     if (!imagemVisualizando) {
@@ -361,7 +362,17 @@ function ImagensPage() {
   };
 
   const alternarCategoria = (slug: string) => {
-    setCategoriasSel((atual) => (atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug]));
+    setCategoriasSel((atual) => {
+      const proximas = atual.includes(slug) ? atual.filter((s) => s !== slug) : [...atual, slug];
+      setSubcategoriasSel((selecionadas) =>
+        selecionadas.filter((subSlug) =>
+          subcategorias.some(
+            (item: any) => item.slug === subSlug && (proximas.length === 0 || proximas.includes(item.categoria_slug)),
+          ),
+        ),
+      );
+      return proximas;
+    });
 
     setPagina(1);
     setPaginaInput("1");
@@ -1031,17 +1042,18 @@ function ImagensPage() {
           </table>
         </div>
 
-        <div className="mt-4 flex items-center justify-center gap-3">
-          <Button variant="outline" disabled={historicoPagina <= 1} onClick={() => setHistoricoPagina((p) => p - 1)}>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <Button variant="outline" disabled={historicoPagina <= 1} onClick={() => { setHistoricoPagina((p) => p - 1); setHistoricoPaginaInput(String(Math.max(1, historicoPagina - 1))); }}>
             Anterior
           </Button>
-          <span className="text-sm text-muted-foreground">
-            Página {historicoPagina} de {Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20))}
-          </span>
+          <span className="text-sm text-muted-foreground">Página</span>
+          <Input value={historicoPaginaInput} onChange={(e) => setHistoricoPaginaInput(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { const totalPaginas = Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20)); const destino = Math.min(totalPaginas, Math.max(1, Number.parseInt(historicoPaginaInput, 10) || 1)); setHistoricoPagina(destino); setHistoricoPaginaInput(String(destino)); } }} className="w-20 text-center" inputMode="numeric" aria-label="Página do histórico" />
+          <Button size="sm" onClick={() => { const totalPaginas = Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20)); const destino = Math.min(totalPaginas, Math.max(1, Number.parseInt(historicoPaginaInput, 10) || 1)); setHistoricoPagina(destino); setHistoricoPaginaInput(String(destino)); }}>Ir</Button>
+          <span className="text-sm text-muted-foreground">de {Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20))}</span>
           <Button
             variant="outline"
             disabled={historicoPagina >= Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20))}
-            onClick={() => setHistoricoPagina((p) => p + 1)}
+            onClick={() => { setHistoricoPagina((p) => p + 1); setHistoricoPaginaInput(String(historicoPagina + 1)); }}
           >
             Próxima
           </Button>
@@ -1465,7 +1477,7 @@ function ImagensPage() {
                   Buscar imagem
                 </Button>
 
-                {(produto.imagem || produto.image_candidato_url) && (
+                {produto.imagem && (
                   <Button
                     size="sm"
                     variant="destructive"

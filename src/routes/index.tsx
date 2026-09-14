@@ -293,12 +293,13 @@ function BannerCarousel() {
           touchAction: "pan-x pan-y",
         }}
       >
-        {lista.map((banner) => (
+        {lista.map((banner, index) => (
           <div key={banner.id} className="w-[88%] shrink-0 snap-center overflow-hidden rounded-2xl bg-muted">
             <img
               src={banner.imagem_mobile || banner.imagem}
               alt={banner.titulo || "Banner promocional da Farmácias Francy"}
-              loading="lazy"
+              loading={index === 0 ? "eager" : "lazy"}
+              fetchPriority={index === 0 ? "high" : "low"}
               draggable={false}
               className="aspect-[4/5] w-full object-cover"
             />
@@ -317,6 +318,8 @@ function BannerCarousel() {
               key={banner.id}
               src={banner.imagem}
               alt={banner.titulo || "Banner promocional da Farmácias Francy"}
+              loading={index === bannerAtual ? "eager" : "lazy"}
+              fetchPriority={index === bannerAtual ? "high" : "low"}
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
                 index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
               }`}

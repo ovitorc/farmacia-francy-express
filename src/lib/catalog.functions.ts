@@ -53,7 +53,7 @@ function textoSeguro(valor: string | null | undefined) {
 }
 
 function mapear(produto: LinhaProduto): Produto {
-  return {
+  const mapeado: Produto = {
     id: produto.id,
     codigo: textoSeguro(produto.codigo),
     nome: textoSeguro(produto.nome),
@@ -61,13 +61,14 @@ function mapear(produto: LinhaProduto): Produto {
     subcategoria: textoSeguro(produto.subcategoria_slug),
     descricao: textoSeguro(produto.descricao),
     preco: Number(produto.preco ?? 0),
-    precoPromocional: produto.preco_promocional == null ? undefined : Number(produto.preco_promocional),
-    imagem: produto.imagem ?? undefined,
     disponivel: produto.disponivel ?? true,
     oferta: produto.oferta ?? false,
     rasgaPreco: produto.rasga_preco ?? false,
     informacoes: Array.isArray(produto.informacoes) ? produto.informacoes : [],
   };
+  if (produto.preco_promocional != null) mapeado.precoPromocional = Number(produto.preco_promocional);
+  if (produto.imagem) mapeado.imagem = produto.imagem;
+  return mapeado;
 }
 
 const COLUNAS =
