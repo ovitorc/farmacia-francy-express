@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart";
 import { formatarPreco, precoFinal, type Produto } from "@/lib/catalog";
 
-export function ProductImage({ produto, className = "" }: { produto: Produto; className?: string }) {
+export function ProductImage({ produto, className = "", priority = false }: { produto: Produto; className?: string; priority?: boolean }) {
   if (produto.imagem) {
     return (
       <img
         src={produto.imagem}
         alt={produto.nome}
-        loading="lazy"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "low"}
         draggable={false}
         className={`h-full w-full object-contain ${className}`}
       />

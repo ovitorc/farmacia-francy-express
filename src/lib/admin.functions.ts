@@ -97,6 +97,38 @@ export const souAdmin = createServerFn({
     };
   });
 
+const listarProdutosAdminSchema = z.object({
+  pagina: z.number().int().min(1).default(1),
+  porPagina: z.number().int().min(1).max(100).default(20),
+  busca: z.string().default(""),
+  categoria: z.string().default("todas"),
+});
+
+export const listarProdutosAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => listarProdutosAdminSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const inicio = (data.pagina - 1) * data.porPagina;
+    let query = context.supabase.from("produtos").select("*", { count: "exact" });
+    const busca = data.busca.replace(/[%,()]/g, " ").replace(/\s+/g, " ").trim();
+
+    if (busca) {
+      query = query.or(
+        `nome.ilike.%${busca}%,codigo.ilike.%${busca}%,codigo_barras.ilike.%${busca}%,fabricante.ilike.%${busca}%,principio_ativo.ilike.%${busca}%`,
+      );
+    }
+    if (data.categoria !== "todas") query = query.eq("categoria_slug", data.categoria);
+
+    const { data: itens, count, error } = await query
+      .order("nome", { ascending: true })
+      .range(inicio, inicio + data.porPagina - 1);
+
+    if (error) throw new Error(error.message);
+    return { itens: itens ?? [], total: count ?? 0 };
+  });
+
 /* ============================================================
    PRODUTOS
    ============================================================ */

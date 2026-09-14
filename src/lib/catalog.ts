@@ -69,7 +69,13 @@ const normalizarTermo = (termo: string) => {
   return normalizado;
 };
 
-const contem = (texto: string, ...termos: string[]) => termos.some((termo) => texto.includes(normalizarTermo(termo)));
+const contem = (texto: string, ...termos: string[]) =>
+  termos.some((termo) => {
+    const normalizado = normalizarTermo(termo);
+    return normalizado.length <= 3
+      ? new RegExp(`(?:^|\\s)${normalizado.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|\\s)`).test(texto)
+      : texto.includes(normalizado);
+  });
 
 const textoDoProduto = (produto: Produto) =>
   normalizar([produto.nome, produto.descricao, ...(produto.informacoes ?? [])].filter(Boolean).join(" "));
@@ -2069,7 +2075,7 @@ function mapearClassificacaoParaNovaEstrutura(classificacao: { categoria: string
       "medicamentos-similares": "similares",
       mips: "mips",
     };
-    return { categoria: "medicamentos", subcategoria: mapa[c], subsubcategoria: s };
+    return { categoria: "medicamentos", subcategoria: mapa[c] ?? "mips", subsubcategoria: s };
   }
 
   const mapaCategorias: Record<string, string> = {
