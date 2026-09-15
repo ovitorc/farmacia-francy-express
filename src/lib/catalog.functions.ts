@@ -14,7 +14,26 @@ import {
   type Produto,
 } from "@/lib/catalog";
 
-type LinhaProduto = Database["public"]["Tables"]["produtos"]["Row"];
+type ProdutoBanco = Database["public"]["Tables"]["produtos"]["Row"];
+type LinhaProduto = Pick<
+  ProdutoBanco,
+  | "id"
+  | "codigo"
+  | "codigo_barras"
+  | "nome"
+  | "categoria_slug"
+  | "subcategoria_slug"
+  | "descricao"
+  | "fabricante"
+  | "principio_ativo"
+  | "preco"
+  | "preco_promocional"
+  | "imagem"
+  | "disponivel"
+  | "oferta"
+  | "rasga_preco"
+  | "informacoes"
+>;
 
 function publicClient() {
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
@@ -68,14 +87,17 @@ function mapear(produto: LinhaProduto): Produto {
   };
   if (produto.preco_promocional != null) mapeado.precoPromocional = Number(produto.preco_promocional);
   if (produto.imagem) mapeado.imagem = produto.imagem;
+  if (produto.codigo_barras) mapeado.codigoBarras = produto.codigo_barras;
+  if (produto.fabricante) mapeado.fabricante = produto.fabricante;
+  if (produto.principio_ativo) mapeado.principioAtivo = produto.principio_ativo;
   return mapeado;
 }
 
 const COLUNAS =
-  "id, codigo, nome, categoria_slug, subcategoria_slug, descricao, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
+  "id, codigo, codigo_barras, nome, categoria_slug, subcategoria_slug, descricao, fabricante, principio_ativo, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
 
 const COLUNAS_BUSCA =
-  "id, codigo, nome, categoria_slug, subcategoria_slug, descricao, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
+  "id, codigo, codigo_barras, nome, categoria_slug, subcategoria_slug, descricao, fabricante, principio_ativo, preco, preco_promocional, imagem, disponivel, oferta, rasga_preco, informacoes";
 
 const TAMANHO_LOTE_BANCO = 500;
 
@@ -243,6 +265,12 @@ const PALAVRAS_IGNORADAS_BUSCA = new Set([
   "com",
   "sem",
   "que",
+  "coisa",
+  "coisas",
+  "item",
+  "itens",
+  "produto",
+  "produtos",
 ]);
 
 const SINONIMOS_BUSCA: Record<string, string[]> = {
@@ -267,6 +295,18 @@ const SINONIMOS_BUSCA: Record<string, string[]> = {
   protetor: ["protetor", "protecao", "proteção"],
   protetora: ["protetor", "protecao", "proteção"],
   solar: ["solar", "protetor solar", "filtro solar"],
+  comida: ["comida", "alimento", "alimentos", "alimentacao", "alimentação", "biscoito", "snack"],
+  gripe: ["gripe", "resfriado", "antigripal", "antigripais"],
+  resfriado: ["resfriado", "gripe", "antigripal", "antigripais"],
+  cabeca: ["cabeca", "cabeça", "cefaleia", "enxaqueca", "analgesico", "analgésico"],
+  dor: ["dor", "analgesico", "analgésico", "antitermico", "antitérmico"],
+  azia: ["azia", "refluxo", "antiacido", "antiácido", "digestivo"],
+  gases: ["gases", "gas", "simeticona", "dimeticona", "antiflatulento"],
+  figado: ["figado", "fígado", "hepatico", "hepático", "hepatica", "hepática", "digestivo"],
+  vomito: ["vomito", "vômito", "nausea", "náusea", "enjoo", "antiemetico", "antiemético"],
+  nausea: ["nausea", "náusea", "vomito", "vômito", "enjoo", "antiemetico", "antiemético"],
+  crianca: ["crianca", "criança", "infantil", "bebe", "bebê", "baby"],
+  cabelo: ["cabelo", "cabelos", "capilar", "shampoo", "condicionador", "pente", "escova de cabelo"],
 };
 
 function normalizarBusca(valor: string) {
@@ -325,6 +365,9 @@ function campoDeBuscaDoProduto(produto: Produto) {
       produto.nome,
       produto.descricao,
       produto.codigo,
+      produto.codigoBarras,
+      produto.fabricante,
+      produto.principioAtivo,
       produto.categoria,
       produto.subcategoria,
       produto.informacoes?.join(" "),
@@ -332,6 +375,7 @@ function campoDeBuscaDoProduto(produto: Produto) {
       classificacao.subcategoria,
       aliasesCategoria[classificacao.categoria],
       aliasesSubcategoria[classificacao.subcategoria],
+      aliasesSubcategoria[classificacao.subsubcategoria],
     ]
       .filter(Boolean)
       .join(" "),

@@ -25,6 +25,9 @@ export type Produto = {
   oferta: boolean;
   rasgaPreco?: boolean;
   informacoes?: string[];
+  codigoBarras?: string;
+  fabricante?: string;
+  principioAtivo?: string;
 };
 
 export type Catalogo = {
@@ -78,7 +81,19 @@ const contem = (texto: string, ...termos: string[]) =>
   });
 
 const textoDoProduto = (produto: Produto) =>
-  normalizar([produto.nome, produto.descricao, ...(produto.informacoes ?? [])].filter(Boolean).join(" "));
+  normalizar(
+    [
+      produto.nome,
+      produto.descricao,
+      produto.fabricante,
+      produto.principioAtivo,
+      produto.codigo,
+      produto.codigoBarras,
+      ...(produto.informacoes ?? []),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 
 const origemDoProduto = (produto: Produto) =>
   normalizar([produto.categoria, produto.subcategoria].filter(Boolean).join(" "));
@@ -476,7 +491,9 @@ const subcategoriasLegadas = (slug: string) =>
   ESTRUTURA_CATEGORIAS_LEGADA.find((categoria) => categoria.slug === slug)?.subcategorias ?? [];
 
 const selecionarSubcategorias = (categoriaSlug: string, slugs: string[]) =>
-  subcategoriasLegadas(categoriaSlug).filter((item) => slugs.includes(item.slug));
+  subcategoriasLegadas(categoriaSlug).filter(
+    (item) => slugs.includes(item.slug) && !item.slug.startsWith("outros-") && !item.nome.startsWith("Outros "),
+  );
 
 const gruposDetalhados = (categoriaSlug: string, grupos: Array<[string, string, string[]]>): Subcategory[] =>
   grupos.map(([nome, slug, itens]) =>
@@ -1007,7 +1024,7 @@ function classificarSubcategoriaMedicamento(texto: string): string {
 }
 
 function classificarMIP(texto: string): string {
-  if (contem(texto, "dipirona", "paracetamol", "ibuprofeno", "dor", "febre")) {
+  if (contem(texto, "dipirona", "paracetamol", "ibuprofeno", "dor", "febre", "cefaleia", "enxaqueca")) {
     return "dor-febre";
   }
 
@@ -1023,7 +1040,31 @@ function classificarMIP(texto: string): string {
     return "alergias";
   }
 
-  if (contem(texto, "azia", "antiacido", "antiácido", "digestivo", "estomago", "estômago")) {
+  if (
+    contem(
+      texto,
+      "azia",
+      "antiacido",
+      "antiácido",
+      "digestivo",
+      "estomago",
+      "estômago",
+      "refluxo",
+      "gas",
+      "gases",
+      "simeticona",
+      "dimeticona",
+      "vomito",
+      "vômito",
+      "nausea",
+      "náusea",
+      "enjoo",
+      "figado",
+      "fígado",
+      "hepatica",
+      "hepática",
+    )
+  ) {
     return "digestao-azia";
   }
 
