@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+// src/routes/index.tsx
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 
 import { Truck, ShieldCheck, Clock } from "lucide-react";
 
@@ -21,6 +23,8 @@ import { listarBannersPublicos } from "@/lib/admin.functions";
    ============================================================ */
 
 export const Route = createFileRoute("/")({
+  loader: ({ context }) => context.queryClient.ensureQueryData(bannersQueryOptions),
+
   head: () => ({
     meta: [
       {
@@ -96,6 +100,17 @@ type Banner = {
   ordem: number;
 };
 
+const INTERVALO_BANNER_MS = 5000;
+
+const bannersQueryOptions = queryOptions({
+  queryKey: ["banners"],
+  queryFn: () => listarBannersPublicos(),
+  staleTime: 300_000,
+  gcTime: 1_800_000,
+  refetchOnWindowFocus: false,
+  retry: 1,
+});
+
 /* ============================================================
    CARROSSEL DE BANNERS
    ============================================================ */
@@ -105,21 +120,9 @@ function BannerCarousel() {
 
   const trilhoMobile = useRef<HTMLDivElement | null>(null);
 
-  const {
-    data: banners = [],
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ["banners"],
+  const { data: banners = [], isLoading, isError } = useQuery(bannersQueryOptions);
 
-    queryFn: () => listarBannersPublicos(),
-  });
-
-  /* ==========================================================
-     MOVER PARA BANNER MOBILE
-     ========================================================== */
-
-  function moverParaBannerMobile(indice: number, behavior: ScrollBehavior = "smooth") {
+  const moverParaBannerMobile = useCallback((indice: number, behavior: ScrollBehavior = "smooth") => {
     const trilho = trilhoMobile.current;
 
     if (!trilho) {
@@ -139,11 +142,7 @@ function BannerCarousel() {
 
       behavior,
     });
-  }
-
-  /* ==========================================================
-     RESET
-     ========================================================== */
+  }, []);
 
   useEffect(() => {
     setBannerAtual(0);
@@ -155,35 +154,33 @@ function BannerCarousel() {
     return () => {
       clearTimeout(tempo);
     };
-  }, [banners.length]);
-
-  /* ==========================================================
-     TROCA AUTOMÁTICA
-     ========================================================== */
+  }, [banners.length, moverParaBannerMobile]);
 
   useEffect(() => {
     if (banners.length <= 1) {
       return;
     }
 
-    const intervalo = setInterval(() => {
-      setBannerAtual((atual) => {
-        const proximo = (atual + 1) % banners.length;
+    const avancar = () => {
+      if (!document.hidden) {
+        setBannerAtual((atual) => (atual + 1) % banners.length);
+      }
+    };
 
-        moverParaBannerMobile(proximo);
-
-        return proximo;
-      });
-    }, 5000);
+    const intervalo = window.setInterval(avancar, INTERVALO_BANNER_MS);
 
     return () => {
       clearInterval(intervalo);
     };
   }, [banners.length]);
 
-  /* ==========================================================
-     DETECTAR BANNER MOBILE
-     ========================================================== */
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia("(max-width: 639px)").matches) {
+      return;
+    }
+
+    moverParaBannerMobile(bannerAtual);
+  }, [bannerAtual, moverParaBannerMobile]);
 
   function aoRolarMobile() {
     const trilho = trilhoMobile.current;
@@ -215,19 +212,11 @@ function BannerCarousel() {
     setBannerAtual(indiceMaisProximo);
   }
 
-  /* ==========================================================
-     IR PARA BANNER
-     ========================================================== */
-
   function irPara(indice: number) {
     setBannerAtual(indice);
 
     moverParaBannerMobile(indice);
   }
-
-  /* ==========================================================
-     CARREGANDO
-     ========================================================== */
 
   if (isLoading) {
     return (
@@ -238,10 +227,6 @@ function BannerCarousel() {
       </div>
     );
   }
-
-  /* ==========================================================
-     ERRO
-     ========================================================== */
 
   if (isError) {
     return (
@@ -254,10 +239,6 @@ function BannerCarousel() {
       </div>
     );
   }
-
-  /* ==========================================================
-     SEM BANNERS
-     ========================================================== */
 
   if (banners.length === 0) {
     return (
@@ -272,17 +253,10 @@ function BannerCarousel() {
   }
 
   const lista = banners as Banner[];
-
-  /* ==========================================================
-     RETORNO
-     ========================================================== */
+  const proximoBanner = (bannerAtual + 1) % lista.length;
 
   return (
     <div className="relative w-full">
-      {/* ======================================================
-          MOBILE
-          ====================================================== */}
-
       <div
         ref={trilhoMobile}
         onScroll={aoRolarMobile}
@@ -298,18 +272,14 @@ function BannerCarousel() {
             <img
               src={banner.imagem_mobile || banner.imagem}
               alt={banner.titulo || "Banner promocional da Farmácias Francy"}
-              loading={index === 0 ? "eager" : "lazy"}
-              fetchPriority={index === 0 ? "high" : "low"}
+              loading={index === bannerAtual || index === proximoBanner ? "eager" : "lazy"}
+              fetchPriority={index === bannerAtual ? "high" : "low"}
               draggable={false}
               className="aspect-[4/5] w-full object-cover"
             />
           </div>
         ))}
       </div>
-
-      {/* ======================================================
-          DESKTOP
-          ====================================================== */}
 
       <div className="relative hidden w-full overflow-hidden rounded-2xl sm:block">
         <div className="relative aspect-[16/6] w-full overflow-hidden bg-muted">
@@ -318,7 +288,7 @@ function BannerCarousel() {
               key={banner.id}
               src={banner.imagem}
               alt={banner.titulo || "Banner promocional da Farmácias Francy"}
-              loading={index === bannerAtual ? "eager" : "lazy"}
+              loading={index === bannerAtual || index === proximoBanner ? "eager" : "lazy"}
               fetchPriority={index === bannerAtual ? "high" : "low"}
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
                 index === bannerAtual ? "opacity-100" : "pointer-events-none opacity-0"
@@ -350,10 +320,6 @@ function BannerCarousel() {
         )}
       </div>
 
-      {/* ======================================================
-          INDICADORES
-          ====================================================== */}
-
       {lista.length > 1 && (
         <div className="mt-3 flex items-center justify-center gap-2 sm:absolute sm:bottom-4 sm:left-1/2 sm:mt-0 sm:-translate-x-1/2 sm:rounded-full sm:bg-black/30 sm:px-3 sm:py-2 sm:backdrop-blur-sm">
           {lista.map((banner, index) => (
@@ -382,53 +348,22 @@ function BannerCarousel() {
 function Index() {
   const { categorias, ofertas: ofertasCatalogo, rasgaPreco, destaques } = useCatalogo();
 
-  /*
-   * ==========================================================
-   * OFERTAS
-   *
-   * Já chegam ordenadas com produtos com imagem primeiro.
-   * ==========================================================
-   */
+  const ofertas = useMemo(() => ordenarProdutosPorRelevancia(ofertasCatalogo).slice(0, 10), [ofertasCatalogo]);
 
-  const ofertas = ordenarProdutosPorRelevancia(ofertasCatalogo).slice(0, 10);
-
-  /*
-   * ==========================================================
-   * PRODUTOS JÁ UTILIZADOS
-   * ==========================================================
-   */
-
-  const usados = new Set([...ofertas, ...rasgaPreco].map((produto) => produto.id));
-
-  /*
-   * ==========================================================
-   * MAIS PROCURADOS
-   *
-   * Remove duplicados e prioriza produtos com imagem.
-   * ==========================================================
-   */
-
-  const maisProcurados = ordenarProdutosPorRelevancia(destaques.filter((produto) => !usados.has(produto.id))).slice(
-    0,
-    10,
+  const usados = useMemo(
+    () => new Set([...ofertas, ...rasgaPreco].map((produto) => produto.id)),
+    [ofertas, rasgaPreco],
   );
 
-  /*
-   * ==========================================================
-   * QUANTIDADE DE CATEGORIAS
-   *
-   * A ordem já vem calculada por relevância.
-   * ==========================================================
-   */
+  const maisProcurados = useMemo(
+    () => ordenarProdutosPorRelevancia(destaques.filter((produto) => !usados.has(produto.id))).slice(0, 10),
+    [destaques, usados],
+  );
 
   const categoriasPrincipais = categorias;
 
   return (
     <div>
-      {/* ======================================================
-          TOPO
-          ====================================================== */}
-
       <section className="border-b border-border bg-background">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 md:py-10">
           <div className="mb-6 text-center">
@@ -440,10 +375,6 @@ function Index() {
           <BannerCarousel />
         </div>
       </section>
-
-      {/* ======================================================
-          BENEFÍCIOS
-          ====================================================== */}
 
       <section className="border-b border-border bg-card">
         <div className="mx-auto grid max-w-7xl gap-4 px-6 py-6 sm:grid-cols-3">
@@ -463,15 +394,7 @@ function Index() {
         </div>
       </section>
 
-      {/* ======================================================
-          RASGA PREÇO
-          ====================================================== */}
-
       <RasgaPreco />
-
-      {/* ======================================================
-          CATEGORIAS
-          ====================================================== */}
 
       <section className="mx-auto max-w-7xl px-6 py-8">
         <div className="flex flex-col gap-1">
@@ -500,19 +423,11 @@ function Index() {
         </div>
       </section>
 
-      {/* ======================================================
-          OFERTAS
-          ====================================================== */}
-
       <Vitrine
         titulo="Ofertas da semana"
         subtitulo="Produtos com imagem e maior relevância aparecem primeiro."
         itens={ofertas}
       />
-
-      {/* ======================================================
-          MAIS PROCURADOS
-          ====================================================== */}
 
       <Vitrine
         titulo="Mais procurados"
@@ -528,28 +443,13 @@ function Index() {
    ============================================================ */
 
 function Vitrine({ titulo, subtitulo, itens }: { titulo: string; subtitulo?: string; itens: Produto[] }) {
-  /*
-   * Segurança adicional.
-   *
-   * Mesmo que os produtos tenham chegado
-   * de outra fonte, são reorganizados aqui.
-   */
-
   const produtosOrdenados = ordenarProdutosPorRelevancia(itens);
-
-  /*
-   * Separa visualmente a prioridade.
-   */
 
   const produtosComImagem = produtosOrdenados.filter(produtoTemImagem);
 
   const produtosSemImagem = produtosOrdenados.filter((produto) => !produtoTemImagem(produto));
 
   const produtos = [...produtosComImagem, ...produtosSemImagem];
-
-  /*
-   * Não renderiza seção vazia.
-   */
 
   if (produtos.length === 0) {
     return null;
