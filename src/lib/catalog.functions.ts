@@ -274,6 +274,7 @@ const PALAVRAS_IGNORADAS_BUSCA = new Set([
 ]);
 
 const SINONIMOS_BUSCA: Record<string, string[]> = {
+  abs: ["absorvente", "intimus", "sempre livre", "sempre-livre", "always"],
   absorvente: ["absorvente", "abs", "intimus", "sempre livre", "sempre-livre", "always"],
   absorventes: ["absorvente", "abs", "intimus", "sempre livre", "sempre-livre", "always"],
   fralda: ["fralda", "fraldas"],
