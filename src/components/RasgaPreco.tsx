@@ -1,21 +1,22 @@
-import { useCallback, useEffect, useRef } from "react";
+// src/components/RasgaPreco.tsx
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Flame } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import { useCatalogo } from "@/lib/catalog-context";
 
 const VELOCIDADE_AUTO = 40;
 
-// Tempo (ms) de espera antes de retomar a animação
-// depois que o usuário termina a interação.
 const ESPERA_RETOMADA = 1000;
 
-// Suavização da transição de velocidade (segundos).
 const TRANSICAO_VELOCIDADE = 0.6;
 
 export function RasgaPreco() {
   const { rasgaPreco: itens } = useCatalogo();
 
+  const secaoRef = useRef<HTMLElement | null>(null);
   const trilhaRef = useRef<HTMLDivElement | null>(null);
+  const [estaVisivel, setEstaVisivel] = useState(false);
 
   const offset = useRef(0);
   const largura = useRef(0);
@@ -69,7 +70,23 @@ export function RasgaPreco() {
     }
   }, []);
 
-  /* Mede a largura de uma cópia da lista. */
+  useEffect(() => {
+    const elemento = secaoRef.current;
+
+    if (!elemento || typeof IntersectionObserver === "undefined") {
+      setEstaVisivel(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(([entrada]) => setEstaVisivel(entrada.isIntersecting), {
+      rootMargin: "160px 0px",
+    });
+
+    observer.observe(elemento);
+
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     const elemento = trilhaRef.current;
 
@@ -88,9 +105,8 @@ export function RasgaPreco() {
     return () => observer.disconnect();
   }, [aplicar, itens.length]);
 
-  /* Motor da animação. */
   useEffect(() => {
-    if (itens.length === 0) return;
+    if (itens.length === 0 || !estaVisivel) return;
 
     const reduzirMovimento =
       typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -132,9 +148,8 @@ export function RasgaPreco() {
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", corrigirTempo);
     };
-  }, [aplicar, itens.length]);
+  }, [aplicar, estaVisivel, itens.length]);
 
-  /* Limpeza de timers ao desmontar. */
   useEffect(() => cancelarRetomada, [cancelarRetomada]);
 
   if (itens.length === 0) {
@@ -143,15 +158,6 @@ export function RasgaPreco() {
 
   const trilha = [...itens, ...itens];
 
-  /*
-   * Captura o início da interação ANTES de qualquer
-   * elemento filho (botões e links) tratar o evento.
-   * O arraste funciona em qualquer parte do card —
-   * inclusive sobre imagens e links (que têm draggable=false
-   * e o clique é suprimido quando há arraste real).
-   * Apenas botões ficam fora do arraste, para garantir
-   * o clique em "Adicionar".
-   */
   const onPointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
     pausar();
 
@@ -199,7 +205,7 @@ export function RasgaPreco() {
   };
 
   return (
-    <section className="py-8">
+    <section ref={secaoRef} className="py-8">
       <div className="mx-auto mb-5 flex max-w-7xl items-center gap-3 px-6">
         <span className="flex size-10 items-center justify-center rounded-full bg-brand-red text-brand-red-foreground">
           <Flame className="size-5" />
