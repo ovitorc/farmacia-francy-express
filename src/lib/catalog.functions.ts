@@ -303,8 +303,32 @@ const SINONIMOS_BUSCA: Record<string, string[]> = {
   azia: ["azia", "refluxo", "antiacido", "antiácido", "digestivo"],
   gases: ["gases", "gas", "simeticona", "dimeticona", "antiflatulento"],
   figado: ["figado", "fígado", "hepatico", "hepático", "hepatica", "hepática", "digestivo"],
-  vomito: ["vomito", "vômito", "nausea", "náusea", "enjoo", "antiemetico", "antiemético"],
-  nausea: ["nausea", "náusea", "vomito", "vômito", "enjoo", "antiemetico", "antiemético"],
+  vomito: [
+    "vomito",
+    "vômito",
+    "nausea",
+    "náusea",
+    "enjoo",
+    "antiemetico",
+    "antiemético",
+    "ondansetrona",
+    "dimenidrinato",
+    "bromoprida",
+    "metoclopramida",
+  ],
+  nausea: [
+    "nausea",
+    "náusea",
+    "vomito",
+    "vômito",
+    "enjoo",
+    "antiemetico",
+    "antiemético",
+    "ondansetrona",
+    "dimenidrinato",
+    "bromoprida",
+    "metoclopramida",
+  ],
   crianca: ["crianca", "criança", "infantil", "bebe", "bebê", "baby"],
   cabelo: ["cabelo", "cabelos", "capilar", "shampoo", "condicionador", "pente", "escova de cabelo"],
 };
@@ -460,22 +484,28 @@ export const buscarProdutos = createServerFn({
         tokens
           .flatMap(variantesDoToken)
           .map(sanitizarParaOr)
-          .filter((valor) => valor.length >= 2),
+          // Termos muito curtos com busca parcial (como "abs") varrem quase
+          // toda a base. As equivalências mais específicas ainda encontram
+          // os produtos corretos sem deixar a tela presa em carregamento.
+          .filter((valor) => valor.length >= 4),
       ),
-    );
+    ).slice(0, 16);
 
     const campos = [
       "nome",
-      "descricao",
       "principio_ativo",
       "fabricante",
-      "codigo",
-      "codigo_barras",
       "categoria_slug",
       "subcategoria_slug",
     ];
 
+    const termoCodigo = sanitizarParaOr(normalizarBusca(frase));
+
     const filtros = variantes.flatMap((variante) => campos.map((campo) => `${campo}.ilike.%${variante}%`));
+
+    if (/^[a-z0-9-]{2,24}$/i.test(termoCodigo)) {
+      filtros.push(`codigo.ilike.%${termoCodigo}%`, `codigo_barras.ilike.%${termoCodigo}%`);
+    }
 
     let candidatosQuery: any = supabase
       .from("produtos")
