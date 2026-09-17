@@ -51,23 +51,29 @@ export type Database = {
         Row: {
           created_at: string
           icone: string
+          id: string
           nome: string
           ordem: number
           slug: string
+          updated_at: string
         }
         Insert: {
           created_at?: string
           icone?: string
+          id?: string
           nome: string
           ordem?: number
           slug: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
           icone?: string
+          id?: string
           nome?: string
           ordem?: number
           slug?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -320,9 +326,11 @@ export type Database = {
       }
       produtos: {
         Row: {
-          categoria_slug: string
+          categoria_id: string | null
+          categoria_slug: string | null
           codigo: string
           codigo_barras: string | null
+          codigo_original: string | null
           created_at: string
           descricao: string
           disponivel: boolean
@@ -353,14 +361,17 @@ export type Database = {
           principio_ativo: string
           rasga_preco: boolean
           registro_ms: string
+          subcategoria_id: string | null
           subcategoria_slug: string
           unidade: string
           updated_at: string
         }
         Insert: {
-          categoria_slug: string
+          categoria_id?: string | null
+          categoria_slug?: string | null
           codigo: string
           codigo_barras?: string | null
+          codigo_original?: string | null
           created_at?: string
           descricao?: string
           disponivel?: boolean
@@ -391,14 +402,17 @@ export type Database = {
           principio_ativo?: string
           rasga_preco?: boolean
           registro_ms?: string
+          subcategoria_id?: string | null
           subcategoria_slug?: string
           unidade?: string
           updated_at?: string
         }
         Update: {
-          categoria_slug?: string
+          categoria_id?: string | null
+          categoria_slug?: string | null
           codigo?: string
           codigo_barras?: string | null
+          codigo_original?: string | null
           created_at?: string
           descricao?: string
           disponivel?: boolean
@@ -429,11 +443,19 @@ export type Database = {
           principio_ativo?: string
           rasga_preco?: boolean
           registro_ms?: string
+          subcategoria_id?: string | null
           subcategoria_slug?: string
           unidade?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "produtos_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "produtos_categoria_slug_fkey"
             columns: ["categoria_slug"]
@@ -441,34 +463,54 @@ export type Database = {
             referencedRelation: "categorias"
             referencedColumns: ["slug"]
           },
+          {
+            foreignKeyName: "produtos_subcategoria_categoria_fkey"
+            columns: ["subcategoria_id", "categoria_id"]
+            isOneToOne: false
+            referencedRelation: "subcategorias"
+            referencedColumns: ["id", "categoria_id"]
+          },
         ]
       }
       subcategorias: {
         Row: {
+          categoria_id: string
           categoria_slug: string
           created_at: string
           id: string
           nome: string
           ordem: number
           slug: string
+          updated_at: string
         }
         Insert: {
+          categoria_id: string
           categoria_slug: string
           created_at?: string
           id?: string
           nome: string
           ordem?: number
           slug: string
+          updated_at?: string
         }
         Update: {
+          categoria_id?: string
           categoria_slug?: string
           created_at?: string
           id?: string
           nome?: string
           ordem?: number
           slug?: string
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subcategorias_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subcategorias_categoria_slug_fkey"
             columns: ["categoria_slug"]
