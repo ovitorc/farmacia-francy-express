@@ -555,8 +555,6 @@ export type Database = {
       }
       import_estoque_aplicar: { Args: { _batch: string }; Returns: Json }
       import_estoque_resumo: { Args: { _batch: string }; Returns: Json }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       app_role: "admin"
