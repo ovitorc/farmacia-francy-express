@@ -6,6 +6,7 @@ import type { Database } from "@/integrations/supabase/types";
 import {
   categoriaFoiRemovida,
   classificarProdutoNoSite,
+  obterExpansaoBusca,
   slugify,
   ESTRUTURA_CATEGORIAS_SITE,
   ordenarProdutosPorRelevancia,
@@ -159,7 +160,7 @@ export const getCatalogo = createServerFn({
 }).handler(async (): Promise<Catalogo> => {
   const supabase = publicClient();
 
-  const [destaquesRaw, rasgaRaw, ofertasRaw] = await Promise.all([
+  const [destaquesRaw, rasgaRaw, ofertasRaw, categoriasResult, subcategoriasResult] = await Promise.all([
     buscarProdutosLimitados(supabase, (query) => query.order("id", { ascending: true }), 20),
     buscarProdutosLimitados(supabase, (query) => query.eq("rasga_preco", true).order("ordem", { ascending: true }), 24),
     buscarProdutosLimitados(
@@ -167,10 +168,27 @@ export const getCatalogo = createServerFn({
       (query) => query.or("oferta.eq.true,preco_promocional.not.is.null").order("id", { ascending: true }),
       24,
     ),
+    supabase.from("categorias").select("id,nome,slug,icone,ordem").order("ordem").order("nome"),
+    supabase.from("subcategorias").select("categoria_id,nome,slug,ordem").order("ordem").order("nome"),
   ]);
 
+  if (categoriasResult.error) throw new Error(`Não foi possível carregar as categorias: ${categoriasResult.error.message}`);
+  if (subcategoriasResult.error) {
+    throw new Error(`Não foi possível carregar as subcategorias: ${subcategoriasResult.error.message}`);
+  }
+
+  const subcategorias = subcategoriasResult.data ?? [];
+  const categorias = (categoriasResult.data ?? []).map((categoria) => ({
+    nome: categoria.nome,
+    slug: categoria.slug,
+    icone: categoria.icone,
+    subcategorias: subcategorias
+      .filter((subcategoria) => subcategoria.categoria_id === categoria.id)
+      .map((subcategoria) => ({ nome: subcategoria.nome, slug: subcategoria.slug })),
+  }));
+
   return {
-    categorias: ESTRUTURA_CATEGORIAS_SITE.filter((categoria) => !categoriaFoiRemovida(categoria.slug)),
+    categorias: categorias.filter((categoria) => !categoriaFoiRemovida(categoria.slug)),
     produtos: prepararProdutos(destaquesRaw),
     vitrines: {
       rasgaPreco: prepararProdutos(rasgaRaw),
@@ -197,47 +215,21 @@ export const listarProdutos = createServerFn({
     const supabase = publicClient();
     const pagina = Math.max(1, data.pagina ?? 1);
     const porPagina = Math.min(40, Math.max(1, data.porPagina ?? 20));
-    const categoriaVirtual = ESTRUTURA_CATEGORIAS_SITE.some((categoria) => categoria.slug === data.categoria);
-
-    if (!categoriaVirtual) {
-      let query: any = supabase
-        .from("produtos")
-        .select(COLUNAS, { count: "exact" })
-        .or("disponivel.eq.true,disponivel.is.null");
-
-      query = query.eq("categoria_slug", data.categoria);
-      if (data.sub) query = query.eq("subcategoria_slug", data.sub);
-      if (data.ordem === "ofertas") query = query.eq("oferta", true);
-
-      if (data.ordem === "menor-preco") query = query.order("preco", { ascending: true });
-      else if (data.ordem === "maior-preco") query = query.order("preco", { ascending: false });
-      else query = query.order("imagem", { ascending: false, nullsFirst: false }).order("nome", { ascending: true });
-
-      const inicio = (pagina - 1) * porPagina;
-      const { data: linhas, count, error } = await query.range(inicio, inicio + porPagina - 1);
-      if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
-
-      return { itens: prepararProdutos((linhas ?? []) as LinhaProduto[]), total: count ?? 0 };
-    }
-
-    // Categorias virtuais usam a classificação existente do projeto.
-    // O catálogo completo só é percorrido aqui, quando realmente necessário, e nunca na abertura do site.
-    const produtosRaw = await buscarTodosProdutos(supabase);
-    let produtos = prepararProdutos(produtosRaw).filter((produto) => {
-      const classificacao = classificarProdutoNoSite(produto);
-      return (
-        classificacao.categoria === data.categoria &&
-        (!data.sub || classificacao.subcategoria === data.sub) &&
-        (!data.sub2 || classificacao.subsubcategoria === data.sub2)
-      );
-    });
-
-    if (data.ordem === "ofertas") produtos = produtos.filter((produto) => produto.oferta);
-    if (data.ordem === "menor-preco") produtos = [...produtos].sort((a, b) => a.preco - b.preco);
-    else if (data.ordem === "maior-preco") produtos = [...produtos].sort((a, b) => b.preco - a.preco);
-
+    let query: any = supabase
+      .from("produtos")
+      .select(COLUNAS, { count: "exact" })
+      .or("disponivel.eq.true,disponivel.is.null")
+      .eq("categoria_slug", data.categoria);
+    if (data.sub) query = query.eq("subcategoria_slug", data.sub);
+    if (data.sub2) query = query.eq("subcategoria_slug", data.sub2);
+    if (data.ordem === "ofertas") query = query.eq("oferta", true);
+    if (data.ordem === "menor-preco") query = query.order("preco", { ascending: true });
+    else if (data.ordem === "maior-preco") query = query.order("preco", { ascending: false });
+    else query = query.order("imagem", { ascending: false, nullsFirst: false }).order("nome", { ascending: true });
     const inicio = (pagina - 1) * porPagina;
-    return { itens: produtos.slice(inicio, inicio + porPagina), total: produtos.length };
+    const { data: linhas, count, error } = await query.range(inicio, inicio + porPagina - 1);
+    if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
+    return { itens: prepararProdutos((linhas ?? []) as LinhaProduto[]), total: count ?? 0 };
   });
 
 const PALAVRAS_IGNORADAS_BUSCA = new Set([
@@ -352,7 +344,7 @@ function variantesDoToken(token: string) {
 }
 
 function campoDeBuscaDoProduto(produto: Produto) {
-  const classificacao = classificarProdutoNoSite(produto);
+  const classificacao = obterExpansaoBusca(produto);
 
   const aliasesCategoria: Record<string, string> = {
     "mamae-e-bebe": "mamae bebe baby infantil crianca criança",

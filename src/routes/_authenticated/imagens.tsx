@@ -758,9 +758,14 @@ function ImagensPage() {
           </p>
         </div>
 
-        <Button variant="outline" asChild>
-          <Link to="/admin">Voltar ao painel</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/classes">Classes</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/admin">Voltar ao painel</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
