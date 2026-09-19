@@ -17,6 +17,7 @@ import { Route as CarrinhoRouteImport } from './routes/carrinho'
 import { Route as FarmaciaPopularRouteImport } from './routes/farmacia-popular'
 import { Route as TrabalheConoscoRouteImport } from './routes/trabalhe-conosco'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedClassesRouteImport } from './routes/_authenticated/classes'
 import { Route as AuthenticatedImagensRouteImport } from './routes/_authenticated/imagens'
 import { Route as CategoriaSlugRouteImport } from './routes/categoria.$slug'
 import { Route as ProdutoIdRouteImport } from './routes/produto.$id'
@@ -61,6 +62,11 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedClassesRoute = AuthenticatedClassesRouteImport.update({
+  id: '/classes',
+  path: '/classes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedImagensRoute = AuthenticatedImagensRouteImport.update({
   id: '/imagens',
   path: '/imagens',
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/farmacia-popular': typeof FarmaciaPopularRoute
   '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/classes': typeof AuthenticatedClassesRoute
   '/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
   '/produto/$id': typeof ProdutoIdRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/farmacia-popular': typeof FarmaciaPopularRoute
   '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/classes': typeof AuthenticatedClassesRoute
   '/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
   '/produto/$id': typeof ProdutoIdRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/farmacia-popular': typeof FarmaciaPopularRoute
   '/trabalhe-conosco': typeof TrabalheConoscoRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/classes': typeof AuthenticatedClassesRoute
   '/_authenticated/imagens': typeof AuthenticatedImagensRoute
   '/categoria/$slug': typeof CategoriaSlugRoute
   '/produto/$id': typeof ProdutoIdRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/farmacia-popular'
     | '/trabalhe-conosco'
     | '/admin'
+    | '/classes'
     | '/imagens'
     | '/categoria/$slug'
     | '/produto/$id'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/farmacia-popular'
     | '/trabalhe-conosco'
     | '/admin'
+    | '/classes'
     | '/imagens'
     | '/categoria/$slug'
     | '/produto/$id'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/farmacia-popular'
     | '/trabalhe-conosco'
     | '/_authenticated/admin'
+    | '/_authenticated/classes'
     | '/_authenticated/imagens'
     | '/categoria/$slug'
     | '/produto/$id'
@@ -237,6 +249,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/classes': {
+      id: '/_authenticated/classes'
+      path: '/classes'
+      fullPath: '/classes'
+      preLoaderRoute: typeof AuthenticatedClassesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/imagens': {
       id: '/_authenticated/imagens'
       path: '/imagens'
@@ -270,11 +289,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedClassesRoute: typeof AuthenticatedClassesRoute
   AuthenticatedImagensRoute: typeof AuthenticatedImagensRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedClassesRoute: AuthenticatedClassesRoute,
   AuthenticatedImagensRoute: AuthenticatedImagensRoute,
 }
 
