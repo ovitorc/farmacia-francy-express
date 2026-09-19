@@ -804,6 +804,10 @@ function AdminPage() {
             <Link to="/imagens">Imagens dos produtos</Link>
           </Button>
 
+          <Button variant="outline" asChild>
+            <Link to="/classes">Classes</Link>
+          </Button>
+
           <Button variant="outline" onClick={sair}>
             Sair
           </Button>

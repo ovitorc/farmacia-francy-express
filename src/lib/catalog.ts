@@ -2154,6 +2154,18 @@ export function classificarProdutoNoSite(produto: Produto): {
   subcategoria: string;
   subsubcategoria: string;
 } {
+  return {
+    categoria: produto.categoria,
+    subcategoria: produto.subcategoria,
+    subsubcategoria: produto.subcategoria,
+  };
+}
+
+export function obterExpansaoBusca(produto: Produto): {
+  categoria: string;
+  subcategoria: string;
+  subsubcategoria: string;
+} {
   return mapearClassificacaoParaNovaEstrutura(classificarProdutoNoSiteInterna(produto));
 }
 
