@@ -129,16 +129,16 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
       <Link
         to="/categoria/$slug"
         params={{ slug: categoria.slug }}
-        className="flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-2 text-xs font-semibold hover:bg-primary-foreground/10"
+        className="group flex items-center gap-1.5 whitespace-nowrap rounded-full border border-primary-foreground/10 bg-primary-foreground/[0.06] px-3 py-2 text-xs font-semibold shadow-sm transition-all hover:border-primary-foreground/25 hover:bg-primary-foreground/12"
         onFocus={abrirMenu}
       >
         <span>{categoria.nome}</span>
-        <ChevronDown className="size-3 shrink-0" />
+        <ChevronDown className="size-3 shrink-0 opacity-70 transition-transform group-hover:translate-y-0.5" />
       </Link>
 
       {menuAberto && (
         <div
-          className="fixed z-[9999] w-[min(980px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+          className="fixed z-[9999] w-[min(1040px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-2xl border border-border/80 bg-popover/98 p-4 text-popover-foreground shadow-[0_20px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
           style={{ left: menuPosicao.left, top: menuPosicao.top }}
           onMouseEnter={() => setMenuAberto(true)}
           onMouseLeave={() => setMenuAberto(false)}
@@ -151,7 +151,7 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
               return (
                 <div
                   key={subcategoria.slug}
-                  className="min-w-0 rounded-lg border border-transparent p-1 hover:border-border"
+                  className="min-w-0 rounded-xl border border-transparent p-1 transition-colors hover:border-border hover:bg-accent/40"
                 >
                   <div className="flex items-center">
                     <Link
@@ -280,6 +280,7 @@ export function SiteHeader() {
   const [termoBusca, setTermoBusca] = useState("");
   const [focado, setFocado] = useState(false);
   const [pop, setPop] = useState(false);
+  const [mostrarCategorias, setMostrarCategorias] = useState(true);
 
   const { totalItens } = useCart();
   const { categorias } = useCatalogo();
@@ -294,6 +295,27 @@ export function SiteHeader() {
     setMenuAberto(false);
     setFocado(false);
   }, [pathname]);
+
+  useEffect(() => {
+    let ultimaPosicao = window.scrollY;
+
+    const controlarCategorias = () => {
+      const posicaoAtual = window.scrollY;
+      const diferenca = posicaoAtual - ultimaPosicao;
+
+      if (posicaoAtual <= 12) {
+        setMostrarCategorias(true);
+      } else if (Math.abs(diferenca) >= 4) {
+        setMostrarCategorias(diferenca < 0);
+      }
+
+      ultimaPosicao = posicaoAtual;
+    };
+
+    window.addEventListener("scroll", controlarCategorias, { passive: true });
+
+    return () => window.removeEventListener("scroll", controlarCategorias);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -333,8 +355,8 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground">
-        <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+      <header className="sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground shadow-[0_2px_18px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 px-3 py-3 sm:px-6 md:flex-row md:items-center md:gap-4">
           <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
               <Menu className="size-5" />
@@ -370,7 +392,7 @@ export function SiteHeader() {
                   onFocus={() => setFocado(true)}
                   onBlur={() => setTimeout(() => setFocado(false), 150)}
                   placeholder="O que você está procurando?"
-                  className="h-10 w-full min-w-0 rounded-full bg-background pl-9 pr-3 text-sm text-foreground outline-none"
+                  className="h-11 w-full min-w-0 rounded-full border border-white/10 bg-background pl-10 pr-4 text-sm text-foreground shadow-sm outline-none transition-shadow focus:ring-2 focus:ring-white/25"
                 />
               </form>
 
@@ -404,14 +426,14 @@ export function SiteHeader() {
             <div className="hidden shrink-0 items-center gap-2 lg:flex">
               <Link
                 to="/trabalhe-conosco"
-                className="whitespace-nowrap rounded-full border border-primary-foreground/30 px-3 py-2 text-xs font-semibold"
+                className="whitespace-nowrap rounded-full border border-primary-foreground/20 bg-primary-foreground/[0.06] px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-primary-foreground/10"
               >
                 Trabalhe Conosco
               </Link>
 
               <Link
                 to="/farmacia-popular"
-                className="whitespace-nowrap rounded-full bg-brand-red px-3 py-2 text-xs font-semibold"
+                className="whitespace-nowrap rounded-full bg-brand-red px-3.5 py-2 text-xs font-semibold shadow-sm transition-transform hover:-translate-y-0.5"
               >
                 Farmácia Popular
               </Link>
@@ -419,15 +441,15 @@ export function SiteHeader() {
           </div>
         </div>
 
-        <div className="hidden w-full border-t border-primary-foreground/10 md:block">
-          <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center gap-1 overflow-visible px-4 py-1.5 text-xs font-medium">
-            <button
-              onClick={() => setMenuAberto(true)}
-              className="shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 hover:bg-primary-foreground/10"
-            >
-              ☰ Categorias
-            </button>
-
+        <div
+          className={`hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md transition-all duration-300 md:block ${
+            mostrarCategorias
+              ? "max-h-20 translate-y-0 opacity-100"
+              : "pointer-events-none max-h-0 -translate-y-2 border-transparent opacity-0"
+          }`}
+          aria-hidden={!mostrarCategorias}
+        >
+          <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center justify-center gap-1 overflow-visible px-4 py-2 text-xs font-medium">
             {categorias.map((categoria) => (
               <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
             ))}
