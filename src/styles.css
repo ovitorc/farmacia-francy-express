@@ -220,3 +220,15 @@
     height: 0;
   }
 }
+
+/* Cabeçalho Francy: acabamento visual e contenção de viewport. */
+@layer components {
+  .francy-header-nav {
+    contain: layout paint;
+    isolation: isolate;
+  }
+
+  .francy-header-search {
+    box-shadow: 0 2px 10px oklch(0.15 0.03 265 / 8%);
+  }
+}
