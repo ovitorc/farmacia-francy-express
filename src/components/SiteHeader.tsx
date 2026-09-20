@@ -83,106 +83,129 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
 
 function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
   const [aberta, setAberta] = useState<string | null>(null);
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [menuPosicao, setMenuPosicao] = useState({ left: 12, top: 0 });
+  const gatilhoRef = useRef<HTMLDivElement>(null);
+
+  const atualizarPosicao = () => {
+    const gatilho = gatilhoRef.current;
+    if (!gatilho) return;
+
+    const largura = Math.min(980, window.innerWidth - 24);
+    const rect = gatilho.getBoundingClientRect();
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - largura - 12));
+
+    setMenuPosicao({
+      left,
+      top: rect.bottom + 4,
+    });
+  };
+
+  const abrirMenu = () => {
+    atualizarPosicao();
+    setMenuAberto(true);
+  };
+
+  useEffect(() => {
+    if (!menuAberto) return;
+
+    const atualizar = () => atualizarPosicao();
+    window.addEventListener("resize", atualizar);
+    window.addEventListener("scroll", atualizar, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", atualizar);
+      window.removeEventListener("scroll", atualizar);
+    };
+  }, [menuAberto]);
 
   return (
-    <div className="group relative z-[1] shrink-0">
+    <div
+      ref={gatilhoRef}
+      className="relative shrink-0"
+      onMouseEnter={abrirMenu}
+      onMouseLeave={() => setMenuAberto(false)}
+    >
       <Link
         to="/categoria/$slug"
         params={{ slug: categoria.slug }}
-        className="flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold hover:bg-primary-foreground/10"
+        className="flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-2 text-xs font-semibold hover:bg-primary-foreground/10"
+        onFocus={abrirMenu}
       >
-        {" "}
-        <span>{categoria.nome}</span> <ChevronDown className="size-3" />{" "}
+        <span>{categoria.nome}</span>
+        <ChevronDown className="size-3 shrink-0" />
       </Link>
 
-      <div
-        className="
-      pointer-events-none
-      invisible
-      absolute
-      left-0
-      top-full
-      z-[9999]
-      w-[min(980px,calc(100vw-32px))]
-      translate-y-1
-      rounded-xl
-      border
-      border-border
-      bg-popover
-      p-3
-      text-popover-foreground
-      opacity-0
-      shadow-2xl
-      transition-all
-      duration-150
-      group-hover:pointer-events-auto
-      group-hover:visible
-      group-hover:translate-y-0
-      group-hover:opacity-100
-    "
-      >
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {categoria.subcategorias.map((subcategoria) => {
-            const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
-            const estaAberta = aberta === subcategoria.slug;
+      {menuAberto && (
+        <div
+          className="fixed z-[9999] w-[min(980px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+          style={{ left: menuPosicao.left, top: menuPosicao.top }}
+          onMouseEnter={() => setMenuAberto(true)}
+          onMouseLeave={() => setMenuAberto(false)}
+        >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {categoria.subcategorias.map((subcategoria) => {
+              const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+              const estaAberta = aberta === subcategoria.slug;
 
-            return (
-              <div
-                key={subcategoria.slug}
-                className="min-w-0 rounded-lg border border-transparent p-1 hover:border-border"
-              >
-                <div className="flex items-center">
-                  <Link
-                    to="/categoria/$slug"
-                    params={{ slug: categoria.slug }}
-                    search={{
-                      sub: subcategoria.slug,
-                      sub2: "",
-                      ordem: "relevancia",
-                      pagina: 1,
-                    }}
-                    className="min-w-0 flex-1 px-2 py-1.5 text-sm font-semibold hover:text-primary"
-                  >
-                    {subcategoria.nome}
-                  </Link>
-
-                  {temTerceiroNivel && (
-                    <button
-                      type="button"
-                      onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
-                      className="p-1.5"
-                      aria-label={`Mostrar ${subcategoria.nome}`}
+              return (
+                <div
+                  key={subcategoria.slug}
+                  className="min-w-0 rounded-lg border border-transparent p-1 hover:border-border"
+                >
+                  <div className="flex items-center">
+                    <Link
+                      to="/categoria/$slug"
+                      params={{ slug: categoria.slug }}
+                      search={{
+                        sub: subcategoria.slug,
+                        sub2: "",
+                        ordem: "relevancia",
+                        pagina: 1,
+                      }}
+                      className="min-w-0 flex-1 px-2 py-1.5 text-sm font-semibold hover:text-primary"
                     >
-                      <ChevronRight className={`size-3.5 ${estaAberta ? "rotate-90" : ""}`} />
-                    </button>
+                      {subcategoria.nome}
+                    </Link>
+
+                    {temTerceiroNivel && (
+                      <button
+                        type="button"
+                        onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
+                        className="shrink-0 p-1.5"
+                        aria-label={`Mostrar ${subcategoria.nome}`}
+                      >
+                        <ChevronRight className={`size-3.5 transition-transform ${estaAberta ? "rotate-90" : ""}`} />
+                      </button>
+                    )}
+                  </div>
+
+                  {temTerceiroNivel && estaAberta && (
+                    <div className="mt-1 border-l border-border pl-2">
+                      {subcategoria.subcategorias?.map((terceiro) => (
+                        <Link
+                          key={terceiro.slug}
+                          to="/categoria/$slug"
+                          params={{ slug: categoria.slug }}
+                          search={{
+                            sub: subcategoria.slug,
+                            sub2: terceiro.slug,
+                            ordem: "relevancia",
+                            pagina: 1,
+                          }}
+                          className="block break-words rounded-md px-2 py-1 text-xs leading-tight text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          {terceiro.nome}
+                        </Link>
+                      ))}
+                    </div>
                   )}
                 </div>
-
-                {temTerceiroNivel && estaAberta && (
-                  <div className="mt-1 max-h-48 overflow-y-auto border-l border-border pl-2">
-                    {subcategoria.subcategorias?.map((terceiro) => (
-                      <Link
-                        key={terceiro.slug}
-                        to="/categoria/$slug"
-                        params={{ slug: categoria.slug }}
-                        search={{
-                          sub: subcategoria.slug,
-                          sub2: terceiro.slug,
-                          ordem: "relevancia",
-                          pagina: 1,
-                        }}
-                        className="block rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        {terceiro.nome}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -310,22 +333,18 @@ export function SiteHeader() {
 
   return (
     <>
-      {" "}
-      <header className="sticky top-0 z-[1000] w-full max-w-full overflow-visible bg-primary text-primary-foreground">
-        {" "}
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
-          {" "}
-          <div className="flex shrink-0 items-center justify-between gap-3 md:contents">
+      <header className="sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground">
+        <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:gap-4">
+          <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
-              {" "}
-              <Menu className="size-5" />{" "}
+              <Menu className="size-5" />
             </button>
 
             <Link to="/" className="shrink-0 md:order-2">
               <Logo className="h-9 sm:h-11" />
             </Link>
 
-            <Link to="/carrinho" className="relative shrink-0 p-2 md:order-4">
+            <Link to="/carrinho" className="relative shrink-0 p-2 md:order-4" aria-label="Carrinho">
               <ShoppingCart className="size-5" />
 
               {totalItens > 0 && (
@@ -339,6 +358,7 @@ export function SiteHeader() {
               )}
             </Link>
           </div>
+
           <div className="flex min-w-0 w-full items-center gap-2 md:order-3 md:flex-1">
             <div className="relative min-w-0 flex-1">
               <form onSubmit={enviar}>
@@ -350,27 +370,27 @@ export function SiteHeader() {
                   onFocus={() => setFocado(true)}
                   onBlur={() => setTimeout(() => setFocado(false), 150)}
                   placeholder="O que você está procurando?"
-                  className="h-10 w-full rounded-full bg-background pl-9 pr-3 text-sm text-foreground outline-none"
+                  className="h-10 w-full min-w-0 rounded-full bg-background pl-9 pr-3 text-sm text-foreground outline-none"
                 />
               </form>
 
               {focado && sugestoes.length > 0 && (
-                <div className="absolute left-0 right-0 top-12 z-[9999] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-card">
-                  <ul>
+                <div className="absolute left-0 right-0 top-12 z-[9999] max-w-full overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-card">
+                  <ul className="max-h-[min(60vh,420px)] overflow-y-auto scrollbar-hidden">
                     {sugestoes.map((produto) => (
                       <li key={produto.id}>
                         <Link
                           to="/produto/$id"
                           params={{ id: produto.id }}
-                          className="flex items-center gap-3 px-3 py-2"
+                          className="flex min-w-0 items-center gap-3 px-3 py-2"
                         >
-                          <div className="size-10">
+                          <div className="size-10 shrink-0">
                             <ProductImage produto={produto} />
                           </div>
 
-                          <span className="line-clamp-1 flex-1 text-sm">{produto.nome}</span>
+                          <span className="line-clamp-1 min-w-0 flex-1 text-sm">{produto.nome}</span>
 
-                          <span className="text-sm font-semibold text-primary">
+                          <span className="shrink-0 text-sm font-semibold text-primary">
                             {formatarPreco(precoFinal(produto))}
                           </span>
                         </Link>
@@ -398,8 +418,9 @@ export function SiteHeader() {
             </div>
           </div>
         </div>
+
         <div className="hidden w-full border-t border-primary-foreground/10 md:block">
-          <nav className="mx-auto flex w-full max-w-7xl items-center gap-1 overflow-visible px-4 py-1.5 text-xs font-medium">
+          <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center gap-1 overflow-visible px-4 py-1.5 text-xs font-medium">
             <button
               onClick={() => setMenuAberto(true)}
               className="shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 hover:bg-primary-foreground/10"
@@ -413,6 +434,7 @@ export function SiteHeader() {
           </nav>
         </div>
       </header>
+
       <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
     </>
   );
