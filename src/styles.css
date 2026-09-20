@@ -103,7 +103,6 @@
   --shadow-card: 0 1px 2px oklch(0.302 0.144 271.5 / 8%), 0 8px 24px oklch(0.302 0.144 271.5 / 6%);
 }
 
-
 .dark {
   --background: oklch(0.129 0.042 264.695);
   --foreground: oklch(0.984 0.003 247.858);
@@ -173,11 +172,51 @@
   animation: cart-pop 0.35s ease-out;
 }
 
-
 @layer base {
   img {
     -webkit-user-drag: none;
     -webkit-touch-callout: none;
     user-select: none;
+  }
+}
+
+/* Evita barras horizontais causadas por componentes que ultrapassam a viewport.
+   A rolagem vertical continua funcionando normalmente, mas sem exibir a barra. */
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  #root::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
+@utility scrollbar-hidden {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
