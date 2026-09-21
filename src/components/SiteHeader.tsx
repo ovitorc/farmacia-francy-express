@@ -48,8 +48,9 @@ function CategoryLinks({
   return (
     <div className="space-y-0.5">
       {categoria.subcategorias.map((subcategoria) => {
-        const temTerceiroNivel =
-          Boolean(subcategoria.subcategorias?.length);
+        const temTerceiroNivel = Boolean(
+          subcategoria.subcategorias?.length,
+        );
 
         const estaAberta = aberta === subcategoria.slug;
 
@@ -80,14 +81,18 @@ function CategoryLinks({
                   aria-label={`Abrir ${subcategoria.nome}`}
                   onClick={() =>
                     setAberta(
-                      estaAberta ? null : subcategoria.slug,
+                      estaAberta
+                        ? null
+                        : subcategoria.slug,
                     )
                   }
                   className="shrink-0 p-1.5"
                 >
                   <ChevronRight
                     className={`size-4 transition-transform ${
-                      estaAberta ? "rotate-90" : ""
+                      estaAberta
+                        ? "rotate-90"
+                        : ""
                     }`}
                   />
                 </button>
@@ -96,23 +101,27 @@ function CategoryLinks({
 
             {temTerceiroNivel && estaAberta && (
               <div className="ml-3 min-w-0 border-l border-border pl-2">
-                {subcategoria.subcategorias?.map((terceiro) => (
-                  <Link
-                    key={terceiro.slug}
-                    to="/categoria/$slug"
-                    params={{ slug: categoria.slug }}
-                    search={{
-                      sub: subcategoria.slug,
-                      sub2: terceiro.slug,
-                      ordem: "relevancia",
-                      pagina: 1,
-                    }}
-                    onClick={fechar}
-                    className="block min-w-0 truncate rounded-md px-2.5 py-1 text-xs leading-tight text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  >
-                    {terceiro.nome}
-                  </Link>
-                ))}
+                {subcategoria.subcategorias?.map(
+                  (terceiro) => (
+                    <Link
+                      key={terceiro.slug}
+                      to="/categoria/$slug"
+                      params={{
+                        slug: categoria.slug,
+                      }}
+                      search={{
+                        sub: subcategoria.slug,
+                        sub2: terceiro.slug,
+                        ordem: "relevancia",
+                        pagina: 1,
+                      }}
+                      onClick={fechar}
+                      className="block min-w-0 truncate rounded-md px-2.5 py-1 text-xs leading-tight text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {terceiro.nome}
+                    </Link>
+                  ),
+                )}
               </div>
             )}
           </div>
@@ -127,8 +136,21 @@ function DesktopCategoryMenu({
 }: {
   categoria: Categoria;
 }) {
-  const [aberta, setAberta] = useState<string | null>(null);
-  const [menuAberto, setMenuAberto] = useState(false);
+  const [aberta, setAberta] = useState<string | null>(
+    null,
+  );
+
+  const [menuAberto, setMenuAberto] =
+    useState(false);
+
+  /*
+   * Posição horizontal do submenu em relação
+   * ao próprio botão da categoria.
+   */
+  const [menuLeft, setMenuLeft] = useState(0);
+
+  const gatilhoRef =
+    useRef<HTMLDivElement>(null);
 
   const fechamentoTimer = useRef<
     ReturnType<typeof setTimeout> | null
@@ -137,315 +159,404 @@ function DesktopCategoryMenu({
   const cancelarFechamento = () => {
     if (fechamentoTimer.current !== null) {
       clearTimeout(fechamentoTimer.current);
+
       fechamentoTimer.current = null;
     }
   };
 
+  const atualizarPosicao = () => {
+    const gatilho = gatilhoRef.current;
+
+    if (!gatilho) {
+      return;
+    }
+
+    const rect =
+      gatilho.getBoundingClientRect();
+
+    /*
+     * O submenu nunca terá mais que 900px.
+     * Também deixamos 12px de margem das bordas
+     * da viewport.
+     */
+    const largura = Math.min(
+      900,
+      window.innerWidth - 24,
+    );
+
+    /*
+     * Queremos que o submenu comece,
+     * preferencialmente, exatamente alinhado
+     * com a categoria.
+     */
+    let left = 0;
+
+    /*
+     * Se estiver perto da direita da tela,
+     * deslocamos o submenu para a esquerda.
+     */
+    const limiteDireito =
+      rect.left + left + largura;
+
+    if (
+      limiteDireito >
+      window.innerWidth - 12
+    ) {
+      left =
+        window.innerWidth -
+        12 -
+        largura -
+        rect.left;
+    }
+
+    /*
+     * Se estiver perto da esquerda da tela,
+     * impedimos que o submenu saia pela esquerda.
+     */
+    if (rect.left + left < 12) {
+      left = 12 - rect.left;
+    }
+
+    setMenuLeft(left);
+  };
+
   const abrirMenu = () => {
     cancelarFechamento();
+
+    atualizarPosicao();
+
     setMenuAberto(true);
   };
 
   const fecharMenu = () => {
     cancelarFechamento();
 
-    fechamentoTimer.current = setTimeout(() => {
-      setMenuAberto(false);
-      setAberta(null);
-    }, 120);
+    /*
+     * Pequeno atraso para evitar que o menu
+     * desapareça durante a passagem do mouse.
+     */
+    fechamentoTimer.current =
+      setTimeout(() => {
+        setMenuAberto(false);
+        setAberta(null);
+      }, 120);
   };
 
   useEffect(() => {
     return () => {
       if (fechamentoTimer.current !== null) {
-        clearTimeout(fechamentoTimer.current);
+        clearTimeout(
+          fechamentoTimer.current,
+        );
       }
     };
   }, []);
 
+  useEffect(() => {
+    if (!menuAberto) {
+      return;
+    }
+
+    const atualizar = () => {
+      atualizarPosicao();
+    };
+
+    window.addEventListener(
+      "resize",
+      atualizar,
+    );
+
+    window.addEventListener(
+      "scroll",
+      atualizar,
+      {
+        passive: true,
+      },
+    );
+
+    return () => {
+      window.removeEventListener(
+        "resize",
+        atualizar,
+      );
+
+      window.removeEventListener(
+        "scroll",
+        atualizar,
+      );
+    };
+  }, [menuAberto]);
+
   return (
     <div
+      ref={gatilhoRef}
       className="relative min-w-0 shrink-0"
       onMouseEnter={abrirMenu}
       onMouseLeave={fecharMenu}
     >
       <Link
         to="/categoria/$slug"
-        params={{ slug: categoria.slug }}
-        onFocus={abrirMenu}
+        params={{
+          slug: categoria.slug,
+        }}
         className={`
-          group relative flex min-w-0 items-center gap-1.5
-          whitespace-nowrap rounded-lg
-          border border-transparent
-          px-3 py-2
-          text-[12px] font-semibold
-          tracking-[0.01em]
-          text-primary-foreground/90
-          transition-all duration-150
-          hover:border-primary-foreground/15
-          hover:bg-white/10
-          hover:text-white
+          group
+          flex
+          items-center
+          gap-1.5
+          whitespace-nowrap
+          rounded-full
+          border
+          px-3
+          py-2
+          text-xs
+          font-semibold
+          shadow-sm
+          transition-all
           ${
             menuAberto
-              ? "border-primary-foreground/15 bg-white/10 text-white"
-              : ""
+              ? "border-primary-foreground/25 bg-primary-foreground/15"
+              : "border-primary-foreground/10 bg-primary-foreground/[0.06]"
           }
+          hover:border-primary-foreground/25
+          hover:bg-primary-foreground/12
         `}
+        onFocus={abrirMenu}
       >
-        {categoria.icone && (
-          <span className="shrink-0 text-[13px] opacity-80">
-            {categoria.icone}
-          </span>
-        )}
-
         <span className="truncate">
           {categoria.nome}
         </span>
 
         <ChevronDown
           className={`
-            size-3.5 shrink-0 opacity-60
-            transition-transform duration-200
+            size-3
+            shrink-0
+            opacity-70
+            transition-transform
+            duration-200
             ${
               menuAberto
-                ? "rotate-180 opacity-100"
+                ? "rotate-180"
                 : ""
-            }
-          `}
-        />
-
-        <span
-          className={`
-            absolute bottom-0 left-3 right-3 h-0.5
-            rounded-full bg-white
-            transition-all duration-200
-            ${
-              menuAberto
-                ? "scale-x-100 opacity-100"
-                : "scale-x-0 opacity-0"
             }
           `}
         />
       </Link>
 
       {menuAberto && (
+        /*
+         * IMPORTANTE:
+         *
+         * O submenu agora é ABSOLUTE.
+         *
+         * Ele pertence diretamente à categoria.
+         *
+         * Não existe:
+         *
+         * top: rect.bottom + 4
+         *
+         * Não existe:
+         *
+         * position: fixed
+         *
+         * Portanto não há um "buraco" entre
+         * a categoria e suas subcategorias.
+         */
         <div
           className="
-            absolute left-0 top-full z-[9999]
-            w-[min(760px,calc(100vw-32px))]
-            max-w-[calc(100vw-32px)]
+            absolute
+            top-full
+            z-[9999]
             overflow-visible
           "
+          style={{
+            left: menuLeft,
+            width: "min(900px, calc(100vw - 24px))",
+            maxWidth:
+              "calc(100vw - 24px)",
+          }}
           onMouseEnter={abrirMenu}
           onMouseLeave={fecharMenu}
         >
           <div
             className="
-              mt-0
-              max-h-[min(65vh,560px)]
+              w-full
               overflow-hidden
               rounded-b-2xl
-              rounded-t-none
               border-x
               border-b
               border-border/80
-              bg-popover
+              bg-popover/98
+              p-3
               text-popover-foreground
-              shadow-[0_18px_45px_rgba(0,0,0,0.16)]
-              ring-1
-              ring-black/5
+              shadow-[0_18px_50px_rgba(0,0,0,0.18)]
+              backdrop-blur-xl
               animate-in
               fade-in-0
               slide-in-from-top-1
               duration-150
             "
           >
-            <div className="border-b border-border/70 bg-muted/30 px-4 py-2.5">
-              <div className="flex min-w-0 items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  {categoria.icone && (
-                    <span className="shrink-0 text-sm">
-                      {categoria.icone}
-                    </span>
-                  )}
-
-                  <span className="truncate text-sm font-bold text-foreground">
-                    {categoria.nome}
-                  </span>
-                </div>
-
-                <Link
-                  to="/categoria/$slug"
-                  params={{ slug: categoria.slug }}
-                  className="
-                    shrink-0
-                    rounded-lg
-                    border
-                    border-border
-                    bg-background
-                    px-2.5
-                    py-1
-                    text-[10px]
-                    font-semibold
-                    text-foreground
-                    transition-colors
-                    hover:border-primary/30
-                    hover:bg-primary/5
-                    hover:text-primary
-                  "
-                >
-                  Ver tudo
-                </Link>
-              </div>
-            </div>
-
-            <div className="max-h-[calc(min(65vh,560px)-52px)] overflow-y-auto overscroll-contain px-3 py-3">
-              <div
-                className="
-                  grid
-                  min-w-0
-                  grid-cols-2
-                  gap-1.5
-                  lg:grid-cols-3
-                "
-              >
-                {categoria.subcategorias.map(
-                  (subcategoria) => {
-                    const temTerceiroNivel =
-                      Boolean(
-                        subcategoria.subcategorias
-                          ?.length,
-                      );
-
-                    const estaAberta =
-                      aberta === subcategoria.slug;
-
-                    return (
-                      <div
-                        key={subcategoria.slug}
-                        className={`
-                          min-w-0
-                          overflow-hidden
-                          rounded-lg
-                          border
-                          transition-colors
-                          ${
-                            estaAberta
-                              ? "border-primary/20 bg-primary/[0.035]"
-                              : "border-transparent hover:border-border/60 hover:bg-muted/40"
-                          }
-                        `}
-                      >
-                        <div className="flex min-w-0 items-center">
-                          <Link
-                            to="/categoria/$slug"
-                            params={{
-                              slug: categoria.slug,
-                            }}
-                            search={{
-                              sub: subcategoria.slug,
-                              sub2: "",
-                              ordem: "relevancia",
-                              pagina: 1,
-                            }}
-                            className="
-                              min-w-0
-                              flex-1
-                              truncate
-                              px-2.5
-                              py-1.5
-                              text-[12px]
-                              font-semibold
-                              leading-tight
-                              text-foreground
-                              transition-colors
-                              hover:text-primary
-                            "
-                          >
-                            {subcategoria.nome}
-                          </Link>
-
-                          {temTerceiroNivel && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setAberta(
-                                  estaAberta
-                                    ? null
-                                    : subcategoria.slug,
-                                )
-                              }
-                              className="
-                                mr-1
-                                shrink-0
-                                rounded-md
-                                p-1
-                                text-muted-foreground
-                                transition-colors
-                                hover:bg-background
-                                hover:text-foreground
-                              "
-                              aria-label={`Mostrar ${subcategoria.nome}`}
-                            >
-                              <ChevronRight
-                                className={`
-                                  size-3
-                                  transition-transform
-                                  duration-150
-                                  ${
-                                    estaAberta
-                                      ? "rotate-90"
-                                      : ""
-                                  }
-                                `}
-                              />
-                            </button>
-                          )}
-                        </div>
-
-                        {temTerceiroNivel &&
-                          estaAberta && (
-                            <div className="mx-2 mb-1.5 border-l border-primary/20 pl-1.5">
-                              {subcategoria.subcategorias?.map(
-                                (terceiro) => (
-                                  <Link
-                                    key={terceiro.slug}
-                                    to="/categoria/$slug"
-                                    params={{
-                                      slug: categoria.slug,
-                                    }}
-                                    search={{
-                                      sub: subcategoria.slug,
-                                      sub2: terceiro.slug,
-                                      ordem: "relevancia",
-                                      pagina: 1,
-                                    }}
-                                    className="
-                                      block
-                                      min-w-0
-                                      truncate
-                                      rounded-md
-                                      px-1.5
-                                      py-0.5
-                                      text-[10px]
-                                      leading-tight
-                                      text-muted-foreground
-                                      transition-colors
-                                      hover:bg-background
-                                      hover:text-primary
-                                    "
-                                  >
-                                    {terceiro.nome}
-                                  </Link>
-                                ),
-                              )}
-                            </div>
-                          )}
-                      </div>
+            <div
+              className="
+                grid
+                min-w-0
+                grid-cols-1
+                gap-1.5
+                sm:grid-cols-2
+                lg:grid-cols-3
+                xl:grid-cols-4
+              "
+            >
+              {categoria.subcategorias.map(
+                (subcategoria) => {
+                  const temTerceiroNivel =
+                    Boolean(
+                      subcategoria
+                        .subcategorias
+                        ?.length,
                     );
-                  },
-                )}
-              </div>
+
+                  const estaAberta =
+                    aberta ===
+                    subcategoria.slug;
+
+                  return (
+                    <div
+                      key={
+                        subcategoria.slug
+                      }
+                      className={`
+                        min-w-0
+                        overflow-hidden
+                        rounded-lg
+                        border
+                        transition-colors
+                        ${
+                          estaAberta
+                            ? "border-primary/20 bg-primary/[0.035]"
+                            : "border-transparent hover:border-border hover:bg-accent/40"
+                        }
+                      `}
+                    >
+                      <div className="flex min-w-0 items-center">
+                        <Link
+                          to="/categoria/$slug"
+                          params={{
+                            slug: categoria.slug,
+                          }}
+                          search={{
+                            sub: subcategoria.slug,
+                            sub2: "",
+                            ordem:
+                              "relevancia",
+                            pagina: 1,
+                          }}
+                          className="
+                            min-w-0
+                            flex-1
+                            truncate
+                            px-2.5
+                            py-1.5
+                            text-xs
+                            font-semibold
+                            leading-tight
+                            transition-colors
+                            hover:text-primary
+                          "
+                        >
+                          {
+                            subcategoria.nome
+                          }
+                        </Link>
+
+                        {temTerceiroNivel && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAberta(
+                                estaAberta
+                                  ? null
+                                  : subcategoria.slug,
+                              )
+                            }
+                            className="
+                              mr-1
+                              shrink-0
+                              rounded-md
+                              p-1
+                              text-muted-foreground
+                              transition-colors
+                              hover:bg-background
+                              hover:text-foreground
+                            "
+                            aria-label={`Mostrar ${subcategoria.nome}`}
+                          >
+                            <ChevronRight
+                              className={`
+                                size-3.5
+                                transition-transform
+                                duration-150
+                                ${
+                                  estaAberta
+                                    ? "rotate-90"
+                                    : ""
+                                }
+                              `}
+                            />
+                          </button>
+                        )}
+                      </div>
+
+                      {temTerceiroNivel &&
+                        estaAberta && (
+                          <div className="mx-2 mb-1.5 border-l border-border pl-1.5">
+                            {subcategoria.subcategorias?.map(
+                              (
+                                terceiro,
+                              ) => (
+                                <Link
+                                  key={
+                                    terceiro.slug
+                                  }
+                                  to="/categoria/$slug"
+                                  params={{
+                                    slug: categoria.slug,
+                                  }}
+                                  search={{
+                                    sub: subcategoria.slug,
+                                    sub2: terceiro.slug,
+                                    ordem:
+                                      "relevancia",
+                                    pagina: 1,
+                                  }}
+                                  className="
+                                    block
+                                    min-w-0
+                                    truncate
+                                    rounded-md
+                                    px-1.5
+                                    py-0.5
+                                    text-[10px]
+                                    leading-tight
+                                    text-muted-foreground
+                                    transition-colors
+                                    hover:bg-accent
+                                    hover:text-foreground
+                                  "
+                                >
+                                  {
+                                    terceiro.nome
+                                  }
+                                </Link>
+                              ),
+                            )}
+                          </div>
+                        )}
+                    </div>
+                  );
+                },
+              )}
             </div>
           </div>
         </div>
@@ -468,19 +579,40 @@ function SideMenu({
       <div
         aria-hidden={!aberto}
         onClick={fechar}
-        className={`fixed inset-0 z-[100] bg-foreground/40 transition-opacity ${
-          aberto
-            ? "opacity-100"
-            : "pointer-events-none opacity-0"
-        }`}
+        className={`
+          fixed
+          inset-0
+          z-[100]
+          bg-foreground/40
+          transition-opacity
+          ${
+            aberto
+              ? "opacity-100"
+              : "pointer-events-none opacity-0"
+          }
+        `}
       />
 
       <aside
-        className={`fixed left-0 top-0 z-[110] flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform ${
-          aberto
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }`}
+        className={`
+          fixed
+          left-0
+          top-0
+          z-[110]
+          flex
+          h-dvh
+          w-[86vw]
+          max-w-sm
+          flex-col
+          bg-sidebar
+          shadow-card
+          transition-transform
+          ${
+            aberto
+              ? "translate-x-0"
+              : "-translate-x-full"
+          }
+        `}
       >
         <div className="flex items-center justify-between bg-primary px-4 py-4">
           <Logo className="h-9" />
@@ -498,7 +630,19 @@ function SideMenu({
           <Link
             to="/farmacia-popular"
             onClick={fechar}
-            className="mb-2 flex rounded-lg border border-brand-red/30 bg-brand-red/5 px-3 py-3 text-sm font-semibold text-brand-red"
+            className="
+              mb-2
+              flex
+              rounded-lg
+              border
+              border-brand-red/30
+              bg-brand-red/5
+              px-3
+              py-3
+              text-sm
+              font-semibold
+              text-brand-red
+            "
           >
             FARMÁCIA POPULAR
           </Link>
@@ -506,32 +650,63 @@ function SideMenu({
           <Link
             to="/trabalhe-conosco"
             onClick={fechar}
-            className="mb-3 flex rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm font-semibold text-primary"
+            className="
+              mb-3
+              flex
+              rounded-lg
+              border
+              border-primary/30
+              bg-primary/5
+              px-3
+              py-3
+              text-sm
+              font-semibold
+              text-primary
+            "
           >
             TRABALHE CONOSCO
           </Link>
 
-          {categorias.map((categoria) => (
-            <div
-              key={categoria.slug}
-              className="border-b border-sidebar-border/60 py-1"
-            >
-              <Link
-                to="/categoria/$slug"
-                params={{ slug: categoria.slug }}
-                onClick={fechar}
-                className="flex items-center gap-2 px-3 py-3 text-sm font-semibold"
+          {categorias.map(
+            (categoria) => (
+              <div
+                key={categoria.slug}
+                className="
+                  border-b
+                  border-sidebar-border/60
+                  py-1
+                "
               >
-                <span>{categoria.icone}</span>
-                {categoria.nome}
-              </Link>
+                <Link
+                  to="/categoria/$slug"
+                  params={{
+                    slug: categoria.slug,
+                  }}
+                  onClick={fechar}
+                  className="
+                    flex
+                    items-center
+                    gap-2
+                    px-3
+                    py-3
+                    text-sm
+                    font-semibold
+                  "
+                >
+                  <span>
+                    {categoria.icone}
+                  </span>
 
-              <CategoryLinks
-                categoria={categoria}
-                fechar={fechar}
-              />
-            </div>
-          ))}
+                  {categoria.nome}
+                </Link>
+
+                <CategoryLinks
+                  categoria={categoria}
+                  fechar={fechar}
+                />
+              </div>
+            ),
+          )}
         </nav>
       </aside>
     </>
@@ -539,25 +714,46 @@ function SideMenu({
 }
 
 export function SiteHeader() {
-  const [menuAberto, setMenuAberto] = useState(false);
-  const [termo, setTermo] = useState("");
-  const [termoBusca, setTermoBusca] = useState("");
-  const [focado, setFocado] = useState(false);
-  const [pop, setPop] = useState(false);
-  const [headerVisivel, setHeaderVisivel] = useState(true);
+  const [menuAberto, setMenuAberto] =
+    useState(false);
+
+  const [termo, setTermo] =
+    useState("");
+
+  const [termoBusca, setTermoBusca] =
+    useState("");
+
+  const [focado, setFocado] =
+    useState(false);
+
+  const [pop, setPop] =
+    useState(false);
+
+  const [headerVisivel, setHeaderVisivel] =
+    useState(true);
 
   const { totalItens } = useCart();
-  const { categorias } = useCatalogo();
 
-  const primeiro = useRef(true);
-  const ultimaPosicaoRef = useRef(0);
-  const frameRef = useRef<number | null>(null);
+  const { categorias } =
+    useCatalogo();
 
-  const navigate = useNavigate();
+  const primeiro =
+    useRef(true);
 
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
+  const ultimaPosicaoRef =
+    useRef(0);
+
+  const frameRef =
+    useRef<number | null>(null);
+
+  const navigate =
+    useNavigate();
+
+  const pathname =
+    useRouterState({
+      select: (s) =>
+        s.location.pathname,
+    });
 
   useEffect(() => {
     setMenuAberto(false);
@@ -565,33 +761,59 @@ export function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
-    ultimaPosicaoRef.current = window.scrollY;
+    ultimaPosicaoRef.current =
+      window.scrollY;
 
-    const controlarHeader = () => {
-      if (frameRef.current !== null) {
-        return;
-      }
-
-      frameRef.current = requestAnimationFrame(() => {
-        const posicaoAtual = window.scrollY;
-        const ultimaPosicao =
-          ultimaPosicaoRef.current;
-
-        const diferenca =
-          posicaoAtual - ultimaPosicao;
-
-        if (posicaoAtual <= 10) {
-          setHeaderVisivel(true);
-        } else if (diferenca > 3) {
-          setHeaderVisivel(false);
-        } else if (diferenca < -3) {
-          setHeaderVisivel(true);
+    const controlarHeader =
+      () => {
+        if (
+          frameRef.current !==
+          null
+        ) {
+          return;
         }
 
-        ultimaPosicaoRef.current = posicaoAtual;
-        frameRef.current = null;
-      });
-    };
+        frameRef.current =
+          requestAnimationFrame(
+            () => {
+              const posicaoAtual =
+                window.scrollY;
+
+              const ultimaPosicao =
+                ultimaPosicaoRef.current;
+
+              const diferenca =
+                posicaoAtual -
+                ultimaPosicao;
+
+              if (
+                posicaoAtual <= 10
+              ) {
+                setHeaderVisivel(
+                  true,
+                );
+              } else if (
+                diferenca > 3
+              ) {
+                setHeaderVisivel(
+                  false,
+                );
+              } else if (
+                diferenca < -3
+              ) {
+                setHeaderVisivel(
+                  true,
+                );
+              }
+
+              ultimaPosicaoRef.current =
+                posicaoAtual;
+
+              frameRef.current =
+                null;
+            },
+          );
+      };
 
     window.addEventListener(
       "scroll",
@@ -607,41 +829,64 @@ export function SiteHeader() {
         controlarHeader,
       );
 
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
+      if (
+        frameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          frameRef.current,
+        );
+
+        frameRef.current =
+          null;
       }
     };
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setTermoBusca(termo.trim());
-    }, 250);
+    const timer =
+      setTimeout(() => {
+        setTermoBusca(
+          termo.trim(),
+        );
+      }, 250);
 
-    return () => clearTimeout(timer);
+    return () =>
+      clearTimeout(timer);
   }, [termo]);
 
   useEffect(() => {
     if (primeiro.current) {
-      primeiro.current = false;
+      primeiro.current =
+        false;
+
       return;
     }
 
     setPop(true);
 
-    const t = setTimeout(() => {
-      setPop(false);
-    }, 400);
+    const t =
+      setTimeout(
+        () => setPop(false),
+        400,
+      );
 
-    return () => clearTimeout(t);
+    return () =>
+      clearTimeout(t);
   }, [totalItens]);
 
-  const { data: sugestoes = [] } = useQuery(
-    buscaQueryOptions(termoBusca, 6),
+  const {
+    data: sugestoes = [],
+  } = useQuery(
+    buscaQueryOptions(
+      termoBusca,
+      6,
+    ),
   );
 
-  const enviar = (e: React.FormEvent) => {
+  const enviar = (
+    e: React.FormEvent,
+  ) => {
     e.preventDefault();
 
     if (termo.trim()) {
@@ -662,6 +907,7 @@ export function SiteHeader() {
           top-0
           z-[1000]
           w-full
+          min-w-0
           max-w-full
           overflow-visible
           bg-primary
@@ -696,7 +942,9 @@ export function SiteHeader() {
         >
           <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 md:contents">
             <button
-              onClick={() => setMenuAberto(true)}
+              onClick={() =>
+                setMenuAberto(true)
+              }
               aria-label="Abrir menu"
               className="shrink-0 p-2 md:order-1"
             >
@@ -731,7 +979,11 @@ export function SiteHeader() {
                     bg-brand-red
                     text-[11px]
                     font-bold
-                    ${pop ? "cart-pop" : ""}
+                    ${
+                      pop
+                        ? "cart-pop"
+                        : ""
+                    }
                   `}
                 >
                   {totalItens}
@@ -742,18 +994,27 @@ export function SiteHeader() {
 
           <div className="flex min-w-0 w-full items-center gap-2 md:order-3 md:flex-1">
             <div className="relative min-w-0 flex-1">
-              <form onSubmit={enviar}>
+              <form
+                onSubmit={enviar}
+              >
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
                 <input
                   value={termo}
                   onChange={(e) =>
-                    setTermo(e.target.value)
+                    setTermo(
+                      e.target.value,
+                    )
                   }
-                  onFocus={() => setFocado(true)}
+                  onFocus={() =>
+                    setFocado(true)
+                  }
                   onBlur={() =>
                     setTimeout(
-                      () => setFocado(false),
+                      () =>
+                        setFocado(
+                          false,
+                        ),
                       150,
                     )
                   }
@@ -779,37 +1040,75 @@ export function SiteHeader() {
                 />
               </form>
 
-              {focado && sugestoes.length > 0 && (
-                <div className="absolute left-0 right-0 top-12 z-[9999] max-w-full overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-card">
-                  <ul className="max-h-[min(60vh,420px)] overflow-y-auto scrollbar-hidden">
-                    {sugestoes.map((produto) => (
-                      <li key={produto.id}>
-                        <Link
-                          to="/produto/$id"
-                          params={{ id: produto.id }}
-                          className="flex min-w-0 items-center gap-3 px-3 py-2"
-                        >
-                          <div className="size-10 shrink-0">
-                            <ProductImage
-                              produto={produto}
-                            />
-                          </div>
+              {focado &&
+                sugestoes.length >
+                  0 && (
+                  <div
+                    className="
+                      absolute
+                      left-0
+                      right-0
+                      top-12
+                      z-[9999]
+                      max-w-full
+                      overflow-hidden
+                      rounded-xl
+                      border
+                      bg-popover
+                      text-popover-foreground
+                      shadow-card
+                    "
+                  >
+                    <ul className="max-h-[min(60vh,420px)] overflow-y-auto scrollbar-hidden">
+                      {sugestoes.map(
+                        (produto) => (
+                          <li
+                            key={
+                              produto.id
+                            }
+                          >
+                            <Link
+                              to="/produto/$id"
+                              params={{
+                                id: produto.id,
+                              }}
+                              className="
+                                flex
+                                min-w-0
+                                items-center
+                                gap-3
+                                px-3
+                                py-2
+                              "
+                            >
+                              <div className="size-10 shrink-0">
+                                <ProductImage
+                                  produto={
+                                    produto
+                                  }
+                                />
+                              </div>
 
-                          <span className="line-clamp-1 min-w-0 flex-1 text-sm">
-                            {produto.nome}
-                          </span>
+                              <span className="line-clamp-1 min-w-0 flex-1 text-sm">
+                                {
+                                  produto.nome
+                                }
+                              </span>
 
-                          <span className="shrink-0 text-sm font-semibold text-primary">
-                            {formatarPreco(
-                              precoFinal(produto),
-                            )}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                              <span className="shrink-0 text-sm font-semibold text-primary">
+                                {formatarPreco(
+                                  precoFinal(
+                                    produto,
+                                  ),
+                                )}
+                              </span>
+                            </Link>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
+                )}
             </div>
 
             <div className="hidden shrink-0 items-center gap-2 lg:flex">
@@ -876,8 +1175,7 @@ export function SiteHeader() {
               flex-wrap
               items-center
               justify-center
-              gap-x-0.5
-              gap-y-0.5
+              gap-0.5
               overflow-visible
               px-3
               py-1.5
@@ -886,19 +1184,23 @@ export function SiteHeader() {
               sm:px-4
             "
           >
-            {categorias.map((categoria) => (
-              <DesktopCategoryMenu
-                key={categoria.slug}
-                categoria={categoria}
-              />
-            ))}
+            {categorias.map(
+              (categoria) => (
+                <DesktopCategoryMenu
+                  key={categoria.slug}
+                  categoria={categoria}
+                />
+              ),
+            )}
           </nav>
         </div>
       </header>
 
       <SideMenu
         aberto={menuAberto}
-        fechar={() => setMenuAberto(false)}
+        fechar={() =>
+          setMenuAberto(false)
+        }
       />
     </>
   );
