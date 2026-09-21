@@ -84,15 +84,21 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
 function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
-  const [menuPosicao, setMenuPosicao] = useState({ left: 12, top: 0 });
+  const [menuPosicao, setMenuPosicao] = useState({
+    left: 12,
+    top: 0,
+  });
+
   const gatilhoRef = useRef<HTMLDivElement>(null);
 
   const atualizarPosicao = () => {
     const gatilho = gatilhoRef.current;
+
     if (!gatilho) return;
 
     const largura = Math.min(980, window.innerWidth - 24);
     const rect = gatilho.getBoundingClientRect();
+
     const left = Math.max(12, Math.min(rect.left, window.innerWidth - largura - 12));
 
     setMenuPosicao({
@@ -110,6 +116,7 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
     if (!menuAberto) return;
 
     const atualizar = () => atualizarPosicao();
+
     window.addEventListener("resize", atualizar);
     window.addEventListener("scroll", atualizar, { passive: true });
 
@@ -133,19 +140,24 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
         onFocus={abrirMenu}
       >
         <span>{categoria.nome}</span>
+
         <ChevronDown className="size-3 shrink-0 opacity-70 transition-transform group-hover:translate-y-0.5" />
       </Link>
 
       {menuAberto && (
         <div
           className="fixed z-[9999] w-[min(1040px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-2xl border border-border/80 bg-popover/98 p-4 text-popover-foreground shadow-[0_20px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
-          style={{ left: menuPosicao.left, top: menuPosicao.top }}
+          style={{
+            left: menuPosicao.left,
+            top: menuPosicao.top,
+          }}
           onMouseEnter={() => setMenuAberto(true)}
           onMouseLeave={() => setMenuAberto(false)}
         >
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {categoria.subcategorias.map((subcategoria) => {
               const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+
               const estaAberta = aberta === subcategoria.slug;
 
               return (
@@ -280,11 +292,17 @@ export function SiteHeader() {
   const [termoBusca, setTermoBusca] = useState("");
   const [focado, setFocado] = useState(false);
   const [pop, setPop] = useState(false);
-  const [mostrarCategorias, setMostrarCategorias] = useState(true);
+
+  // Controle único do header inteiro
+  const [headerVisivel, setHeaderVisivel] = useState(true);
 
   const { totalItens } = useCart();
   const { categorias } = useCatalogo();
+
   const primeiro = useRef(true);
+  const ultimaPosicaoRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
+
   const navigate = useNavigate();
 
   const pathname = useRouterState({
@@ -296,25 +314,56 @@ export function SiteHeader() {
     setFocado(false);
   }, [pathname]);
 
+  /*
+   * CONTROLE DO HEADER
+   *
+   * Rolando para baixo -> desaparece
+   * Rolando para cima -> reaparece
+   * No topo -> permanece visível
+   *
+   * requestAnimationFrame evita atualizar o React dezenas
+   * de vezes por segundo durante a rolagem.
+   */
   useEffect(() => {
-    let ultimaPosicao = window.scrollY;
+    ultimaPosicaoRef.current = window.scrollY;
 
-    const controlarCategorias = () => {
-      const posicaoAtual = window.scrollY;
-      const diferenca = posicaoAtual - ultimaPosicao;
-
-      if (posicaoAtual <= 12) {
-        setMostrarCategorias(true);
-      } else if (Math.abs(diferenca) >= 4) {
-        setMostrarCategorias(diferenca < 0);
+    const controlarHeader = () => {
+      if (frameRef.current !== null) {
+        return;
       }
 
-      ultimaPosicao = posicaoAtual;
+      frameRef.current = requestAnimationFrame(() => {
+        const posicaoAtual = window.scrollY;
+        const ultimaPosicao = ultimaPosicaoRef.current;
+        const diferenca = posicaoAtual - ultimaPosicao;
+
+        if (posicaoAtual <= 10) {
+          setHeaderVisivel(true);
+        } else if (diferenca > 3) {
+          // Rolando para baixo
+          setHeaderVisivel(false);
+        } else if (diferenca < -3) {
+          // Rolando para cima
+          setHeaderVisivel(true);
+        }
+
+        ultimaPosicaoRef.current = posicaoAtual;
+        frameRef.current = null;
+      });
     };
 
-    window.addEventListener("scroll", controlarCategorias, { passive: true });
+    window.addEventListener("scroll", controlarHeader, {
+      passive: true,
+    });
 
-    return () => window.removeEventListener("scroll", controlarCategorias);
+    return () => {
+      window.removeEventListener("scroll", controlarHeader);
+
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -355,7 +404,11 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground shadow-[0_2px_18px_rgba(0,0,0,0.12)]">
+      <header
+        className={`sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground shadow-[0_2px_18px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-out ${
+          headerVisivel ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
         <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 px-3 py-3 sm:px-6 md:flex-row md:items-center md:gap-4">
           <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 md:contents">
             <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
@@ -441,14 +494,14 @@ export function SiteHeader() {
           </div>
         </div>
 
-        <div
-          className={`hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md transition-all duration-300 md:block ${
-            mostrarCategorias
-              ? "max-h-20 translate-y-0 opacity-100"
-              : "pointer-events-none max-h-0 -translate-y-2 border-transparent opacity-0"
-          }`}
-          aria-hidden={!mostrarCategorias}
-        >
+        {/*
+         * A barra de categorias não possui mais uma lógica
+         * própria de esconder/mostrar.
+         *
+         * Ela faz parte do header e acompanha o movimento
+         * do header inteiro.
+         */}
+        <div className="hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md md:block">
           <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center justify-center gap-1 overflow-visible px-4 py-2 text-xs font-medium">
             {categorias.map((categoria) => (
               <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
