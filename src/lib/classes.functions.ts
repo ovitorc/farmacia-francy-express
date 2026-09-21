@@ -94,7 +94,7 @@ export const listarEstruturaClasses = createServerFn({ method: "GET" })
         .order("nome"),
       context.supabase
         .from("subcategorias")
-        .select("id,categoria_id,nome,slug,ordem,produtos!produtos_subcategoria_id_fkey(count)")
+        .select("id,categoria_id,nome,slug,ordem,produtos!produtos_subcategoria_categoria_fkey(count)")
         .order("ordem")
         .order("nome"),
       context.supabase.from("produtos").select("id", { count: "exact", head: true }).is("categoria_id", null),
