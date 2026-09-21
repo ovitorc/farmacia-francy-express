@@ -1,31 +1,64 @@
+```tsx
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Menu, Search, ShoppingCart, X, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Menu,
+  Search,
+  ShoppingCart,
+  X,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 
 import { useCart } from "@/lib/cart";
-import { formatarPreco, precoFinal, type Categoria } from "@/lib/catalog";
-import { buscaQueryOptions, useCatalogo } from "@/lib/catalog-context";
+import {
+  formatarPreco,
+  precoFinal,
+  type Categoria,
+} from "@/lib/catalog";
+import {
+  buscaQueryOptions,
+  useCatalogo,
+} from "@/lib/catalog-context";
 import { ProductImage } from "@/components/ProductCard";
 
-const logoUrl = "https://raw.githubusercontent.com/ovitorc/farmacia-francy-express/main/src/assets/logo%20png.png";
+const logoUrl =
+  "https://raw.githubusercontent.com/ovitorc/farmacia-francy-express/main/src/assets/logo%20png.png";
 
 function Logo({ className = "h-11" }: { className?: string }) {
-  return <img src={logoUrl} alt="Farmácias Francy" className={`${className} w-auto object-contain`} />;
+  return (
+    <img
+      src={logoUrl}
+      alt="Farmácias Francy"
+      className={`${className} w-auto max-w-full object-contain`}
+    />
+  );
 }
 
-function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: () => void }) {
+function CategoryLinks({
+  categoria,
+  fechar,
+}: {
+  categoria: Categoria;
+  fechar?: () => void;
+}) {
   const [aberta, setAberta] = useState<string | null>(null);
 
   return (
     <div className="space-y-0.5">
       {categoria.subcategorias.map((subcategoria) => {
-        const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+        const temTerceiroNivel =
+          Boolean(subcategoria.subcategorias?.length);
+
         const estaAberta = aberta === subcategoria.slug;
 
         return (
-          <div key={subcategoria.slug} className="relative">
-            <div className="flex items-center rounded-lg transition-colors hover:bg-accent">
+          <div
+            key={subcategoria.slug}
+            className="relative min-w-0"
+          >
+            <div className="flex min-w-0 items-center rounded-lg transition-colors hover:bg-accent">
               <Link
                 to="/categoria/$slug"
                 params={{ slug: categoria.slug }}
@@ -36,7 +69,7 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
                   pagina: 1,
                 }}
                 onClick={fechar}
-                className="min-w-0 flex-1 px-3 py-1.5 text-sm"
+                className="min-w-0 flex-1 truncate px-3 py-1.5 text-sm"
               >
                 {subcategoria.nome}
               </Link>
@@ -45,35 +78,41 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
                 <button
                   type="button"
                   aria-label={`Abrir ${subcategoria.nome}`}
-                  onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
-                  className="p-1.5"
+                  onClick={() =>
+                    setAberta(
+                      estaAberta ? null : subcategoria.slug,
+                    )
+                  }
+                  className="shrink-0 p-1.5"
                 >
-                  <ChevronRight className={`size-4 transition-transform ${estaAberta ? "rotate-90" : ""}`} />
+                  <ChevronRight
+                    className={`size-4 transition-transform ${
+                      estaAberta ? "rotate-90" : ""
+                    }`}
+                  />
                 </button>
               )}
             </div>
 
             {temTerceiroNivel && estaAberta && (
-              <div className="ml-3 border-l border-border pl-2">
-                <div className="space-y-0">
-                  {subcategoria.subcategorias?.map((terceiro) => (
-                    <Link
-                      key={terceiro.slug}
-                      to="/categoria/$slug"
-                      params={{ slug: categoria.slug }}
-                      search={{
-                        sub: subcategoria.slug,
-                        sub2: terceiro.slug,
-                        ordem: "relevancia",
-                        pagina: 1,
-                      }}
-                      onClick={fechar}
-                      className="block rounded-md px-2.5 py-1 text-xs leading-tight text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    >
-                      {terceiro.nome}
-                    </Link>
-                  ))}
-                </div>
+              <div className="ml-3 min-w-0 border-l border-border pl-2">
+                {subcategoria.subcategorias?.map((terceiro) => (
+                  <Link
+                    key={terceiro.slug}
+                    to="/categoria/$slug"
+                    params={{ slug: categoria.slug }}
+                    search={{
+                      sub: subcategoria.slug,
+                      sub2: terceiro.slug,
+                      ordem: "relevancia",
+                      pagina: 1,
+                    }}
+                    onClick={fechar}
+                    className="block min-w-0 truncate rounded-md px-2.5 py-1 text-xs leading-tight text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    {terceiro.nome}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
@@ -83,16 +122,22 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
   );
 }
 
-function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
+function DesktopCategoryMenu({
+  categoria,
+}: {
+  categoria: Categoria;
+}) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
 
-  const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fechamentoTimer = useRef<
+    ReturnType<typeof setTimeout> | null
+  >(null);
 
   const cancelarFechamento = () => {
-    if (fecharTimer.current) {
-      clearTimeout(fecharTimer.current);
-      fecharTimer.current = null;
+    if (fechamentoTimer.current !== null) {
+      clearTimeout(fechamentoTimer.current);
+      fechamentoTimer.current = null;
     }
   };
 
@@ -101,32 +146,37 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
     setMenuAberto(true);
   };
 
-  const fecharMenuComAtraso = () => {
+  const fecharMenu = () => {
     cancelarFechamento();
 
-    fecharTimer.current = setTimeout(() => {
+    fechamentoTimer.current = setTimeout(() => {
       setMenuAberto(false);
       setAberta(null);
-    }, 100);
+    }, 120);
   };
 
   useEffect(() => {
     return () => {
-      if (fecharTimer.current) {
-        clearTimeout(fecharTimer.current);
+      if (fechamentoTimer.current !== null) {
+        clearTimeout(fechamentoTimer.current);
       }
     };
   }, []);
 
   return (
-    <div className="group relative shrink-0" onMouseEnter={abrirMenu} onMouseLeave={fecharMenuComAtraso}>
+    <div
+      className="relative min-w-0 shrink-0"
+      onMouseEnter={abrirMenu}
+      onMouseLeave={fecharMenu}
+    >
       <Link
         to="/categoria/$slug"
         params={{ slug: categoria.slug }}
         onFocus={abrirMenu}
         className={`
-          relative flex items-center gap-1.5 whitespace-nowrap
-          rounded-lg border border-transparent
+          group relative flex min-w-0 items-center gap-1.5
+          whitespace-nowrap rounded-lg
+          border border-transparent
           px-3 py-2
           text-[12px] font-semibold
           tracking-[0.01em]
@@ -135,87 +185,108 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
           hover:border-primary-foreground/15
           hover:bg-white/10
           hover:text-white
-          ${menuAberto ? "border-primary-foreground/15 bg-white/10 text-white" : ""}
+          ${
+            menuAberto
+              ? "border-primary-foreground/15 bg-white/10 text-white"
+              : ""
+          }
         `}
       >
         {categoria.icone && (
-          <span className="flex shrink-0 items-center text-[13px] opacity-80">{categoria.icone}</span>
+          <span className="shrink-0 text-[13px] opacity-80">
+            {categoria.icone}
+          </span>
         )}
 
-        <span>{categoria.nome}</span>
+        <span className="truncate">
+          {categoria.nome}
+        </span>
 
         <ChevronDown
           className={`
             size-3.5 shrink-0 opacity-60
             transition-transform duration-200
-            ${menuAberto ? "rotate-180 opacity-100" : ""}
+            ${
+              menuAberto
+                ? "rotate-180 opacity-100"
+                : ""
+            }
           `}
         />
 
         <span
           className={`
             absolute bottom-0 left-3 right-3 h-0.5
-            origin-center rounded-full bg-white
+            rounded-full bg-white
             transition-all duration-200
-            ${menuAberto ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0"}
+            ${
+              menuAberto
+                ? "scale-x-100 opacity-100"
+                : "scale-x-0 opacity-0"
+            }
           `}
         />
       </Link>
 
-      {/*
-       * O submenu agora é ABSOLUTE e fica imediatamente
-       * abaixo da categoria.
-       *
-       * Isso elimina o espaço que existia entre o botão
-       * e o submenu e impede que o menu desapareça quando
-       * o mouse desce até ele.
-       */}
       {menuAberto && (
         <div
           className="
             absolute left-0 top-full z-[9999]
-            w-[min(1040px,calc(100vw-24px))]
-            max-w-[calc(100vw-24px)]
-            pt-0
+            w-[min(760px,calc(100vw-32px))]
+            max-w-[calc(100vw-32px)]
+            overflow-visible
           "
           onMouseEnter={abrirMenu}
-          onMouseLeave={fecharMenuComAtraso}
+          onMouseLeave={fecharMenu}
         >
           <div
             className="
               mt-0
+              max-h-[min(65vh,560px)]
               overflow-hidden
-              rounded-b-2xl rounded-t-xl
-              border border-t-0 border-border/80
+              rounded-b-2xl
+              rounded-t-none
+              border-x
+              border-b
+              border-border/80
               bg-popover
               text-popover-foreground
-              shadow-[0_18px_50px_rgba(0,0,0,0.18)]
-              ring-1 ring-black/5
-              animate-in fade-in-0 slide-in-from-top-1
+              shadow-[0_18px_45px_rgba(0,0,0,0.16)]
+              ring-1
+              ring-black/5
+              animate-in
+              fade-in-0
+              slide-in-from-top-1
               duration-150
             "
           >
-            <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    {categoria.icone && <span className="text-base">{categoria.icone}</span>}
+            <div className="border-b border-border/70 bg-muted/30 px-4 py-2.5">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  {categoria.icone && (
+                    <span className="shrink-0 text-sm">
+                      {categoria.icone}
+                    </span>
+                  )}
 
-                    <span className="truncate text-sm font-bold text-foreground">{categoria.nome}</span>
-                  </div>
-
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">Navegue pelas subcategorias</p>
+                  <span className="truncate text-sm font-bold text-foreground">
+                    {categoria.nome}
+                  </span>
                 </div>
 
                 <Link
                   to="/categoria/$slug"
                   params={{ slug: categoria.slug }}
                   className="
-                    shrink-0 rounded-lg
-                    border border-border
+                    shrink-0
+                    rounded-lg
+                    border
+                    border-border
                     bg-background
-                    px-3 py-1.5
-                    text-[11px] font-semibold
+                    px-2.5
+                    py-1
+                    text-[10px]
+                    font-semibold
                     text-foreground
                     transition-colors
                     hover:border-primary/30
@@ -228,122 +299,152 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
               </div>
             </div>
 
-            <div
-              className="
-                max-h-[min(65vh,560px)]
-                overflow-y-auto
-                overscroll-contain
-                px-4 py-4
-              "
-            >
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-3 xl:grid-cols-4">
-                {categoria.subcategorias.map((subcategoria) => {
-                  const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+            <div className="max-h-[calc(min(65vh,560px)-52px)] overflow-y-auto overscroll-contain px-3 py-3">
+              <div
+                className="
+                  grid
+                  min-w-0
+                  grid-cols-2
+                  gap-1.5
+                  lg:grid-cols-3
+                "
+              >
+                {categoria.subcategorias.map(
+                  (subcategoria) => {
+                    const temTerceiroNivel =
+                      Boolean(
+                        subcategoria.subcategorias
+                          ?.length,
+                      );
 
-                  const estaAberta = aberta === subcategoria.slug;
+                    const estaAberta =
+                      aberta === subcategoria.slug;
 
-                  return (
-                    <div
-                      key={subcategoria.slug}
-                      className={`
-                        min-w-0
-                        rounded-xl
-                        border
-                        transition-all duration-150
-                        ${
-                          estaAberta
-                            ? "border-primary/20 bg-primary/[0.035]"
-                            : "border-transparent hover:border-border/70 hover:bg-muted/40"
-                        }
-                      `}
-                    >
-                      <div className="flex min-w-0 items-center">
-                        <Link
-                          to="/categoria/$slug"
-                          params={{ slug: categoria.slug }}
-                          search={{
-                            sub: subcategoria.slug,
-                            sub2: "",
-                            ordem: "relevancia",
-                            pagina: 1,
-                          }}
-                          className="
-                            min-w-0 flex-1
-                            truncate
-                            px-3 py-2
-                            text-[13px]
-                            font-semibold
-                            leading-tight
-                            text-foreground
-                            transition-colors
-                            hover:text-primary
-                          "
-                        >
-                          {subcategoria.nome}
-                        </Link>
-
-                        {temTerceiroNivel && (
-                          <button
-                            type="button"
-                            onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
+                    return (
+                      <div
+                        key={subcategoria.slug}
+                        className={`
+                          min-w-0
+                          overflow-hidden
+                          rounded-lg
+                          border
+                          transition-colors
+                          ${
+                            estaAberta
+                              ? "border-primary/20 bg-primary/[0.035]"
+                              : "border-transparent hover:border-border/60 hover:bg-muted/40"
+                          }
+                        `}
+                      >
+                        <div className="flex min-w-0 items-center">
+                          <Link
+                            to="/categoria/$slug"
+                            params={{
+                              slug: categoria.slug,
+                            }}
+                            search={{
+                              sub: subcategoria.slug,
+                              sub2: "",
+                              ordem: "relevancia",
+                              pagina: 1,
+                            }}
                             className="
-                              mr-1.5
-                              shrink-0
-                              rounded-md
-                              p-1.5
-                              text-muted-foreground
+                              min-w-0
+                              flex-1
+                              truncate
+                              px-2.5
+                              py-1.5
+                              text-[12px]
+                              font-semibold
+                              leading-tight
+                              text-foreground
                               transition-colors
-                              hover:bg-background
-                              hover:text-foreground
+                              hover:text-primary
                             "
-                            aria-label={`Mostrar ${subcategoria.nome}`}
                           >
-                            <ChevronRight
-                              className={`
-                                size-3.5
-                                transition-transform duration-150
-                                ${estaAberta ? "rotate-90" : ""}
-                              `}
-                            />
-                          </button>
-                        )}
-                      </div>
+                            {subcategoria.nome}
+                          </Link>
 
-                      {temTerceiroNivel && estaAberta && (
-                        <div className="mx-3 mb-2 border-l border-primary/20 pl-2">
-                          <div className="space-y-0">
-                            {subcategoria.subcategorias?.map((terceiro) => (
-                              <Link
-                                key={terceiro.slug}
-                                to="/categoria/$slug"
-                                params={{ slug: categoria.slug }}
-                                search={{
-                                  sub: subcategoria.slug,
-                                  sub2: terceiro.slug,
-                                  ordem: "relevancia",
-                                  pagina: 1,
-                                }}
-                                className="
-                                  block
-                                  rounded-md
-                                  px-2 py-1
-                                  text-[11px]
-                                  leading-tight
-                                  text-muted-foreground
-                                  transition-colors
-                                  hover:bg-background
-                                  hover:text-primary
-                                "
-                              >
-                                {terceiro.nome}
-                              </Link>
-                            ))}
-                          </div>
+                          {temTerceiroNivel && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAberta(
+                                  estaAberta
+                                    ? null
+                                    : subcategoria.slug,
+                                )
+                              }
+                              className="
+                                mr-1
+                                shrink-0
+                                rounded-md
+                                p-1
+                                text-muted-foreground
+                                transition-colors
+                                hover:bg-background
+                                hover:text-foreground
+                              "
+                              aria-label={`Mostrar ${subcategoria.nome}`}
+                            >
+                              <ChevronRight
+                                className={`
+                                  size-3
+                                  transition-transform
+                                  duration-150
+                                  ${
+                                    estaAberta
+                                      ? "rotate-90"
+                                      : ""
+                                  }
+                                `}
+                              />
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+
+                        {temTerceiroNivel &&
+                          estaAberta && (
+                            <div className="mx-2 mb-1.5 border-l border-primary/20 pl-1.5">
+                              {subcategoria.subcategorias?.map(
+                                (terceiro) => (
+                                  <Link
+                                    key={terceiro.slug}
+                                    to="/categoria/$slug"
+                                    params={{
+                                      slug: categoria.slug,
+                                    }}
+                                    search={{
+                                      sub: subcategoria.slug,
+                                      sub2: terceiro.slug,
+                                      ordem: "relevancia",
+                                      pagina: 1,
+                                    }}
+                                    className="
+                                      block
+                                      min-w-0
+                                      truncate
+                                      rounded-md
+                                      px-1.5
+                                      py-0.5
+                                      text-[10px]
+                                      leading-tight
+                                      text-muted-foreground
+                                      transition-colors
+                                      hover:bg-background
+                                      hover:text-primary
+                                    "
+                                  >
+                                    {terceiro.nome}
+                                  </Link>
+                                ),
+                              )}
+                            </div>
+                          )}
+                      </div>
+                    );
+                  },
+                )}
               </div>
             </div>
           </div>
@@ -353,7 +454,13 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
   );
 }
 
-function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
+function SideMenu({
+  aberto,
+  fechar,
+}: {
+  aberto: boolean;
+  fechar: () => void;
+}) {
   const { categorias } = useCatalogo();
 
   return (
@@ -362,19 +469,27 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
         aria-hidden={!aberto}
         onClick={fechar}
         className={`fixed inset-0 z-[100] bg-foreground/40 transition-opacity ${
-          aberto ? "opacity-100" : "pointer-events-none opacity-0"
+          aberto
+            ? "opacity-100"
+            : "pointer-events-none opacity-0"
         }`}
       />
 
       <aside
         className={`fixed left-0 top-0 z-[110] flex h-dvh w-[86vw] max-w-sm flex-col bg-sidebar shadow-card transition-transform ${
-          aberto ? "translate-x-0" : "-translate-x-full"
+          aberto
+            ? "translate-x-0"
+            : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between bg-primary px-4 py-4">
           <Logo className="h-9" />
 
-          <button onClick={fechar} aria-label="Fechar menu" className="p-2 text-primary-foreground">
+          <button
+            onClick={fechar}
+            aria-label="Fechar menu"
+            className="p-2 text-primary-foreground"
+          >
             <X className="size-5" />
           </button>
         </div>
@@ -397,7 +512,10 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
           </Link>
 
           {categorias.map((categoria) => (
-            <div key={categoria.slug} className="border-b border-sidebar-border/60 py-1">
+            <div
+              key={categoria.slug}
+              className="border-b border-sidebar-border/60 py-1"
+            >
               <Link
                 to="/categoria/$slug"
                 params={{ slug: categoria.slug }}
@@ -408,7 +526,10 @@ function SideMenu({ aberto, fechar }: { aberto: boolean; fechar: () => void }) {
                 {categoria.nome}
               </Link>
 
-              <CategoryLinks categoria={categoria} fechar={fechar} />
+              <CategoryLinks
+                categoria={categoria}
+                fechar={fechar}
+              />
             </div>
           ))}
         </nav>
@@ -423,7 +544,6 @@ export function SiteHeader() {
   const [termoBusca, setTermoBusca] = useState("");
   const [focado, setFocado] = useState(false);
   const [pop, setPop] = useState(false);
-
   const [headerVisivel, setHeaderVisivel] = useState(true);
 
   const { totalItens } = useCart();
@@ -454,8 +574,11 @@ export function SiteHeader() {
 
       frameRef.current = requestAnimationFrame(() => {
         const posicaoAtual = window.scrollY;
-        const ultimaPosicao = ultimaPosicaoRef.current;
-        const diferenca = posicaoAtual - ultimaPosicao;
+        const ultimaPosicao =
+          ultimaPosicaoRef.current;
+
+        const diferenca =
+          posicaoAtual - ultimaPosicao;
 
         if (posicaoAtual <= 10) {
           setHeaderVisivel(true);
@@ -470,12 +593,19 @@ export function SiteHeader() {
       });
     };
 
-    window.addEventListener("scroll", controlarHeader, {
-      passive: true,
-    });
+    window.addEventListener(
+      "scroll",
+      controlarHeader,
+      {
+        passive: true,
+      },
+    );
 
     return () => {
-      window.removeEventListener("scroll", controlarHeader);
+      window.removeEventListener(
+        "scroll",
+        controlarHeader,
+      );
 
       if (frameRef.current !== null) {
         cancelAnimationFrame(frameRef.current);
@@ -500,12 +630,16 @@ export function SiteHeader() {
 
     setPop(true);
 
-    const t = setTimeout(() => setPop(false), 400);
+    const t = setTimeout(() => {
+      setPop(false);
+    }, 400);
 
     return () => clearTimeout(t);
   }, [totalItens]);
 
-  const { data: sugestoes = [] } = useQuery(buscaQueryOptions(termoBusca, 6));
+  const { data: sugestoes = [] } = useQuery(
+    buscaQueryOptions(termoBusca, 6),
+  );
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -523,28 +657,82 @@ export function SiteHeader() {
   return (
     <>
       <header
-        className={`sticky top-0 z-[1000] w-full min-w-0 overflow-visible bg-primary text-primary-foreground shadow-[0_2px_18px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-out ${
-          headerVisivel ? "translate-y-0" : "-translate-y-full"
-        }`}
+        className={`
+          sticky
+          top-0
+          z-[1000]
+          w-full
+          max-w-full
+          overflow-visible
+          bg-primary
+          text-primary-foreground
+          shadow-[0_2px_18px_rgba(0,0,0,0.12)]
+          transition-transform
+          duration-300
+          ease-out
+          ${
+            headerVisivel
+              ? "translate-y-0"
+              : "-translate-y-full"
+          }
+        `}
       >
-        <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-2 px-3 py-3 sm:px-6 md:flex-row md:items-center md:gap-4">
+        <div
+          className="
+            mx-auto
+            flex
+            w-full
+            max-w-7xl
+            min-w-0
+            flex-col
+            gap-2
+            px-3
+            py-3
+            sm:px-6
+            md:flex-row
+            md:items-center
+            md:gap-4
+          "
+        >
           <div className="flex min-w-0 shrink-0 items-center justify-between gap-3 md:contents">
-            <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu" className="shrink-0 p-2 md:order-1">
+            <button
+              onClick={() => setMenuAberto(true)}
+              aria-label="Abrir menu"
+              className="shrink-0 p-2 md:order-1"
+            >
               <Menu className="size-5" />
             </button>
 
-            <Link to="/" className="shrink-0 md:order-2">
+            <Link
+              to="/"
+              className="min-w-0 shrink-0 md:order-2"
+            >
               <Logo className="h-9 sm:h-11" />
             </Link>
 
-            <Link to="/carrinho" className="relative shrink-0 p-2 md:order-4" aria-label="Carrinho">
+            <Link
+              to="/carrinho"
+              className="relative shrink-0 p-2 md:order-4"
+              aria-label="Carrinho"
+            >
               <ShoppingCart className="size-5" />
 
               {totalItens > 0 && (
                 <span
-                  className={`absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold ${
-                    pop ? "cart-pop" : ""
-                  }`}
+                  className={`
+                    absolute
+                    -right-0.5
+                    -top-0.5
+                    flex
+                    size-5
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-brand-red
+                    text-[11px]
+                    font-bold
+                    ${pop ? "cart-pop" : ""}
+                  `}
                 >
                   {totalItens}
                 </span>
@@ -559,11 +747,35 @@ export function SiteHeader() {
 
                 <input
                   value={termo}
-                  onChange={(e) => setTermo(e.target.value)}
+                  onChange={(e) =>
+                    setTermo(e.target.value)
+                  }
                   onFocus={() => setFocado(true)}
-                  onBlur={() => setTimeout(() => setFocado(false), 150)}
+                  onBlur={() =>
+                    setTimeout(
+                      () => setFocado(false),
+                      150,
+                    )
+                  }
                   placeholder="O que você está procurando?"
-                  className="h-11 w-full min-w-0 rounded-full border border-white/10 bg-background pl-10 pr-4 text-sm text-foreground shadow-sm outline-none transition-shadow focus:ring-2 focus:ring-white/25"
+                  className="
+                    h-11
+                    w-full
+                    min-w-0
+                    rounded-full
+                    border
+                    border-white/10
+                    bg-background
+                    pl-10
+                    pr-4
+                    text-sm
+                    text-foreground
+                    shadow-sm
+                    outline-none
+                    transition-shadow
+                    focus:ring-2
+                    focus:ring-white/25
+                  "
                 />
               </form>
 
@@ -578,13 +790,19 @@ export function SiteHeader() {
                           className="flex min-w-0 items-center gap-3 px-3 py-2"
                         >
                           <div className="size-10 shrink-0">
-                            <ProductImage produto={produto} />
+                            <ProductImage
+                              produto={produto}
+                            />
                           </div>
 
-                          <span className="line-clamp-1 min-w-0 flex-1 text-sm">{produto.nome}</span>
+                          <span className="line-clamp-1 min-w-0 flex-1 text-sm">
+                            {produto.nome}
+                          </span>
 
                           <span className="shrink-0 text-sm font-semibold text-primary">
-                            {formatarPreco(precoFinal(produto))}
+                            {formatarPreco(
+                              precoFinal(produto),
+                            )}
                           </span>
                         </Link>
                       </li>
@@ -597,14 +815,37 @@ export function SiteHeader() {
             <div className="hidden shrink-0 items-center gap-2 lg:flex">
               <Link
                 to="/trabalhe-conosco"
-                className="whitespace-nowrap rounded-full border border-primary-foreground/20 bg-primary-foreground/[0.06] px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-primary-foreground/10"
+                className="
+                  whitespace-nowrap
+                  rounded-full
+                  border
+                  border-primary-foreground/20
+                  bg-primary-foreground/[0.06]
+                  px-3.5
+                  py-2
+                  text-xs
+                  font-semibold
+                  transition-colors
+                  hover:bg-primary-foreground/10
+                "
               >
                 Trabalhe Conosco
               </Link>
 
               <Link
                 to="/farmacia-popular"
-                className="whitespace-nowrap rounded-full bg-brand-red px-3.5 py-2 text-xs font-semibold shadow-sm transition-transform hover:-translate-y-0.5"
+                className="
+                  whitespace-nowrap
+                  rounded-full
+                  bg-brand-red
+                  px-3.5
+                  py-2
+                  text-xs
+                  font-semibold
+                  shadow-sm
+                  transition-transform
+                  hover:-translate-y-0.5
+                "
               >
                 Farmácia Popular
               </Link>
@@ -612,25 +853,54 @@ export function SiteHeader() {
           </div>
         </div>
 
-        <div className="hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md md:block">
+        <div
+          className="
+            hidden
+            w-full
+            max-w-full
+            overflow-visible
+            border-t
+            border-primary-foreground/10
+            bg-primary/95
+            backdrop-blur-md
+            md:block
+          "
+        >
           <nav
             className="
-              mx-auto flex w-full max-w-7xl min-w-0
-              flex-wrap items-center justify-center
-              gap-x-1 gap-y-1
+              mx-auto
+              flex
+              w-full
+              max-w-7xl
+              min-w-0
+              flex-wrap
+              items-center
+              justify-center
+              gap-x-0.5
+              gap-y-0.5
               overflow-visible
-              px-4 py-1.5
-              text-xs font-medium
+              px-3
+              py-1.5
+              text-xs
+              font-medium
+              sm:px-4
             "
           >
             {categorias.map((categoria) => (
-              <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
+              <DesktopCategoryMenu
+                key={categoria.slug}
+                categoria={categoria}
+              />
             ))}
           </nav>
         </div>
       </header>
 
-      <SideMenu aberto={menuAberto} fechar={() => setMenuAberto(false)} />
+      <SideMenu
+        aberto={menuAberto}
+        fechar={() => setMenuAberto(false)}
+      />
     </>
   );
 }
+```
