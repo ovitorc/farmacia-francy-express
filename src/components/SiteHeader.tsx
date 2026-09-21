@@ -18,14 +18,14 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
   const [aberta, setAberta] = useState<string | null>(null);
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {categoria.subcategorias.map((subcategoria) => {
         const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
         const estaAberta = aberta === subcategoria.slug;
 
         return (
           <div key={subcategoria.slug} className="relative">
-            <div className="flex items-center rounded-lg hover:bg-accent">
+            <div className="flex items-center rounded-lg transition-colors hover:bg-accent">
               <Link
                 to="/categoria/$slug"
                 params={{ slug: categoria.slug }}
@@ -36,7 +36,7 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
                   pagina: 1,
                 }}
                 onClick={fechar}
-                className="min-w-0 flex-1 px-3 py-2 text-sm"
+                className="min-w-0 flex-1 px-3 py-1.5 text-sm"
               >
                 {subcategoria.nome}
               </Link>
@@ -46,7 +46,7 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
                   type="button"
                   aria-label={`Abrir ${subcategoria.nome}`}
                   onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
-                  className="p-2"
+                  className="p-1.5"
                 >
                   <ChevronRight className={`size-4 transition-transform ${estaAberta ? "rotate-90" : ""}`} />
                 </button>
@@ -55,23 +55,25 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
 
             {temTerceiroNivel && estaAberta && (
               <div className="ml-3 border-l border-border pl-2">
-                {subcategoria.subcategorias?.map((terceiro) => (
-                  <Link
-                    key={terceiro.slug}
-                    to="/categoria/$slug"
-                    params={{ slug: categoria.slug }}
-                    search={{
-                      sub: subcategoria.slug,
-                      sub2: terceiro.slug,
-                      ordem: "relevancia",
-                      pagina: 1,
-                    }}
-                    onClick={fechar}
-                    className="block rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                  >
-                    {terceiro.nome}
-                  </Link>
-                ))}
+                <div className="space-y-0">
+                  {subcategoria.subcategorias?.map((terceiro) => (
+                    <Link
+                      key={terceiro.slug}
+                      to="/categoria/$slug"
+                      params={{ slug: categoria.slug }}
+                      search={{
+                        sub: subcategoria.slug,
+                        sub2: terceiro.slug,
+                        ordem: "relevancia",
+                        pagina: 1,
+                      }}
+                      onClick={fechar}
+                      className="block rounded-md px-2.5 py-1 text-xs leading-tight text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {terceiro.nome}
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -84,137 +86,266 @@ function CategoryLinks({ categoria, fechar }: { categoria: Categoria; fechar?: (
 function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
-  const [menuPosicao, setMenuPosicao] = useState({
-    left: 12,
-    top: 0,
-  });
 
-  const gatilhoRef = useRef<HTMLDivElement>(null);
+  const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const atualizarPosicao = () => {
-    const gatilho = gatilhoRef.current;
-
-    if (!gatilho) return;
-
-    const largura = Math.min(980, window.innerWidth - 24);
-    const rect = gatilho.getBoundingClientRect();
-
-    const left = Math.max(12, Math.min(rect.left, window.innerWidth - largura - 12));
-
-    setMenuPosicao({
-      left,
-      top: rect.bottom + 4,
-    });
+  const cancelarFechamento = () => {
+    if (fecharTimer.current) {
+      clearTimeout(fecharTimer.current);
+      fecharTimer.current = null;
+    }
   };
 
   const abrirMenu = () => {
-    atualizarPosicao();
+    cancelarFechamento();
     setMenuAberto(true);
   };
 
+  const fecharMenuComAtraso = () => {
+    cancelarFechamento();
+
+    fecharTimer.current = setTimeout(() => {
+      setMenuAberto(false);
+      setAberta(null);
+    }, 100);
+  };
+
   useEffect(() => {
-    if (!menuAberto) return;
-
-    const atualizar = () => atualizarPosicao();
-
-    window.addEventListener("resize", atualizar);
-    window.addEventListener("scroll", atualizar, { passive: true });
-
     return () => {
-      window.removeEventListener("resize", atualizar);
-      window.removeEventListener("scroll", atualizar);
+      if (fecharTimer.current) {
+        clearTimeout(fecharTimer.current);
+      }
     };
-  }, [menuAberto]);
+  }, []);
 
   return (
-    <div
-      ref={gatilhoRef}
-      className="relative shrink-0"
-      onMouseEnter={abrirMenu}
-      onMouseLeave={() => setMenuAberto(false)}
-    >
+    <div className="group relative shrink-0" onMouseEnter={abrirMenu} onMouseLeave={fecharMenuComAtraso}>
       <Link
         to="/categoria/$slug"
         params={{ slug: categoria.slug }}
-        className="group flex items-center gap-1.5 whitespace-nowrap rounded-full border border-primary-foreground/10 bg-primary-foreground/[0.06] px-3 py-2 text-xs font-semibold shadow-sm transition-all hover:border-primary-foreground/25 hover:bg-primary-foreground/12"
         onFocus={abrirMenu}
+        className={`
+          relative flex items-center gap-1.5 whitespace-nowrap
+          rounded-lg border border-transparent
+          px-3 py-2
+          text-[12px] font-semibold
+          tracking-[0.01em]
+          text-primary-foreground/90
+          transition-all duration-150
+          hover:border-primary-foreground/15
+          hover:bg-white/10
+          hover:text-white
+          ${menuAberto ? "border-primary-foreground/15 bg-white/10 text-white" : ""}
+        `}
       >
+        {categoria.icone && (
+          <span className="flex shrink-0 items-center text-[13px] opacity-80">{categoria.icone}</span>
+        )}
+
         <span>{categoria.nome}</span>
 
-        <ChevronDown className="size-3 shrink-0 opacity-70 transition-transform group-hover:translate-y-0.5" />
+        <ChevronDown
+          className={`
+            size-3.5 shrink-0 opacity-60
+            transition-transform duration-200
+            ${menuAberto ? "rotate-180 opacity-100" : ""}
+          `}
+        />
+
+        <span
+          className={`
+            absolute bottom-0 left-3 right-3 h-0.5
+            origin-center rounded-full bg-white
+            transition-all duration-200
+            ${menuAberto ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0"}
+          `}
+        />
       </Link>
 
+      {/*
+       * O submenu agora é ABSOLUTE e fica imediatamente
+       * abaixo da categoria.
+       *
+       * Isso elimina o espaço que existia entre o botão
+       * e o submenu e impede que o menu desapareça quando
+       * o mouse desce até ele.
+       */}
       {menuAberto && (
         <div
-          className="fixed z-[9999] w-[min(1040px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-2xl border border-border/80 bg-popover/98 p-4 text-popover-foreground shadow-[0_20px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl"
-          style={{
-            left: menuPosicao.left,
-            top: menuPosicao.top,
-          }}
-          onMouseEnter={() => setMenuAberto(true)}
-          onMouseLeave={() => setMenuAberto(false)}
+          className="
+            absolute left-0 top-full z-[9999]
+            w-[min(1040px,calc(100vw-24px))]
+            max-w-[calc(100vw-24px)]
+            pt-0
+          "
+          onMouseEnter={abrirMenu}
+          onMouseLeave={fecharMenuComAtraso}
         >
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {categoria.subcategorias.map((subcategoria) => {
-              const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+          <div
+            className="
+              mt-0
+              overflow-hidden
+              rounded-b-2xl rounded-t-xl
+              border border-t-0 border-border/80
+              bg-popover
+              text-popover-foreground
+              shadow-[0_18px_50px_rgba(0,0,0,0.18)]
+              ring-1 ring-black/5
+              animate-in fade-in-0 slide-in-from-top-1
+              duration-150
+            "
+          >
+            <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {categoria.icone && <span className="text-base">{categoria.icone}</span>}
 
-              const estaAberta = aberta === subcategoria.slug;
-
-              return (
-                <div
-                  key={subcategoria.slug}
-                  className="min-w-0 rounded-xl border border-transparent p-1 transition-colors hover:border-border hover:bg-accent/40"
-                >
-                  <div className="flex items-center">
-                    <Link
-                      to="/categoria/$slug"
-                      params={{ slug: categoria.slug }}
-                      search={{
-                        sub: subcategoria.slug,
-                        sub2: "",
-                        ordem: "relevancia",
-                        pagina: 1,
-                      }}
-                      className="min-w-0 flex-1 px-2 py-1.5 text-sm font-semibold hover:text-primary"
-                    >
-                      {subcategoria.nome}
-                    </Link>
-
-                    {temTerceiroNivel && (
-                      <button
-                        type="button"
-                        onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
-                        className="shrink-0 p-1.5"
-                        aria-label={`Mostrar ${subcategoria.nome}`}
-                      >
-                        <ChevronRight className={`size-3.5 transition-transform ${estaAberta ? "rotate-90" : ""}`} />
-                      </button>
-                    )}
+                    <span className="truncate text-sm font-bold text-foreground">{categoria.nome}</span>
                   </div>
 
-                  {temTerceiroNivel && estaAberta && (
-                    <div className="mt-1 border-l border-border pl-2">
-                      {subcategoria.subcategorias?.map((terceiro) => (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Navegue pelas subcategorias</p>
+                </div>
+
+                <Link
+                  to="/categoria/$slug"
+                  params={{ slug: categoria.slug }}
+                  className="
+                    shrink-0 rounded-lg
+                    border border-border
+                    bg-background
+                    px-3 py-1.5
+                    text-[11px] font-semibold
+                    text-foreground
+                    transition-colors
+                    hover:border-primary/30
+                    hover:bg-primary/5
+                    hover:text-primary
+                  "
+                >
+                  Ver tudo
+                </Link>
+              </div>
+            </div>
+
+            <div
+              className="
+                max-h-[min(65vh,560px)]
+                overflow-y-auto
+                overscroll-contain
+                px-4 py-4
+              "
+            >
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-3 xl:grid-cols-4">
+                {categoria.subcategorias.map((subcategoria) => {
+                  const temTerceiroNivel = Boolean(subcategoria.subcategorias?.length);
+
+                  const estaAberta = aberta === subcategoria.slug;
+
+                  return (
+                    <div
+                      key={subcategoria.slug}
+                      className={`
+                        min-w-0
+                        rounded-xl
+                        border
+                        transition-all duration-150
+                        ${
+                          estaAberta
+                            ? "border-primary/20 bg-primary/[0.035]"
+                            : "border-transparent hover:border-border/70 hover:bg-muted/40"
+                        }
+                      `}
+                    >
+                      <div className="flex min-w-0 items-center">
                         <Link
-                          key={terceiro.slug}
                           to="/categoria/$slug"
                           params={{ slug: categoria.slug }}
                           search={{
                             sub: subcategoria.slug,
-                            sub2: terceiro.slug,
+                            sub2: "",
                             ordem: "relevancia",
                             pagina: 1,
                           }}
-                          className="block break-words rounded-md px-2 py-1 text-xs leading-tight text-muted-foreground hover:bg-accent hover:text-foreground"
+                          className="
+                            min-w-0 flex-1
+                            truncate
+                            px-3 py-2
+                            text-[13px]
+                            font-semibold
+                            leading-tight
+                            text-foreground
+                            transition-colors
+                            hover:text-primary
+                          "
                         >
-                          {terceiro.nome}
+                          {subcategoria.nome}
                         </Link>
-                      ))}
+
+                        {temTerceiroNivel && (
+                          <button
+                            type="button"
+                            onClick={() => setAberta(estaAberta ? null : subcategoria.slug)}
+                            className="
+                              mr-1.5
+                              shrink-0
+                              rounded-md
+                              p-1.5
+                              text-muted-foreground
+                              transition-colors
+                              hover:bg-background
+                              hover:text-foreground
+                            "
+                            aria-label={`Mostrar ${subcategoria.nome}`}
+                          >
+                            <ChevronRight
+                              className={`
+                                size-3.5
+                                transition-transform duration-150
+                                ${estaAberta ? "rotate-90" : ""}
+                              `}
+                            />
+                          </button>
+                        )}
+                      </div>
+
+                      {temTerceiroNivel && estaAberta && (
+                        <div className="mx-3 mb-2 border-l border-primary/20 pl-2">
+                          <div className="space-y-0">
+                            {subcategoria.subcategorias?.map((terceiro) => (
+                              <Link
+                                key={terceiro.slug}
+                                to="/categoria/$slug"
+                                params={{ slug: categoria.slug }}
+                                search={{
+                                  sub: subcategoria.slug,
+                                  sub2: terceiro.slug,
+                                  ordem: "relevancia",
+                                  pagina: 1,
+                                }}
+                                className="
+                                  block
+                                  rounded-md
+                                  px-2 py-1
+                                  text-[11px]
+                                  leading-tight
+                                  text-muted-foreground
+                                  transition-colors
+                                  hover:bg-background
+                                  hover:text-primary
+                                "
+                              >
+                                {terceiro.nome}
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -293,7 +424,6 @@ export function SiteHeader() {
   const [focado, setFocado] = useState(false);
   const [pop, setPop] = useState(false);
 
-  // Controle único do header inteiro
   const [headerVisivel, setHeaderVisivel] = useState(true);
 
   const { totalItens } = useCart();
@@ -314,16 +444,6 @@ export function SiteHeader() {
     setFocado(false);
   }, [pathname]);
 
-  /*
-   * CONTROLE DO HEADER
-   *
-   * Rolando para baixo -> desaparece
-   * Rolando para cima -> reaparece
-   * No topo -> permanece visível
-   *
-   * requestAnimationFrame evita atualizar o React dezenas
-   * de vezes por segundo durante a rolagem.
-   */
   useEffect(() => {
     ultimaPosicaoRef.current = window.scrollY;
 
@@ -340,10 +460,8 @@ export function SiteHeader() {
         if (posicaoAtual <= 10) {
           setHeaderVisivel(true);
         } else if (diferenca > 3) {
-          // Rolando para baixo
           setHeaderVisivel(false);
         } else if (diferenca < -3) {
-          // Rolando para cima
           setHeaderVisivel(true);
         }
 
@@ -494,15 +612,17 @@ export function SiteHeader() {
           </div>
         </div>
 
-        {/*
-         * A barra de categorias não possui mais uma lógica
-         * própria de esconder/mostrar.
-         *
-         * Ela faz parte do header e acompanha o movimento
-         * do header inteiro.
-         */}
         <div className="hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md md:block">
-          <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center justify-center gap-1 overflow-visible px-4 py-2 text-xs font-medium">
+          <nav
+            className="
+              mx-auto flex w-full max-w-7xl min-w-0
+              flex-wrap items-center justify-center
+              gap-x-1 gap-y-1
+              overflow-visible
+              px-4 py-1.5
+              text-xs font-medium
+            "
+          >
             {categorias.map((categoria) => (
               <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
             ))}
