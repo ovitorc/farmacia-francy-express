@@ -87,10 +87,14 @@ export const listarEstruturaClasses = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context);
     const [categoriasResult, subcategoriasResult, semCategoria, semSubcategoria, completa] = await Promise.all([
-      context.supabase.from("categorias").select("id,nome,slug,icone,ordem").order("ordem").order("nome"),
+      context.supabase
+        .from("categorias")
+        .select("id,nome,slug,icone,ordem,produtos!produtos_categoria_id_fkey(count)")
+        .order("ordem")
+        .order("nome"),
       context.supabase
         .from("subcategorias")
-        .select("id,categoria_id,nome,slug,ordem")
+        .select("id,categoria_id,nome,slug,ordem,produtos!produtos_subcategoria_id_fkey(count)")
         .order("ordem")
         .order("nome"),
       context.supabase.from("produtos").select("id", { count: "exact", head: true }).is("categoria_id", null),
@@ -108,24 +112,14 @@ export const listarEstruturaClasses = createServerFn({ method: "GET" })
     if (categoriasResult.error) throw new Error(categoriasResult.error.message);
     if (subcategoriasResult.error) throw new Error(subcategoriasResult.error.message);
 
-    const categorias = await Promise.all(
-      (categoriasResult.data ?? []).map(async (categoria: any) => {
-        const { count } = await context.supabase
-          .from("produtos")
-          .select("id", { count: "exact", head: true })
-          .eq("categoria_id", categoria.id);
-        return { ...categoria, quantidade: count ?? 0 };
-      }),
-    );
-    const subcategorias = await Promise.all(
-      (subcategoriasResult.data ?? []).map(async (subcategoria: any) => {
-        const { count } = await context.supabase
-          .from("produtos")
-          .select("id", { count: "exact", head: true })
-          .eq("subcategoria_id", subcategoria.id);
-        return { ...subcategoria, quantidade: count ?? 0 };
-      }),
-    );
+    const categorias = (categoriasResult.data ?? []).map(({ produtos, ...categoria }: any) => ({
+      ...categoria,
+      quantidade: produtos?.[0]?.count ?? 0,
+    }));
+    const subcategorias = (subcategoriasResult.data ?? []).map(({ produtos, ...subcategoria }: any) => ({
+      ...subcategoria,
+      quantidade: produtos?.[0]?.count ?? 0,
+    }));
     return {
       categorias,
       subcategorias,

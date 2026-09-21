@@ -220,8 +220,8 @@ export const listarProdutos = createServerFn({
       .select(COLUNAS, { count: "exact" })
       .or("disponivel.eq.true,disponivel.is.null")
       .eq("categoria_slug", data.categoria);
-    if (data.sub) query = query.eq("subcategoria_slug", data.sub);
-    if (data.sub2) query = query.eq("subcategoria_slug", data.sub2);
+    const subcategoria = data.sub2 || data.sub;
+    if (subcategoria) query = query.eq("subcategoria_slug", subcategoria);
     if (data.ordem === "ofertas") query = query.eq("oferta", true);
     if (data.ordem === "menor-preco") query = query.order("preco", { ascending: true });
     else if (data.ordem === "maior-preco") query = query.order("preco", { ascending: false });

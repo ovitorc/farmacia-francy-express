@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useDeferredValue, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Plus, Trash2 } from "lucide-react";
@@ -103,6 +103,7 @@ function ClassesPage() {
     queryKey: ["classes", "produtos", filtros],
     queryFn: () => fnListar({ data: filtros }),
     staleTime: 10_000,
+    placeholderData: keepPreviousData,
   });
 
   const categorias = (estrutura.data?.categorias ?? []) as Categoria[];
@@ -289,8 +290,11 @@ function ClassesPage() {
         </div>
       </section>
 
-      <section className="mt-6 overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+      <section className="relative mt-6 overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+        {produtos.isFetching && !produtos.isLoading ? <div className="absolute inset-x-0 top-0 z-10 h-1 animate-pulse bg-primary" aria-label="Atualizando produtos" /> : null}
         {produtos.isLoading ? <p className="p-8 text-center text-sm text-muted-foreground">Carregando produtos…</p> : produtos.isError ? <p role="alert" className="p-8 text-center text-sm text-destructive">Não foi possível carregar os produtos.</p> : (
+          <>
+          <div className="hidden overflow-x-auto md:block">
           <Table className="min-w-[1180px]">
             <TableHeader><TableRow><TableHead className="w-10"><Checkbox aria-label="Selecionar página" checked={itens.length > 0 && itens.every((item) => Boolean(selecionados[item.id]))} onCheckedChange={(valor) => alternarPagina(Boolean(valor))} /></TableHead><TableHead>Imagem</TableHead><TableHead>Códigos</TableHead><TableHead className="min-w-72">Descrição</TableHead><TableHead>Marca</TableHead><TableHead>Categoria</TableHead><TableHead>Subcategoria</TableHead><TableHead>Preço</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
             <TableBody>{itens.map((item) => <TableRow key={item.id} data-state={selecionados[item.id] ? "selected" : undefined}>
@@ -301,6 +305,26 @@ function ClassesPage() {
               <TableCell>{item.fabricante || "—"}</TableCell><TableCell>{item.categoria_id ? nomesCategorias.get(item.categoria_id) : <Badge variant="destructive">Sem categoria</Badge>}</TableCell><TableCell>{item.subcategoria_id ? nomesSubcategorias.get(item.subcategoria_id) : <Badge variant="outline">Sem subcategoria</Badge>}</TableCell><TableCell>{formatarPreco(Number(item.preco))}</TableCell><TableCell><Badge variant={item.disponivel ? "default" : "secondary"}>{item.disponivel ? "Disponível" : "Indisponível"}</Badge></TableCell><TableCell><Button size="sm" variant="outline" onClick={() => abrirEdicao(item)}><Edit3 className="size-4" /> Editar</Button></TableCell>
             </TableRow>)}</TableBody>
           </Table>
+          </div>
+          <div className="divide-y md:hidden">
+            {itens.map((item) => (
+              <article key={item.id} className="p-4" data-state={selecionados[item.id] ? "selected" : undefined}>
+                <div className="flex items-start gap-3">
+                  <Checkbox className="mt-1" aria-label={`Selecionar ${item.nome}`} checked={Boolean(selecionados[item.id])} onCheckedChange={(valor) => { setTodosResultados(false); setSelecionados((atual) => { const proximo = { ...atual }; if (valor) proximo[item.id] = item.nome; else delete proximo[item.id]; return proximo; }); }} />
+                  {item.imagem ? <img src={item.imagem} alt="" draggable={false} className="size-16 shrink-0 rounded-md border object-contain" /> : <div className="flex size-16 shrink-0 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">Sem foto</div>}
+                  <div className="min-w-0 flex-1"><p className="font-semibold leading-snug">{item.nome}</p><p className="mt-1 text-xs text-muted-foreground">Código {item.codigo}{item.codigo_original ? ` · Original ${item.codigo_original}` : ""}</p><p className="mt-1 truncate text-sm">{item.fabricante || "Marca não informada"}</p></div>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                  <div><dt className="text-xs text-muted-foreground">Categoria</dt><dd className="mt-0.5">{item.categoria_id ? nomesCategorias.get(item.categoria_id) : <Badge variant="destructive">Sem categoria</Badge>}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Subcategoria</dt><dd className="mt-0.5">{item.subcategoria_id ? nomesSubcategorias.get(item.subcategoria_id) : <Badge variant="outline">Sem subcategoria</Badge>}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Preço</dt><dd className="mt-0.5 font-medium">{formatarPreco(Number(item.preco))}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-0.5"><Badge variant={item.disponivel ? "default" : "secondary"}>{item.disponivel ? "Disponível" : "Indisponível"}</Badge></dd></div>
+                </dl>
+                <Button className="mt-4 w-full" size="sm" variant="outline" onClick={() => abrirEdicao(item)} disabled={produtos.isFetching}><Edit3 className="size-4" /> Editar classificação</Button>
+              </article>
+            ))}
+          </div>
+          </>
         )}
       </section>
 

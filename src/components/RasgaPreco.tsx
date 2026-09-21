@@ -78,7 +78,7 @@ export function RasgaPreco() {
       return;
     }
 
-    const observer = new IntersectionObserver(([entrada]) => setEstaVisivel(entrada.isIntersecting), {
+    const observer = new IntersectionObserver(([entrada]) => setEstaVisivel(entrada?.isIntersecting ?? false), {
       rootMargin: "160px 0px",
     });
 
