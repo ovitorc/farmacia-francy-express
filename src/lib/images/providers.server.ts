@@ -77,7 +77,8 @@ const normalizarEan = (v: string | null | undefined) => (v ?? "").replace(/\D/g,
 function imagemValida(url: string) {
   if (!/^https?:\/\//i.test(url)) return false;
   const u = url.toLowerCase();
-  return !/\.svg(?:\?|$)/.test(u) && !/(sprite|logo|icon|placeholder|banner|bandeira|selo|favicon)/.test(u);
+  const vetor = /(?:\.svgz?)(?:[?#]|$)|[?&](?:format|fm|ext|type)=svg(?:[&#]|$)|image%2fsvg/i.test(u);
+  return !vetor && !/(sprite|logo|icon|placeholder|banner|bandeira|selo|favicon)/.test(u);
 }
 
 function removerDuplicados(candidatos: Candidato[]) {
