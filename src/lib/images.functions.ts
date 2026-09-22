@@ -1451,17 +1451,37 @@ export const adicionarImagemPorLink = createServerFn({ method: "POST" })
       .select("id, image_url, source_url")
       .eq("produto_id", data.produtoId);
 
-    const jaExiste = (existentes ?? []).some(
+    const jaExiste = (existentes ?? []).find(
       (i: any) =>
         String(i.image_url ?? "").includes(imagem.hash.slice(0, 16)) ||
         String(i.source_url ?? "").split("?")[0] === data.imageUrl.split("?")[0],
     );
 
     if (jaExiste) {
-      return { duplicada: true, url: null as string | null };
+      await context.supabase.from("produto_imagens").update({ is_primary: false }).eq("produto_id", data.produtoId);
+      await context.supabase.from("produto_imagens").update({ is_primary: true }).eq("id", (jaExiste as any).id);
+
+      const { error: erroPublicacao } = await context.supabase
+        .from("produtos")
+        .update({
+          imagem: (jaExiste as any).image_url,
+          image_status: "approved",
+          image_source: data.fonteNome ?? "link_manual",
+          image_source_url: data.imageUrl,
+          image_confidence: 100,
+          image_error: null,
+          image_candidato_url: null,
+          image_last_synced_at: new Date().toISOString(),
+        })
+        .eq("id", data.produtoId);
+
+      if (erroPublicacao) throw new Error(erroPublicacao.message);
+      return { duplicada: true, url: (jaExiste as any).image_url as string };
     }
 
     const { url } = await guardarImagem(caminhoChave, imagem);
+
+    await context.supabase.from("produto_imagens").update({ is_primary: false }).eq("produto_id", data.produtoId);
 
     const { error } = await context.supabase.from("produto_imagens").insert({
       produto_id: data.produtoId,
@@ -1469,10 +1489,30 @@ export const adicionarImagemPorLink = createServerFn({ method: "POST" })
       source_type: "link",
       source_name: data.fonteNome ?? null,
       source_url: data.imageUrl,
-      is_primary: false,
+      is_primary: true,
     });
 
     if (error) throw new Error(error.message);
+
+    const { error: erroPublicacao } = await context.supabase
+      .from("produtos")
+      .update({
+        imagem: url,
+        image_status: "approved",
+        image_source: data.fonteNome ?? "link_manual",
+        image_source_url: data.imageUrl,
+        image_confidence: 100,
+        image_hash: imagem.hash,
+        image_width: imagem.largura,
+        image_height: imagem.altura,
+        image_format: imagem.extensao,
+        image_error: null,
+        image_candidato_url: null,
+        image_last_synced_at: new Date().toISOString(),
+      })
+      .eq("id", data.produtoId);
+
+    if (erroPublicacao) throw new Error(erroPublicacao.message);
 
     return { duplicada: false, url };
   });

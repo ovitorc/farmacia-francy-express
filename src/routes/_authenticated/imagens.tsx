@@ -25,7 +25,6 @@ import {
   adicionarImagemPorLink,
   definirImagemPrincipal,
   excluirImagemGaleria,
-  listarHistoricoImagens,
 } from "@/lib/images.functions";
 
 import { Button } from "@/components/ui/button";
@@ -119,7 +118,6 @@ function ImagensPage() {
   const fnPrincipal = useServerFn(definirImagemPrincipal);
 
   const fnExcluirGaleria = useServerFn(excluirImagemGaleria);
-  const fnHistorico = useServerFn(listarHistoricoImagens);
 
   const [filtro, setFiltro] = useState<Filtro>("sem_imagem");
 
@@ -180,12 +178,6 @@ function ImagensPage() {
     url: string;
     alt?: string;
   } | null>(null);
-  const [historicoStatus, setHistoricoStatus] = useState("todos");
-  const [historicoFonte, setHistoricoFonte] = useState("todas");
-  const [historicoBusca, setHistoricoBusca] = useState("");
-  const [historicoTermo, setHistoricoTermo] = useState("");
-  const [historicoPagina, setHistoricoPagina] = useState(1);
-  const [historicoPaginaInput, setHistoricoPaginaInput] = useState("1");
 
   useEffect(() => {
     if (!imagemVisualizando) {
@@ -224,20 +216,6 @@ function ImagensPage() {
     enabled: !!selecionado?.id,
 
     queryFn: () => fnGaleria({ data: { produtoId: selecionado.id } }),
-  });
-
-  const historico = useQuery({
-    queryKey: ["imagens", "historico", historicoStatus, historicoFonte, historicoTermo, historicoPagina],
-    queryFn: () =>
-      fnHistorico({
-        data: {
-          status: historicoStatus,
-          fonte: historicoFonte,
-          busca: historicoTermo,
-          pagina: historicoPagina,
-          porPagina: 20,
-        },
-      }),
   });
 
   const salvarFonte = async () => {
@@ -285,14 +263,15 @@ function ImagensPage() {
       const r = await fnAdicionarLink({ data: { produtoId: selecionado.id, imageUrl: linkImagem.trim() } });
 
       if (r.duplicada) {
-        toast.info("Essa imagem já está na galeria deste produto.");
+        toast.success("Imagem já cadastrada e publicada no produto.");
       } else {
-        toast.success("Imagem adicionada à galeria. Defina como principal para publicá-la.");
+        toast.success("Imagem publicada no produto.");
       }
 
       setLinkImagem("");
 
       void qc.invalidateQueries({ queryKey: ["imagens", "galeria"] });
+      atualizar();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível usar esse link.");
     } finally {
@@ -919,153 +898,6 @@ function ImagensPage() {
       </section>
 
       <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-primary">Histórico das pesquisas</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Consulte as buscas realizadas, a fonte utilizada e o resultado de cada produto.
-            </p>
-          </div>
-          <span className="text-sm text-muted-foreground">{historico.data?.total ?? 0} registros</span>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_180px_auto]">
-          <Input
-            value={historicoBusca}
-            placeholder="EAN, fonte ou situação"
-            onChange={(ev) => setHistoricoBusca(ev.target.value)}
-            onKeyDown={(ev) => {
-              if (ev.key === "Enter") {
-                setHistoricoTermo(historicoBusca);
-                setHistoricoPagina(1);
-              }
-            }}
-          />
-          <Select
-            value={historicoStatus}
-            onValueChange={(valor) => {
-              setHistoricoStatus(valor);
-              setHistoricoPagina(1);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Situação" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todas as situações</SelectItem>
-              <SelectItem value="manual_review">Em revisão</SelectItem>
-              <SelectItem value="approved">Aprovada</SelectItem>
-              <SelectItem value="not_found">Não encontrada</SelectItem>
-              <SelectItem value="error">Erro</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={historicoFonte}
-            onValueChange={(valor) => {
-              setHistoricoFonte(valor);
-              setHistoricoPagina(1);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Fonte" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as fontes</SelectItem>
-              {listaFontes.map((fonte: any) => (
-                <SelectItem key={fonte.id} value={fonte.nome}>
-                  {fonte.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setHistoricoTermo(historicoBusca);
-              setHistoricoPagina(1);
-            }}
-          >
-            Buscar
-          </Button>
-        </div>
-
-        <div className="mt-4 overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-3 font-medium">Data</th>
-                <th className="px-3 py-3 font-medium">Produto</th>
-                <th className="px-3 py-3 font-medium">Situação</th>
-                <th className="px-3 py-3 font-medium">Fonte</th>
-                <th className="px-3 py-3 font-medium">Confiança</th>
-                <th className="px-3 py-3 font-medium">Detalhe</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {historico.isLoading && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                    Carregando histórico…
-                  </td>
-                </tr>
-              )}
-              {!historico.isLoading && (historico.data?.itens.length ?? 0) === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                    Nenhum registro encontrado.
-                  </td>
-                </tr>
-              )}
-              {historico.data?.itens.map((item) => (
-                <tr key={item.id} className="align-top">
-                  <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                    {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
-                      new Date(item.started_at),
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
-                    <p className="max-w-64 font-medium">{item.produto_nome}</p>
-                    <p className="text-xs text-muted-foreground">{item.ean || item.produto_codigo || "Sem código"}</p>
-                  </td>
-                  <td className="px-3 py-3">
-                    {item.status === "manual_review"
-                      ? "Em revisão"
-                      : item.status === "approved"
-                        ? "Aprovada"
-                        : item.status === "not_found"
-                          ? "Não encontrada"
-                          : item.status === "error"
-                            ? "Erro"
-                            : item.status}
-                  </td>
-                  <td className="px-3 py-3">{NOMES_FONTES[item.source ?? ""] ?? item.source ?? "—"}</td>
-                  <td className="px-3 py-3">{item.confidence == null ? "—" : `${item.confidence}%`}</td>
-                  <td className="max-w-72 px-3 py-3 text-xs text-muted-foreground">{item.error || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <Button variant="outline" disabled={historicoPagina <= 1} onClick={() => { setHistoricoPagina((p) => p - 1); setHistoricoPaginaInput(String(Math.max(1, historicoPagina - 1))); }}>
-            Anterior
-          </Button>
-          <span className="text-sm text-muted-foreground">Página</span>
-          <Input value={historicoPaginaInput} onChange={(e) => setHistoricoPaginaInput(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { const totalPaginas = Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20)); const destino = Math.min(totalPaginas, Math.max(1, Number.parseInt(historicoPaginaInput, 10) || 1)); setHistoricoPagina(destino); setHistoricoPaginaInput(String(destino)); } }} className="w-20 text-center" inputMode="numeric" aria-label="Página do histórico" />
-          <Button size="sm" onClick={() => { const totalPaginas = Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20)); const destino = Math.min(totalPaginas, Math.max(1, Number.parseInt(historicoPaginaInput, 10) || 1)); setHistoricoPagina(destino); setHistoricoPaginaInput(String(destino)); }}>Ir</Button>
-          <span className="text-sm text-muted-foreground">de {Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20))}</span>
-          <Button
-            variant="outline"
-            disabled={historicoPagina >= Math.max(1, Math.ceil((historico.data?.total ?? 0) / 20))}
-            onClick={() => { setHistoricoPagina((p) => p + 1); setHistoricoPaginaInput(String(historicoPagina + 1)); }}
-          >
-            Próxima
-          </Button>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-primary">Filtros dos produtos</h2>
 
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1665,8 +1497,8 @@ function ImagensPage() {
             </div>
 
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Aceita JPG, PNG, WEBP e GIF. Links quebrados ou que não sejam imagem são recusados. A imagem só vai ao ar
-              quando você definir como principal.
+              Aceita JPG, PNG, WEBP e GIF. Imagens vetoriais, links quebrados ou arquivos inválidos são recusados. Ao
+              adicionar, a imagem é publicada imediatamente no produto.
             </p>
 
             {(galeria.data?.imagens ?? []).length > 0 && (
