@@ -152,10 +152,13 @@ function DesktopCategoryMenu({ categoria }: { categoria: Categoria }) {
       <Link
         to="/categoria/$slug"
         params={{ slug: categoria.slug }}
-        className="group flex items-center gap-1.5 whitespace-nowrap rounded-full border border-primary-foreground/10 bg-primary-foreground/[0.06] px-3 py-2 text-xs font-semibold shadow-sm transition-all hover:border-primary-foreground/25 hover:bg-primary-foreground/12"
+        className="group flex h-full min-h-10 items-center justify-center gap-2 rounded-lg border border-primary-foreground/10 bg-primary-foreground/[0.06] px-3 py-2 text-center text-xs font-semibold leading-snug transition-all hover:border-primary-foreground/25 hover:bg-primary-foreground/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
         onFocus={abrirMenu}
       >
-        <span>{categoria.nome}</span>
+        <span className="shrink-0 text-base leading-none" aria-hidden="true">
+          {categoria.icone}
+        </span>
+        <span className="min-w-0">{categoria.nome}</span>
         <ChevronDown className="size-3 shrink-0 opacity-70 transition-transform group-hover:translate-y-0.5" />
       </Link>
 
@@ -518,8 +521,11 @@ export function SiteHeader() {
          * Ela faz parte do header e acompanha o movimento
          * do header inteiro.
          */}
-        <div className="hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md md:block">
-          <nav className="mx-auto flex w-full max-w-7xl min-w-0 flex-wrap items-center justify-center gap-1 overflow-visible px-4 py-2 text-xs font-medium">
+        <div className="hidden w-full overflow-visible border-t border-primary-foreground/10 bg-primary/95 backdrop-blur-md lg:block">
+          <nav
+            aria-label="Categorias de produtos"
+            className="mx-auto grid w-full max-w-7xl min-w-0 grid-cols-7 gap-1.5 overflow-visible px-4 py-2 text-xs font-medium"
+          >
             {categorias.map((categoria) => (
               <DesktopCategoryMenu key={categoria.slug} categoria={categoria} />
             ))}
